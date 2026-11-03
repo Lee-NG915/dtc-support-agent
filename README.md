@@ -1,4 +1,16 @@
+# DTC Support Agent｜电商售后智能工作台
 
+基于 [Adaptive-rag](https://github.com/JEen-wang/Adaptive-rag) 扩展的 DTC 电商售后 Agent。首期计划围绕订单查询、政策检索、工单草稿、人工审批与工单创建，完善身份权限、持久任务、幂等执行和效果评测。
+
+**当前状态（2026-11-03）：已建立初步方案，应用改造尚未开始。** 本次仅建立文档和项目跟踪，未在本 fork 运行应用、测试或评测。
+
+- [项目背景、MVP 范围与实施方案](docs/project-plan.md)
+- [Issue #1：实施进度与验收跟踪](https://github.com/Lee-NG915/dtc-support-agent/issues/1)
+- [技术文档目录](docs/README.md)
+
+以下保留上游项目说明、截图与历史评测材料；其中能力和数字不代表本 fork 新增成果或验证结果。复用与改造边界见项目方案，原 [MIT 许可及版权声明](LICENSE) 保留。
+
+---
 
 <h1 align="center">Adaptive RAG · 电商客服工作流</h1>
 

@@ -1,5 +1,13 @@
 # 技术文档
 
+## DTC fork 规划入口
+
+[项目背景与实施方案](project-plan.md) 是本 fork 的权威规划文档，包含业务范围、上游复用边界、目标架构、分阶段实施和验收设计；进度见 [Issue #1](https://github.com/Lee-NG915/dtc-support-agent/issues/1)。
+
+当前仅完成初步规划，应用改造与运行验收尚未开展。方案中的目标能力不表示已经实现；以下原有章节保留上游实现说明与历史报告，后续随实际代码改造更新。
+
+## 现有实现手册
+
 生产向手册。结构参考 [Diátaxis](https://diataxis.fr/)：先能跑，再讲概念，再查参考，最后看上线。
 
 **原则：只写仓库里真实存在的行为。** 评测数字以 [10 · 评测](10-evaluation.md) 和 [`eval/MEASURED.md`](../eval/MEASURED.md) 为准。
