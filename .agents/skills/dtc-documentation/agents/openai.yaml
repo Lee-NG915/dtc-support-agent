@@ -1,0 +1,4 @@
+interface:
+  display_name: "文档设计与学习"
+  short_description: "应用从 Hextech 适配的文档设计规范，为 DTC Support Agent 编写易学的方案、源码讲解、指南和验证"
+  default_prompt: "请使用 $dtc-documentation，结合本项目现有代码和文档完成当前任务，解释依据并标明未验证部分。"

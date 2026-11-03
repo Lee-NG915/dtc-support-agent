@@ -1,0 +1,4 @@
+interface:
+  display_name: "售后需求梳理"
+  short_description: "将客服提效想法或行为变更整理为业务范围、模型规则人工分工及可观察验收，复用既有项目方案。"
+  default_prompt: "请使用 $dtc-requirements-analysis，结合本项目现有代码和文档完成当前任务，解释依据并标明未验证部分。"

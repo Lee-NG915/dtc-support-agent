@@ -1,0 +1,4 @@
+interface:
+  display_name: "证据与恢复记录"
+  short_description: "持续维护同一主题的决定、候选、验证、失败和下一步，使项目能从真实证据恢复。"
+  default_prompt: "请使用 $dtc-evidence-log，结合本项目现有代码和文档完成当前任务，解释依据并标明未验证部分。"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "项目上下文"
+  short_description: "进入或恢复 DTC Support Agent 任务时，核对业务范围、仓库状态、真实命令和已确认决定。"
+  default_prompt: "请使用 $dtc-context，结合本项目现有代码和文档完成当前任务，解释依据并标明未验证部分。"

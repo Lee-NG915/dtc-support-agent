@@ -30,3 +30,16 @@ pytest -q
 CI 会在 Python 3.11 与 3.12 上依次跑 Ruff、mypy 与 pytest，并要求 `app` / `eval` 的覆盖率不低于 70%。
 
 提交前请确保不提交 `.env`、密钥、数据库文件和评测生成物。业务逻辑应放在分层目录中，通过 schema 传递数据，避免在路由层直接访问基础设施。
+
+## 项目技能与文档
+
+开发助手先读 [AGENTS.md](AGENTS.md) 和 [项目档案](.dtc/target-profile.md)。技能安装在 `.agents/skills/`；不要放入应用的 `app/skills/`。调用与更新见 [技能指南](docs/guides/skills.md)。
+
+文档遵循 [文档规范](docs/guides/documentation.md)。业务能力变化同步当前主题、真实源码入口、学习解释和受影响验证；纯文档/技能改动运行：
+
+```bash
+python3 scripts/check_project_docs.py
+git diff --check
+```
+
+检查器只验证本项目维护文档和开发技能的结构、本地链接与元数据；不验证外部链接、语义或应用运行，也不遍历改写全部上游教程。代码变更仍按上面的工程检查和实际影响验证。新检查器目前是本地步骤，未接入现有 CI。

@@ -1,0 +1,4 @@
+interface:
+  display_name: "开发分支交付"
+  short_description: "核对当前源码、验证和授权范围，提交并推送明确开发分支，回读文档与 Issue，区分发布和业务验收。"
+  default_prompt: "请使用 $dtc-delivery，结合本项目现有代码和文档完成当前任务，解释依据并标明未验证部分。"
