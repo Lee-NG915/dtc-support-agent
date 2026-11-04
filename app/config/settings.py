@@ -27,6 +27,17 @@ class Settings(BaseSettings):
     deepseek_api_key: SecretStr = SecretStr("")
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
+    # 采样温度覆盖：None 表示沿用各调用方传入值。
+    # 部分 OpenAI 兼容模型（如 Kimi Code kimi-for-coding）只允许 temperature=1，
+    # 此时在 .env 设 DEEPSEEK_TEMPERATURE=1，由 Provider 统一覆盖。
+    deepseek_temperature: float | None = None
+    # 推理模型（如 Kimi Code kimi-for-coding）适配：
+    # reasoning_effort 非空时透传给 API（low/high/max），low 可降低延迟与推理 token 消耗。
+    deepseek_reasoning_effort: str = ""
+    # max_tokens 下限：推理模型的 reasoning_tokens 也计入 max_tokens，
+    # 业务节点按非推理模型给的 256~700 预算会被推理耗尽，导致 JSON 截断。
+    # 0 表示不调整；使用推理模型时建议 2048。
+    deepseek_min_max_tokens: int = 0
     llm_timeout_seconds: float = 30.0
     llm_max_retries: int = 3
 

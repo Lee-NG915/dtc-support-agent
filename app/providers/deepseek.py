@@ -41,6 +41,20 @@ class DeepSeekProvider:
         if self._owns_client:
             await self._client.aclose()
 
+    def _sampling_temperature(self, requested: float) -> float:
+        """Allow env-level override for models with fixed sampling temperature."""
+        override = self._settings.deepseek_temperature
+        return requested if override is None else override
+
+    def _apply_reasoning_compat(self, payload: dict[str, object]) -> None:
+        """Adapt payloads for reasoning models (effort + token headroom)."""
+        min_tokens = self._settings.deepseek_min_max_tokens
+        if min_tokens > 0:
+            payload["max_tokens"] = max(int(payload["max_tokens"]), min_tokens)
+        effort = self._settings.deepseek_reasoning_effort
+        if effort:
+            payload["reasoning_effort"] = effort
+
     async def ping(self) -> bool:
         """Do not call chat completions here — readiness must stay cheap."""
         return bool(self._settings.deepseek_api_key.get_secret_value())
@@ -60,11 +74,12 @@ class DeepSeekProvider:
         payload: dict[str, object] = {
             "model": self._settings.deepseek_model,
             "messages": messages,
-            "temperature": temperature,
+            "temperature": self._sampling_temperature(temperature),
             "max_tokens": max_tokens,
         }
         if response_format is not None:
             payload["response_format"] = response_format
+        self._apply_reasoning_compat(payload)
 
         async def _call() -> LLMResponse:
             try:
@@ -126,12 +141,13 @@ class DeepSeekProvider:
         payload: dict[str, object] = {
             "model": self._settings.deepseek_model,
             "messages": messages,
-            "temperature": temperature,
+            "temperature": self._sampling_temperature(temperature),
             "max_tokens": max_tokens,
             "stream": True,
         }
         if response_format is not None:
             payload["response_format"] = response_format
+        self._apply_reasoning_compat(payload)
 
         try:
             async with self._client.stream(
