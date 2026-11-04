@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No ticket creation record is currently visible; this is not authoritative absence. Back off and revalidate before using only the original key and identical business body.",
+    "request_id": "req_err_000000000015",
+    "retryable": false,
+    "recovery_action": "RETRY_CREATE_WITH_SAME_KEY"
+  }
+}

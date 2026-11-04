@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "IDEMPOTENCY_CONFLICT",
+    "message": "The idempotency key was already used with different ticket business fields.",
+    "request_id": "req_err_000000000005",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "operation": "createServiceTicket"
+    }
+  }
+}

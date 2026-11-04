@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "ORDER_VERSION_CONFLICT",
+    "message": "The supplied order_version does not match E-pig's current order version.",
+    "request_id": "req_err_000000000016",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "field": "order_version"
+    }
+  }
+}

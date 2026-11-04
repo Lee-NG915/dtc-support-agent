@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "UPSTREAM_UNAVAILABLE",
+    "message": "Ticket creation outcome is unknown; use the idempotency lookup before retrying.",
+    "request_id": "req_err_000000000011",
+    "retryable": false,
+    "recovery_action": "LOOKUP_FIRST",
+    "details": {
+      "retry_after_seconds": 15
+    }
+  }
+}

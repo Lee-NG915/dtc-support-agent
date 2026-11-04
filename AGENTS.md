@@ -46,3 +46,10 @@
 
 - 每次功能进展、方案或约定变化时，同批更新受影响文档与对应 Issue 评论，保持代码、文档、Issue 一致；文档状态按证据标注（计划 / 已确认 / 已实现 / 已验证 / 已推送）。
 - 拆分出的子任务使用 GitHub sub-issue（创建时指定父 Issue），不用独立无关联 Issue 代替；跨仓库任务在各仓建本仓 Issue 并互链，整体验收由产品中台 Issue 跟踪。
+
+跨仓库售后契约（2026-11-04 用户确认）：
+
+- [产品蓝图](docs/architecture/modules/after-sales/product-blueprint.md)是产品行为唯一正本；`contracts/epig-after-sales/v1/openapi.json` 是线上字段、路径和状态码唯一正本；[对接规范](docs/architecture/modules/after-sales/epig-contract.md)负责可靠性语义与变更流程。禁止以对话、Issue 或任一仓库的 DTO 覆盖这些正本。
+- 契约变化必须在同批更新产品语义、OpenAPI、共享 fixtures、检查与验证记录，并同步 DTC#2 和 E-pig#2；任一方发现缺口先提出变更，不得单方面修改线上字段、枚举或状态语义。
+- E-pig 只能使用带不可变源提交和逐文件 SHA-256 的 vendor 契约包，不得手改副本。实现完成必须提供源版本、digest、共享正反 fixtures 和本仓验证结果。
+- 开发窗口开始线上 DTO、Connector 或 Route Handler 工作前，必须回读对应 Issue 的最新契约交接评论；本次源契约存在不代表 E-pig vendor、跨仓 freshness 或运行时联调已完成。

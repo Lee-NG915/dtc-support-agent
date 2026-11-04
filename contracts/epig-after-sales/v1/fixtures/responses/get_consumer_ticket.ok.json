@@ -1,0 +1,19 @@
+{
+  "ticket_id": "tic_000000000042",
+  "request_id": "asr_000000000042",
+  "order_id": "ord_au_00000042",
+  "market": "au",
+  "action": "reship",
+  "reply": "We will send a replacement for the damaged synthetic item. No return is required.",
+  "status": "closed",
+  "receipt": {
+    "receipt_id": "rcp_000000000042",
+    "ticket_id": "tic_000000000042",
+    "request_id": "asr_000000000042",
+    "action": "reship",
+    "request_status": "ticket_created",
+    "created_at": "2026-01-15T04:00:00Z"
+  },
+  "created_at": "2026-01-15T04:00:00Z",
+  "updated_at": "2026-01-16T04:00:00Z"
+}

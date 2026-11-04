@@ -1,0 +1,9 @@
+# 售后产品语义与跨仓契约必须由产品所有者审查。
+# 只有分支保护将审查和检查设为必需后，才构成 GitHub 合并硬门禁。
+/docs/architecture/modules/after-sales/ @Lee-NG915
+/docs/records/after-sales/ @Lee-NG915
+/contracts/epig-after-sales/ @Lee-NG915
+/scripts/check_epig_after_sales_contract.py @Lee-NG915
+/tests/contract/test_epig_after_sales_contract.py @Lee-NG915
+/.github/workflows/ci.yml @Lee-NG915
+/.github/CODEOWNERS @Lee-NG915

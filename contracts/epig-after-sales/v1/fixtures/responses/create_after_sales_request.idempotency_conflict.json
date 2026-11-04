@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "IDEMPOTENCY_CONFLICT",
+    "message": "The idempotency key was already used with a different request fingerprint.",
+    "request_id": "req_err_000000000004",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "operation": "createAfterSalesRequest"
+    }
+  }
+}

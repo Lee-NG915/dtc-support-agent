@@ -1,0 +1,2050 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "E-pig After-Sales Machine Contract",
+    "version": "1.0.0",
+    "description": "Sole wire-schema authority for the E-pig after-sales boundary. Package semver is 1.0.0 and is pinned independently by the consumer source lock; wire compatibility uses only major version 1 in X-After-Sales-Contract-Version. Older minors remain compatible within the same major. Optional request capabilities require both the source-locked package version and the wire major to support them. All JSON boundary property names are snake_case. IDs are opaque strings, money is integer minor units accompanied by ISO 4217 currency, and date-times are UTC RFC3339 values ending in Z. Every request and response carries the wire-major header. Request bodies and safety-critical consumer response DTOs are producer allowlists that reject unknown fields; receiver unknown-field tolerance never authorizes producer leakage. Other service response objects may grow additively. Consumer access uses the signed, expiring, exact-market epig_cart_{market} cookie; E-pig derives the stable principal from verified cart_id, never the raw cookie, and persistently associates orders, requests, tickets, and attachments with cart_id. Ownership failure is 404, and consumer idempotency is scoped by stable cart_id. Service access uses a bearer service token. Idempotency is scoped by market, authenticated actor or verified cart_id, and operation, and records are retained for the life of the business object. Reuse with a stable business fingerprint returns the CURRENT representation of the originally created object with HTTP 200 and Idempotency-Replayed: true, never a stale creation snapshot. Clients must not overwrite newer state with older snapshots. Ticket creation uses one database transaction and atomic market/request_id uniqueness. Reads are safe to retry. The error retryable flag governs only immediate retry of the current HTTP request and never permits a blind create retry; recovery_action defines the required recovery workflow. DTC alone validates persistent human approval and draft/policy versions before creating a ticket. E-pig validates its own current order_version and business state, but never DTC approval. A ticket has one immutable final reply. Action reject is the final business denial; internal approval rejection never calls this API."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Deployment-relative E-pig API"
+    }
+  ],
+  "tags": [
+    {
+      "name": "consumer",
+      "description": "Consumer order-ownership-cookie operations"
+    },
+    {
+      "name": "service",
+      "description": "DTC bearer-service-token operations"
+    }
+  ],
+  "paths": {
+    "/api/{market}/after-sales/attachments": {
+      "post": {
+        "operationId": "uploadAttachment",
+        "tags": ["consumer"],
+        "summary": "Upload an after-sales attachment",
+        "description": "Accepts order_id plus exactly one JPEG, PNG, or WebP file no larger than 5 MiB (5,242,880 bytes). The order must be persistently associated with the verified cart_id. The attachment inherits that cart_id association. No public or storage URL is created. Unknown multipart fields are rejected.",
+        "x-requirement-ids": ["AS-REQ-AUTH-001", "AS-REQ-SEC-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ConsumerOrderOwnershipCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadAttachmentRequest"
+              },
+              "encoding": {
+                "file": {
+                  "contentType": "image/jpeg,image/png,image/webp"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/AttachmentCreated"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/AttachmentTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/attachments/{attachmentId}/content": {
+      "get": {
+        "operationId": "getAttachmentContent",
+        "tags": ["consumer"],
+        "summary": "Read consumer attachment content",
+        "description": "Returns binary content only when the attachment's persistent cart_id association matches the verified consumer principal. Ownership failure is 404. This endpoint never issues or exposes a public or storage URL. An expired attachment returns 410 ATTACHMENT_EXPIRED.",
+        "x-requirement-ids": ["AS-REQ-AUTH-001", "AS-REQ-SEC-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ConsumerOrderOwnershipCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/AttachmentId"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/AttachmentContent"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/AttachmentExpired"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/service/attachments/{attachmentId}/content": {
+      "get": {
+        "operationId": "getServiceAttachmentContent",
+        "tags": ["service"],
+        "summary": "Read service attachment content",
+        "description": "Returns authorized binary attachment content to the DTC service within an authorized market. This endpoint never issues or exposes a public or storage URL. An expired attachment returns 410 ATTACHMENT_EXPIRED.",
+        "x-requirement-ids": ["AS-REQ-AUTH-002", "AS-REQ-SEC-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ServiceBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/AttachmentId"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/AttachmentContent"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/AttachmentExpired"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/requests": {
+      "post": {
+        "operationId": "createAfterSalesRequest",
+        "tags": ["consumer"],
+        "summary": "Create an after-sales request",
+        "description": "Creates a consumer request for an owned order with at most three active attachments. description is required and nonempty; malformed or missing description is rejected at intake. needs_info is a downstream workflow concern only for accepted requests with insufficient evidence, never a substitute for intake validation. Idempotency-Key is required and scoped by market, verified cart_id, and this operation. The fingerprint covers order_id, type, description, and attachment_ids. A replay returns the CURRENT representation of the originally created request with status 200 and Idempotency-Replayed: true; a changed fingerprint returns 409 IDEMPOTENCY_CONFLICT. Clients must not overwrite newer state with older snapshots. A request enters status pending and later changes to ticket_created when its ticket is created.",
+        "x-requirement-ids": ["AS-REQ-AUTH-001", "AS-REQ-REQ-001", "AS-REQ-REQ-002", "AS-REQ-SEC-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ConsumerOrderOwnershipCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAfterSalesRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/AfterSalesRequestCreated"
+          },
+          "200": {
+            "$ref": "#/components/responses/AfterSalesRequestReplayed"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/AttachmentExpired"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/requests/{requestId}": {
+      "get": {
+        "operationId": "getAfterSalesRequest",
+        "tags": ["consumer"],
+        "summary": "Read consumer request status and progress",
+        "description": "Returns only a request owned through the consumer's order-ownership cookie. Absence and ownership failure are both 404 NOT_FOUND.",
+        "x-requirement-ids": ["AS-REQ-AUTH-001", "AS-REQ-REQ-002", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ConsumerOrderOwnershipCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ConsumerAfterSalesRequestView"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/tickets/{ticketId}": {
+      "get": {
+        "operationId": "getConsumerTicket",
+        "tags": ["consumer"],
+        "summary": "Read consumer ticket and final reply",
+        "description": "Returns the consumer-safe ticket, immutable final reply, and receipt. DTC audit fields such as approval_id, draft_version, policy_version, and order_version are not part of this DTO. Action reject is shown as the final business denial.",
+        "x-requirement-ids": ["AS-REQ-AUTH-001", "AS-REQ-TICKET-002", "AS-REQ-REC-001", "AS-REQ-SEC-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ConsumerOrderOwnershipCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/TicketId"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ConsumerTicketView"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/service/orders/{orderId}": {
+      "get": {
+        "operationId": "getServiceOrder",
+        "tags": ["service"],
+        "summary": "Read service order view",
+        "description": "Returns items, integer minor-unit amounts with ISO 4217 currency, status, creation time, order_version, and a masked non-PII recipient summary. It never returns a full shipping address.",
+        "x-requirement-ids": ["AS-REQ-AUTH-002", "AS-REQ-DATA-001", "AS-REQ-SEC-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ServiceBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/OrderId"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ServiceOrderView"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/service/orders/{orderId}/shipment": {
+      "get": {
+        "operationId": "getServiceOrderShipment",
+        "tags": ["service"],
+        "summary": "Read service shipment status and events",
+        "description": "Returns shipment status and a chronological event list. Location values, when present, are coarse summaries rather than precise addresses.",
+        "x-requirement-ids": ["AS-REQ-AUTH-002", "AS-REQ-DATA-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ServiceBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/OrderId"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ServiceShipmentView"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/service/requests": {
+      "get": {
+        "operationId": "listServiceRequests",
+        "tags": ["service"],
+        "summary": "Read stable append-only request ingestion feed",
+        "description": "Returns every newly created request in the market, independent of current status, ordered by ascending unique per-market publication sequence. Publication requires a committed contiguous high-watermark: no entry may become visible at or below an issued cursor, and entries retain their sequence when status changes. high_watermark is the committed contiguous position available to readers. next_cursor is ALWAYS non-null: after a nonempty terminal page it continues after the last item, and an empty page returns the current position. has_more only signals whether more entries are currently available. Default limit is 50 and maximum is 200. Version 1 cursors and feed replay do not expire; any retention change requires a new versioned resync design. INVALID_CURSOR covers malformed, cross-market, or otherwise invalid cursors, not expiry. Reads are safe to retry.",
+        "x-requirement-ids": ["AS-REQ-AUTH-002", "AS-REQ-QUEUE-001", "AS-REQ-DATA-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ServiceBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ServiceRequestFeedView"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/service/requests/{requestId}": {
+      "get": {
+        "operationId": "getServiceRequest",
+        "tags": ["service"],
+        "summary": "Read service request detail",
+        "description": "Returns full description, order_id, type, attachment metadata, ingestion sequence, and current request status for DTC ingestion and support review.",
+        "x-requirement-ids": ["AS-REQ-AUTH-002", "AS-REQ-REQ-002", "AS-REQ-DATA-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ServiceBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ServiceAfterSalesRequestView"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/service/tickets": {
+      "post": {
+        "operationId": "createServiceTicket",
+        "tags": ["service"],
+        "summary": "Create a ticket with immutable final reply and receipt",
+        "description": "DTC alone validates persistent human approval, draft_version, and policy_version before this call. E-pig validates the service token, market, idempotency, its own current order_version, and business state, but does not independently verify DTC approval. Creation MUST use one database transaction that performs current order_version and business checks, atomically changes the request from pending to ticket_created, and persists the ticket, immutable final reply, receipt, and idempotency record. The transaction enforces atomic uniqueness on (market,request_id); any failure rolls back all writes, and different keys cannot create two tickets. A uniqueness loser with the same business fingerprint receives the CURRENT representation of the original ticket with HTTP 200 and Idempotency-Replayed: true; a different fingerprint receives 409 REQUEST_STATE_CONFLICT. Reusing the same key with a different fingerprint receives 409 IDEMPOTENCY_CONFLICT. A current order version mismatch receives nonretryable 409 ORDER_VERSION_CONFLICT. The business fingerprint covers only request_id, action, reply, draft_version, approval_id, policy_version, and order_version. Clients must not overwrite newer state with older snapshots. The final reply is immutable; reject is a final business denial, and internal approval rejection must not call this operation. After an uncertain outcome, call getServiceTicketByIdempotencyKey before any create retry, then retry only the original key with an identical business body as directed by recovery_action.",
+        "x-requirement-ids": ["AS-REQ-AUTH-002", "AS-REQ-APR-001", "AS-REQ-APR-002", "AS-REQ-TICKET-001", "AS-REQ-REC-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ServiceBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceTicketInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/ServiceTicketCreated"
+          },
+          "200": {
+            "$ref": "#/components/responses/ServiceTicketReplayed"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/service/tickets/{ticketId}": {
+      "get": {
+        "operationId": "getServiceTicket",
+        "tags": ["service"],
+        "summary": "Read service ticket, receipt, and audit fields",
+        "description": "Returns ticket status open, processing, or closed, immutable final reply, receipt, and stored DTC audit fields. Presence of approval_id is audit evidence only and does not mean E-pig independently verified human approval.",
+        "x-requirement-ids": ["AS-REQ-AUTH-002", "AS-REQ-APR-001", "AS-REQ-APR-002", "AS-REQ-TICKET-002", "AS-REQ-REC-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ServiceBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/TicketId"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ServiceTicketView"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    },
+    "/api/{market}/after-sales/service/tickets/by-idempotency-key/{idempotencyKey}": {
+      "get": {
+        "operationId": "getServiceTicketByIdempotencyKey",
+        "tags": ["service"],
+        "summary": "Look up a confirmed ticket after an uncertain write",
+        "description": "Recovers ticket creation outcome using the idempotency key scoped to market, authenticated service actor, and createServiceTicket. HTTP 200 returns the CURRENT representation of the original ticket. HTTP 202 returns outcome IN_FLIGHT with retry_after_ms. HTTP 404 means no visible record, NOT authoritative absence. DTC may back off and revalidate, then retry creation ONLY with the original key and identical business body; atomic (market,request_id) uniqueness prevents duplicates. Transport failure, 500, and 503 also leave outcome unknown. This read is safe to retry, and retryable never authorizes a blind create retry.",
+        "x-requirement-ids": ["AS-REQ-AUTH-002", "AS-REQ-TICKET-002", "AS-REQ-REC-001", "AS-REQ-COMPAT-001"],
+        "security": [
+          {
+            "ServiceBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Market"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyPath"
+          },
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ServiceTicketView"
+          },
+          "202": {
+            "$ref": "#/components/responses/ServiceTicketCreationPending"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenMarket"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/UpstreamUnavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ServiceBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Service token",
+        "description": "Authorization: Bearer <service-token>. The token identifies the DTC service actor and its allowed markets."
+      },
+      "ConsumerOrderOwnershipCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "epig_cart_{market}",
+        "x-cookie-name-template": "epig_cart_{market}",
+        "description": "Existing signed consumer cart cookie template, for example epig_cart_au. E-pig must verify its signature and expiry and require an exact match between the cookie market and path market. The stable consumer principal is derived from the verified cart_id claim, never from the raw cookie. Orders, requests, tickets, and attachments have persistent cart_id associations; ownership failure returns 404. Consumer idempotency scope uses this stable verified cart_id."
+      }
+    },
+    "parameters": {
+      "Market": {
+        "name": "market",
+        "in": "path",
+        "required": true,
+        "description": "Lowercase market boundary. Tokens and cursors are valid only for their authorized market.",
+        "schema": {
+          "$ref": "#/components/schemas/Market"
+        }
+      },
+      "ContractVersion": {
+        "name": "X-After-Sales-Contract-Version",
+        "in": "header",
+        "required": true,
+        "description": "Exact wire compatibility major. Package semver 1.0.0 is pinned separately by source lock. Any other wire major is rejected with 400 UNSUPPORTED_CONTRACT_VERSION. Optional request capabilities require support from both pins.",
+        "schema": {
+          "type": "string",
+          "const": "1"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "Opaque key scoped by market, authenticated actor, and operation. Retained for the life of the created business object.",
+        "schema": {
+          "$ref": "#/components/schemas/IdempotencyKey"
+        }
+      },
+      "AttachmentId": {
+        "name": "attachmentId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/OpaqueId"
+        }
+      },
+      "RequestId": {
+        "name": "requestId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/OpaqueId"
+        }
+      },
+      "TicketId": {
+        "name": "ticketId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/OpaqueId"
+        }
+      },
+      "OrderId": {
+        "name": "orderId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/OpaqueId"
+        }
+      },
+      "IdempotencyKeyPath": {
+        "name": "idempotencyKey",
+        "in": "path",
+        "required": true,
+        "description": "URL-encoded opaque key originally supplied to createServiceTicket.",
+        "schema": {
+          "$ref": "#/components/schemas/IdempotencyKey"
+        }
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "description": "Opaque market-bound ingestion cursor returned by a previous page. Omit for the beginning of the feed.",
+        "schema": {
+          "$ref": "#/components/schemas/Cursor"
+        }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Maximum entries in the page; defaults to 50.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        }
+      }
+    },
+    "headers": {
+      "AfterSalesContractVersion": {
+        "description": "Wire compatibility major used to produce the response; package semver remains independently source-locked.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "const": "1"
+        }
+      },
+      "IdempotencyReplayed": {
+        "description": "Present with value true on an idempotent replay; the CURRENT representation of the originally created object is returned with HTTP 200, never a stale creation snapshot.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "const": "true"
+        }
+      },
+      "RetryAfter": {
+        "description": "Minimum delay before retrying, in seconds.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "ContentDisposition": {
+        "description": "Attachment disposition with a sanitized filename; never a public URL.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "AttachmentCreated": {
+        "description": "Attachment stored and metadata returned. No public URL or storage URL is included.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Attachment"
+            }
+          }
+        }
+      },
+      "AttachmentContent": {
+        "description": "Authorized binary attachment bytes. Content-Type is the original media type or application/octet-stream; no redirect, public URL, or storage URL is used.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          },
+          "Content-Disposition": {
+            "$ref": "#/components/headers/ContentDisposition"
+          }
+        },
+        "content": {
+          "application/octet-stream": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          },
+          "image/jpeg": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          },
+          "image/png": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          },
+          "image/webp": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          }
+        }
+      },
+      "AfterSalesRequestCreated": {
+        "description": "After-sales request created in status pending.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConsumerAfterSalesRequest"
+            }
+          }
+        }
+      },
+      "AfterSalesRequestReplayed": {
+        "description": "CURRENT representation of the originally created after-sales request for a stable idempotency identity and fingerprint. Clients must not overwrite newer state with older snapshots.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          },
+          "Idempotency-Replayed": {
+            "$ref": "#/components/headers/IdempotencyReplayed"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConsumerAfterSalesRequest"
+            }
+          }
+        }
+      },
+      "ConsumerAfterSalesRequestView": {
+        "description": "Consumer request status and progress.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConsumerAfterSalesRequest"
+            }
+          }
+        }
+      },
+      "ConsumerTicketView": {
+        "description": "Consumer-safe ticket and receipt without DTC audit fields.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConsumerTicket"
+            }
+          }
+        }
+      },
+      "ServiceOrderView": {
+        "description": "Service order view with no full shipping address.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ServiceOrder"
+            }
+          }
+        }
+      },
+      "ServiceShipmentView": {
+        "description": "Service shipment status and events.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ServiceShipment"
+            }
+          }
+        }
+      },
+      "ServiceRequestFeedView": {
+        "description": "Stable append-only ingestion page.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ServiceRequestFeed"
+            }
+          }
+        }
+      },
+      "ServiceAfterSalesRequestView": {
+        "description": "Full service request detail.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ServiceAfterSalesRequest"
+            }
+          }
+        }
+      },
+      "ServiceTicketCreated": {
+        "description": "Ticket, immutable final reply, and receipt created.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ServiceTicket"
+            }
+          }
+        }
+      },
+      "ServiceTicketReplayed": {
+        "description": "CURRENT representation of the original ticket for the same business fingerprint, including a same-fingerprint uniqueness loser. Clients must not overwrite newer state with older snapshots.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          },
+          "Idempotency-Replayed": {
+            "$ref": "#/components/headers/IdempotencyReplayed"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ServiceTicket"
+            }
+          }
+        }
+      },
+      "ServiceTicketCreationPending": {
+        "description": "Ticket creation is still in flight. Wait retry_after_ms before repeating this lookup; this is not confirmation of success or absence.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ServiceTicketCreationPending"
+            }
+          }
+        }
+      },
+      "ServiceTicketView": {
+        "description": "Service ticket, receipt, and stored audit fields.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ServiceTicket"
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Request validation failed. code is VALIDATION_ERROR for malformed fields, headers, or query values, INVALID_CURSOR for an invalid ingestion cursor, and UNSUPPORTED_CONTRACT_VERSION when the wire major is not 1.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing, invalid, or expired consumer session or bearer service token. code is UNAUTHORIZED.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "ForbiddenMarket": {
+        "description": "The authenticated actor is not authorized for the requested market. code is FORBIDDEN_MARKET.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource is absent or inaccessible. code is NOT_FOUND. Consumer ownership failure intentionally uses this same response. For ticket idempotency lookup, 404 means no visible record and is NOT authoritative absence; use recovery_action RETRY_CREATE_WITH_SAME_KEY only after backoff/revalidation with the original key and identical business body.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "code is IDEMPOTENCY_CONFLICT when a scoped key is reused with a different fingerprint, REQUEST_STATE_CONFLICT when current request state cannot accept the write or a different-fingerprint ticket already exists for the request, and ORDER_VERSION_CONFLICT when E-pig's current order version differs from order_version. All are nonretryable and use recovery_action NONE. Stale DTC approval is DTC-side behavior, not an E-pig error code.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "AttachmentExpired": {
+        "description": "The attachment has expired and cannot be read or attached. code is ATTACHMENT_EXPIRED.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "AttachmentTooLarge": {
+        "description": "The file exceeds 5 MiB (5,242,880 bytes). code is ATTACHMENT_TOO_LARGE.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "The upload is not JPEG, PNG, or WebP, or a JSON operation received a non-JSON content type. code is UNSUPPORTED_MEDIA_TYPE.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "The caller exceeded the applicable rate limit. code is RATE_LIMITED. Safe reads use retryable true with recovery_action RETRY_REQUEST; retryable governs only the current HTTP request and never permits blind create retries.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected E-pig failure. code is INTERNAL_ERROR. retryable governs only immediate retry of this HTTP request. After createServiceTicket, outcome is unknown: use retryable false and recovery_action LOOKUP_FIRST; never blindly repeat creation.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "UpstreamUnavailable": {
+        "description": "A required upstream is unavailable. code is UPSTREAM_UNAVAILABLE. Safe reads may use retryable true and RETRY_REQUEST. After createServiceTicket, outcome is unknown: use retryable false and recovery_action LOOKUP_FIRST; never blindly repeat creation.",
+        "headers": {
+          "X-After-Sales-Contract-Version": {
+            "$ref": "#/components/headers/AfterSalesContractVersion"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Market": {
+        "type": "string",
+        "enum": ["au", "sg", "us"]
+      },
+      "OpaqueId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+        "description": "Opaque identifier; clients must not infer structure or sequence."
+      },
+      "IdempotencyKey": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$",
+        "description": "Opaque idempotency key safe for an HTTP header and URL path segment."
+      },
+      "UTCDatetime": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$",
+        "description": "UTC RFC3339 date-time; offsets other than Z are not accepted.",
+        "examples": ["2026-01-15T03:04:05Z"]
+      },
+      "CurrencyCode": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}$",
+        "description": "ISO 4217 alphabetic currency code.",
+        "examples": ["AUD", "SGD", "USD"]
+      },
+      "Cursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512,
+        "pattern": "^[A-Za-z0-9_-]+$",
+        "description": "Opaque base64url-style market-bound cursor. Version 1 cursors and feed replay do not expire; retention changes require a new versioned resync design."
+      },
+      "UploadAttachmentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["order_id", "file"],
+        "properties": {
+          "order_id": {
+            "$ref": "#/components/schemas/OpaqueId",
+            "description": "Owned order whose persistent cart_id association will also own the attachment."
+          },
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "One JPEG, PNG, or WebP binary file. Maximum size is exactly 5 MiB (5,242,880 bytes).",
+            "x-max-file-size-bytes": 5242880,
+            "x-allowed-media-types": ["image/jpeg", "image/png", "image/webp"]
+          }
+        }
+      },
+      "Attachment": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Producer-allowlisted attachment metadata only. It never contains a public content URL, storage URL, bucket, or object key.",
+        "required": ["attachment_id", "file_name", "media_type", "size_bytes", "status", "created_at", "expires_at"],
+        "properties": {
+          "attachment_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "file_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Sanitized original filename, not a filesystem path."
+          },
+          "media_type": {
+            "type": "string",
+            "enum": ["image/jpeg", "image/png", "image/webp"]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5242880
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "expired"]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          },
+          "expires_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          }
+        }
+      },
+      "RequestType": {
+        "type": "string",
+        "enum": ["damaged", "wrong_item", "return", "other"]
+      },
+      "RequestStatus": {
+        "type": "string",
+        "enum": ["pending", "ticket_created"],
+        "description": "pending means no ticket has been created. ticket_created means a ticket exists and remains so even if that ticket later closes."
+      },
+      "RequestProgress": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "message", "occurred_at"],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "occurred_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          }
+        }
+      },
+      "CreateAfterSalesRequestInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["order_id", "type", "description"],
+        "properties": {
+          "order_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "type": {
+            "$ref": "#/components/schemas/RequestType"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          },
+          "attachment_ids": {
+            "type": "array",
+            "maxItems": 3,
+            "uniqueItems": true,
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OpaqueId"
+            }
+          }
+        }
+      },
+      "ConsumerAfterSalesRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Producer-allowlisted consumer-safe request DTO. It contains no service-only audit data; receiver tolerance does not permit producer leakage.",
+        "required": ["request_id", "order_id", "market", "type", "description", "attachments", "status", "progress", "ticket_id", "created_at", "updated_at"],
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "market": {
+            "$ref": "#/components/schemas/Market"
+          },
+          "type": {
+            "$ref": "#/components/schemas/RequestType"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "progress": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequestProgress"
+            }
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpaqueId"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while pending; populated after ticket creation."
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          }
+        }
+      },
+      "TicketAction": {
+        "type": "string",
+        "enum": ["reship", "return", "refund", "reject", "other"],
+        "description": "Final business action. reject is the final business denial, not internal approval rejection."
+      },
+      "TicketStatus": {
+        "type": "string",
+        "enum": ["open", "processing", "closed"],
+        "description": "Ticket lifecycle status. creating is DTC-local only and never appears on this wire. Closing a ticket does not change request status from ticket_created."
+      },
+      "ConsumerTicketReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["receipt_id", "ticket_id", "request_id", "action", "request_status", "created_at"],
+        "properties": {
+          "receipt_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "ticket_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "action": {
+            "$ref": "#/components/schemas/TicketAction"
+          },
+          "request_status": {
+            "type": "string",
+            "const": "ticket_created"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          }
+        }
+      },
+      "ConsumerTicket": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Producer-allowlisted consumer ticket view. The final reply is immutable. Service-only approval and version audit fields are forbidden; receiver tolerance does not permit producer leakage.",
+        "required": ["ticket_id", "request_id", "order_id", "market", "action", "reply", "status", "receipt", "created_at", "updated_at"],
+        "properties": {
+          "ticket_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "market": {
+            "$ref": "#/components/schemas/Market"
+          },
+          "action": {
+            "$ref": "#/components/schemas/TicketAction"
+          },
+          "reply": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000,
+            "description": "The one immutable final consumer reply."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TicketStatus"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/ConsumerTicketReceipt"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          }
+        }
+      },
+      "RecipientSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Producer-allowlisted masked non-PII recipient summary. Full name, street address, phone, email, precise location, and full shipping address are prohibited.",
+        "required": ["masked_name", "country_code", "region", "postal_code_masked"],
+        "properties": {
+          "masked_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "country_code": {
+            "type": "string",
+            "enum": ["AU", "SG", "US"]
+          },
+          "region": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "postal_code_masked": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        }
+      },
+      "ServiceOrderItem": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["order_item_id", "sku", "name", "quantity", "unit_price_minor", "line_total_minor"],
+        "properties": {
+          "order_item_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "sku": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unit_price_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Unit price in integer minor units of the order currency."
+          },
+          "line_total_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Line total in integer minor units of the order currency."
+          }
+        }
+      },
+      "ServiceOrder": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Service-only order data with integer minor-unit money and masked recipient summary. No full shipping address is returned.",
+        "required": ["order_id", "market", "currency", "items", "subtotal_minor", "shipping_minor", "tax_minor", "discount_minor", "total_minor", "status", "created_at", "order_version", "recipient_summary"],
+        "properties": {
+          "order_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "market": {
+            "$ref": "#/components/schemas/Market"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceOrderItem"
+            }
+          },
+          "subtotal_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "shipping_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "tax_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "discount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_minor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["paid", "fulfilling", "fulfilled", "cancelled"]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          },
+          "order_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Opaque DTC order version used by DTC for pre-call validation."
+          },
+          "recipient_summary": {
+            "$ref": "#/components/schemas/RecipientSummary"
+          }
+        }
+      },
+      "ShipmentEvent": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["event_id", "status", "description", "occurred_at"],
+        "properties": {
+          "event_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_transit", "delivered", "exception"]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "occurred_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          },
+          "location_summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Optional coarse region only; never a precise address."
+          }
+        }
+      },
+      "ServiceShipment": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["shipment_id", "order_id", "status", "carrier", "events"],
+        "properties": {
+          "shipment_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_transit", "delivered", "exception"]
+          },
+          "carrier": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "events": {
+            "type": "array",
+            "description": "Events in chronological ascending order.",
+            "items": {
+              "$ref": "#/components/schemas/ShipmentEvent"
+            }
+          }
+        }
+      },
+      "ServiceAfterSalesRequest": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Full ingestion DTO for DTC with attachment metadata and no consumer credential data.",
+        "required": ["request_id", "sequence", "order_id", "market", "type", "description", "attachments", "status", "ticket_id", "created_at", "updated_at"],
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "sequence": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Unique per-market publication sequence represented as a string to avoid integer precision loss. Publication is contiguous through the committed high-watermark."
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "market": {
+            "$ref": "#/components/schemas/Market"
+          },
+          "type": {
+            "$ref": "#/components/schemas/RequestType"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpaqueId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          }
+        }
+      },
+      "ServiceRequestFeed": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["items", "high_watermark", "next_cursor", "has_more"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "All new requests in ascending unique publication-sequence order, including requests whose current status is ticket_created.",
+            "items": {
+              "$ref": "#/components/schemas/ServiceAfterSalesRequest"
+            }
+          },
+          "high_watermark": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Committed contiguous per-market publication high-watermark. No entry may later become visible at or below an issued cursor."
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/Cursor",
+            "description": "Always non-null. After a nonempty terminal page, continues after the last item; for an empty page, returns the current position. Independent of has_more."
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "Only signals whether more committed entries are currently available; it does not determine next_cursor nullability."
+          }
+        }
+      },
+      "CreateServiceTicketInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "DTC has already validated persistent human approval, draft_version, and policy_version. E-pig validates its own current order_version and stores all approval/version tokens as audit data; it does not independently verify DTC approval.",
+        "required": ["request_id", "action", "reply", "draft_version", "approval_id", "policy_version", "order_version"],
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "action": {
+            "$ref": "#/components/schemas/TicketAction"
+          },
+          "reply": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000,
+            "description": "Immutable final consumer reply. Internal approval rejection is never submitted."
+          },
+          "draft_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "approval_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "policy_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "order_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      },
+      "ServiceTicketCreationPending": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Nonterminal recovery outcome for an idempotency key whose create transaction is still in flight.",
+        "required": ["outcome", "retry_after_ms"],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "const": "IN_FLIGHT"
+          },
+          "retry_after_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Delay before repeating the idempotency lookup, not before blind ticket creation."
+          }
+        }
+      },
+      "TicketReceipt": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Durable confirmation that the immutable final reply and ticket were persisted.",
+        "required": ["receipt_id", "ticket_id", "request_id", "action", "request_status", "created_at"],
+        "properties": {
+          "receipt_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "ticket_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "action": {
+            "$ref": "#/components/schemas/TicketAction"
+          },
+          "request_status": {
+            "type": "string",
+            "const": "ticket_created"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          }
+        }
+      },
+      "ServiceTicket": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Service ticket with one immutable final reply and DTC audit fields. Stored approval fields do not assert independent E-pig approval verification.",
+        "required": ["ticket_id", "request_id", "order_id", "market", "action", "reply", "status", "draft_version", "approval_id", "policy_version", "order_version", "receipt", "created_at", "updated_at"],
+        "properties": {
+          "ticket_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "market": {
+            "$ref": "#/components/schemas/Market"
+          },
+          "action": {
+            "$ref": "#/components/schemas/TicketAction"
+          },
+          "reply": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000
+          },
+          "status": {
+            "$ref": "#/components/schemas/TicketStatus"
+          },
+          "draft_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "approval_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "policy_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "order_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/TicketReceipt"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/UTCDatetime"
+          }
+        }
+      },
+      "RecoveryAction": {
+        "type": "string",
+        "enum": ["NONE", "RETRY_REQUEST", "LOOKUP_FIRST", "RETRY_CREATE_WITH_SAME_KEY", "RECONCILE_MANUALLY"],
+        "description": "Required recovery workflow. This is distinct from retryable, which only governs immediate retry of the current HTTP request."
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": ["VALIDATION_ERROR", "UNSUPPORTED_CONTRACT_VERSION", "INVALID_CURSOR", "UNAUTHORIZED", "FORBIDDEN_MARKET", "NOT_FOUND", "IDEMPOTENCY_CONFLICT", "REQUEST_STATE_CONFLICT", "ORDER_VERSION_CONFLICT", "ATTACHMENT_EXPIRED", "ATTACHMENT_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE", "RATE_LIMITED", "INTERNAL_ERROR", "UPSTREAM_UNAVAILABLE"]
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["code", "message", "request_id", "retryable", "recovery_action"],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "Safe human-readable summary without credentials or sensitive data."
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/OpaqueId",
+            "description": "Server-generated correlation ID for this HTTP request."
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "Only governs immediate retry of the current HTTP request. It never authorizes a blind create retry; follow recovery_action for uncertain writes."
+          },
+          "recovery_action": {
+            "$ref": "#/components/schemas/RecoveryAction"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Optional safe structured diagnostics, such as a field name. Must not contain PII, credentials, approval records, or stack traces."
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      }
+    }
+  }
+}

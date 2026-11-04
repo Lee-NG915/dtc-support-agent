@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "description must not be empty.",
+    "request_id": "req_err_000000000001",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "field": "description"
+    }
+  }
+}

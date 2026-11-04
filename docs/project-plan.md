@@ -230,6 +230,7 @@ M1 即建立评测样例；M2～M4 随实现补测试，不等到 M5 才验证�
 ## 10. 协作与交付记录
 
 - 项目 Issue 保存背景、里程碑、阻塞和验收入口；后续具体实现可拆分关联 Issue，不复制多份权威方案。
+- [售后产品蓝图](architecture/modules/after-sales/product-blueprint.md)是跨仓库产品行为唯一正本；[E-pig 对接规范](architecture/modules/after-sales/epig-contract.md)与 `contracts/epig-after-sales/v1/` 固定线上契约、共享样例和版本变更门禁，跨仓进度由 Issue #2 跟踪。
 - 开发分支采用 `codex/<issue-number>-<topic>`，提交引用实际 Issue。当前分支承载初步方案、开发技能与学习文档，项目 Issue 保持开放跟踪后续实施。
 - 本文件记录最新方案；实现、测试和试用结果在原主题下持续更新，历史事实使用提交与 Issue 评论追踪。
 - 对外说明区分“上游复用”“本 fork 新增”“实际验证结果”；不使用上游作者的指标、用户规模或上线经历作为个人成果。

@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "REQUEST_STATE_CONFLICT",
+    "message": "The request already has a ticket and cannot accept another final reply.",
+    "request_id": "req_err_000000000013",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "request_id": "asr_000000000042",
+      "status": "ticket_created"
+    }
+  }
+}

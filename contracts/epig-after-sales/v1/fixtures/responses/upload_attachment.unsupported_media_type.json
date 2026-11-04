@@ -1,0 +1,16 @@
+{
+  "error": {
+    "code": "UNSUPPORTED_MEDIA_TYPE",
+    "message": "Only JPEG, PNG, and WebP attachments are supported.",
+    "request_id": "req_err_000000000008",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "allowed_media_types": [
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+      ]
+    }
+  }
+}

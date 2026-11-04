@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "The request rate limit has been exceeded; retry after the indicated delay.",
+    "request_id": "req_err_000000000010",
+    "retryable": true,
+    "recovery_action": "RETRY_REQUEST",
+    "details": {
+      "retry_after_seconds": 30
+    }
+  }
+}

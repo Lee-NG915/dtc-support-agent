@@ -40,23 +40,27 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - name: Install locked environment
+        run: uv sync --frozen --extra dev
+
+      - name: Project documentation
+        run: uv run python scripts/check_project_docs.py
+
+      - name: After-sales contract
+        run: uv run python scripts/check_epig_after_sales_contract.py
 
       - name: Ruff format check
-        run: python -m ruff format --check .
+        run: uv run ruff format --check .
 
       - name: Ruff lint
-        run: python -m ruff check .
+        run: uv run ruff check .
 
       - name: Mypy
-        run: python -m mypy
+        run: uv run mypy
 
       - name: Pytest
         run: >-
-          python -m pytest -q
+          uv run pytest -q
           --cov=app --cov=eval
           --cov-report=term:skip-covered
           --cov-fail-under=70

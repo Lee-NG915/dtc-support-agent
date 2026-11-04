@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "INVALID_CURSOR",
+    "message": "The ingestion cursor is malformed, belongs to another market, or is otherwise invalid.",
+    "request_id": "req_err_000000000006",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "field": "cursor"
+    }
+  }
+}
