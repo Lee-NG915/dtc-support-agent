@@ -11,6 +11,8 @@
 | 目的 | 入口 |
 |---|---|
 | 理解业务与目标能力 | [项目方案](project-plan.md) |
+| 产品终态、页面与用户旅程 | [产品形态与用户旅程](architecture/modules/after-sales/product-blueprint.md) |
+| E-pig 售后对接接口与验收约定 | [E-pig 售后对接契约](architecture/modules/after-sales/epig-contract.md) |
 | 由前端经验开始学后端、Agent 与部署 | [学习路线与术语](learning/README.md) |
 | 决定文档放哪、怎么写和怎样维护 | [文档规范](guides/documentation.md) |
 | 调用技能、理解选择依据 | [技能指南](guides/skills.md) |
