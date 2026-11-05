@@ -11,7 +11,7 @@
 - [项目背景、MVP 范围与实施方案](docs/project-plan.md)
 - [Issue #1：实施进度与验收跟踪](https://github.com/Lee-NG915/dtc-support-agent/issues/1)
 - [学习路线：从前端经验理解售后 Agent](docs/learning/README.md)
-- [文档规范](docs/guides/documentation.md) · [开发技能用法与选择](docs/guides/skills.md)
+- [文档规范](docs/guides/documentation.md) · [开发技能用法与选择](docs/guides/skills.md) · [Claude / Codex 协作规范](docs/guides/ai-collaboration.md)
 - [技术文档目录](docs/README.md)
 
 以下保留上游项目说明、截图与历史评测材料；其中能力和数字不代表本 fork 新增成果或验证结果。复用与改造边界见项目方案，原 [MIT 许可及版权声明](LICENSE) 保留。

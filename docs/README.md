@@ -4,7 +4,7 @@
 
 [项目背景与实施方案](project-plan.md) 是本 fork 的权威规划文档，包含业务范围、上游复用边界、目标架构、分阶段实施和验收设计；进度见 [Issue #1](https://github.com/Lee-NG915/dtc-support-agent/issues/1)。
 
-当前已完成初步规划、开发技能接入、E-pig AU/US/SG 内部自编 demo 政策包与市场隔离检索，以及售后 v1 候选契约。本轮 Codex CLI 已对 DTC 已提交/未提交改动和 E-pig 计划做只读 Review，主会话采纳并修复了社交误分类绕过、复核截断、陈旧引用、错误 DTO 泄露和状态矛盾等问题。最终全量测试为 **242 passed、覆盖率 80%**，配置范围 mypy（`app`、`eval`，125 个源文件）和 Ruff 通过；固定离线集 **34/34**，DeepSeek Flash 生成节点最后两轮为 **33/34、34/34**。售后候选现为 **13 个操作、49 个 fixtures**，13 项契约测试通过。8003 已重启并复验，8002 旧进程未重启。完整 LangGraph/Faithfulness 固定集、完整售后工作台、持久审批、Connector、E-pig 运行时 vendor 和跨仓联调尚未验收。方案中的目标能力不表示已经实现；真实验证范围见对应记录，以下原有章节保留上游实现说明与历史报告。
+当前已完成初步规划、开发技能接入、E-pig AU/US/SG 内部自编 demo 政策包与市场隔离检索，以及售后 v1 候选契约。本轮 Codex CLI 已对 DTC 已提交/未提交改动和 E-pig 计划做只读 Review，主会话采纳并修复了社交误分类绕过、复核截断、陈旧引用、错误 DTO 泄露和状态矛盾等问题。最终全量测试为 **242 passed、覆盖率 80%**，配置范围 mypy（`app`、`eval`，125 个源文件）和 Ruff 通过；固定离线集 **34/34**，DeepSeek Flash 生成节点最后两轮为 **33/34、34/34**。售后候选现为 **13 个操作、49 个 fixtures**，13 项契约测试通过。上述8003冒烟是历史运行结果，后续进程已停止，当前端口可用性未复验；8002旧进程未重启。完整 LangGraph/Faithfulness 固定集、完整售后工作台、持久审批、Connector和跨仓联调尚未验收。E-pig契约vendor、13个HTTP操作及隔离持久adapter已阶段验收并推送，真实PG多连接和运行时接入仍待验证；详见项目方案与双仓Issue。方案中的目标能力不表示已经实现；真实验证范围见对应记录，以下原有章节保留上游实现说明与历史报告。
 
 ## 本 fork 的阅读与维护入口
 
@@ -20,6 +20,7 @@
 | 契约验证、独立 Review 与未测范围 | [v1 契约验证记录](records/after-sales/epig-contract-v1.md) |
 | 由前端经验开始学后端、Agent 与部署 | [学习路线与术语](learning/README.md) |
 | 决定文档放哪、怎么写和怎样维护 | [文档规范](guides/documentation.md) |
+| Codex 文档、方案与验收，Claude 实现分工 | [AI 协作规范](guides/ai-collaboration.md) |
 | 调用技能、理解选择依据 | [技能指南](guides/skills.md) |
 | 查看本次技能与文档验证 | [接入记录](records/workflows/skills-and-docs.md) |
 
