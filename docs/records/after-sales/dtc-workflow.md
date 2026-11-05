@@ -121,3 +121,14 @@ Review关闭撤权窗口与跨日证据：五项回归确实到达目标窗口�
 
 
 员工后端交付回读（2026-11-06）：已提交推送`d9e97ff806efa88a32be6349a1ab78048809349d`至`codex/2-epig-after-sales`；远端ref与HEAD一致，service/verification/26项workbench测试/本记录逐字节回读一致。查询该SHA实际Actions仍0个run，不宣称远端CI成功；未合并/部署。下一章Claude auto仅在frontend实施员工工作台；独立eval片段仅修默认离线/新临时库/真实模型显式开关，预算未确认不运行真实路径，两个实现范围不互改。
+
+
+## 员工工作台工程交付（2026-11-06，Codex有条件通过）
+
+结论：仅工程实现/Review/本地门禁范围有条件通过，当前尚未推送；真实浏览器、键盘/窄屏、完整角色和跨仓旅程未验收，M3/M4不勾完成。浏览器连接可列标签页，但导航/reload/DOM/CUA均报timeoutMs工具错误；已向用户集中请求恢复配置，未自行修native host或用其他脚本冒充浏览器。其余授权工作继续。
+
+首轮Claude18项组件通过和build通过仍有阻断：真实StaffApp条件Hook使登录崩溃；旧延迟重试借用新api/generation；编辑输入随后台版本静默重基；A保存等待中输入B，A回包误清dirty而可能送审旧A。四项已集中最小返工，真实登录/退出/换身份/延迟重试与编辑回归均有RED→GREEN，独立Review关闭。根独立最终`npm --prefix frontend test` **9文件23通过**，`npm --prefix frontend run build`通过（514.27kB JS chunk超过500kB提示保留，未宣称性能预算满足）。Node依赖仅增jsdom开发项，未增router/状态/UI框架。
+
+另修真实部署入口：API的StaticFiles(html=True)不自动回退/staff，已为存在的index.html显式提供/staff和/staff/，不为任意API做fallback；无dist保持API-only。3条临时dist/TestClient路由测试覆盖shell/assets、未知API404与无token401/功能关闭，已包含于根同候选Python全套验证。日志`/tmp/dtc-staff-ui-codex-final-tests.log`与`...-build.log`；38文件冻结候选清单`/tmp/dtc-ui-eval-final-candidate-sha256.json`覆盖UI/评测两份独立候选，测试期间无源码变化。
+
+界面实现仅说明状态，不虚构建单/履行；operator不取业务PII，AI不可用仍人工编辑，审批读冻结snapshot，真实ticket失败标陈旧。当前作为开发分支候选推送，不合并/部署、不冒称浏览器已通过。

@@ -67,3 +67,6 @@ DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sa
 
 
 员工后端增量（2026-11-06，本地范围验收）：case的`evidence`/`ticket`只读与`suggestion`草稿入口已实现；ApprovalView提供已存冻结snapshot白名单。生成前后与真实保存事务验证员工/源指纹/UTC日期，仅保存editing；OfflineLLM明确不可用。共享`verification.py`供Worker与只读工单核验复用。专用PG入口现包含workflow/execution/workbench，仍不代表员工页面、真实模型质量或整体验收。
+
+
+员工前端工程增量（2026-11-06，实际浏览器待验）：`frontend/src/staff/`与`/staff`独立员工入口已实现，token/业务输入仅内存；复用现有React/CSS/lucide，仅增jsdom开发测试依赖。构建dist存在时API显式返回/staff shell，不对未知API做SPA回退；无dist仍API-only。工程检查与浏览器/完整旅程分列，见流程记录。

@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 from starlette.staticfiles import StaticFiles
 
 from app.api.routes import admin, after_sales, after_sales_workflow, chat, health
@@ -24,6 +24,9 @@ from app.schemas.common import APIErrorBody
 from app.services.container import build_container
 
 logger = logging.getLogger(__name__)
+
+# A built frontend is optional for local API-only development. Docker builds it.
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
 @asynccontextmanager
@@ -140,9 +143,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def metrics() -> Response:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-    # A built frontend is optional for local API-only development. Docker builds it.
-    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-    if frontend_dist.is_dir():
-        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+    # StaticFiles(html=True) only resolves directory indexes, so "/staff" would
+    # 404 even when the SPA is built. Serve the confirmed staff entry explicitly;
+    # do not fall back other paths, which would turn API typos into HTML.
+    frontend_index = FRONTEND_DIST / "index.html"
+    if frontend_index.is_file():
+
+        async def staff_shell() -> FileResponse:
+            return FileResponse(frontend_index)
+
+        app.add_api_route("/staff", staff_shell, methods=["GET"], include_in_schema=False)
+        app.add_api_route("/staff/", staff_shell, methods=["GET"], include_in_schema=False)
+
+    if FRONTEND_DIST.is_dir():
+        app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
 
     return app
