@@ -1,0 +1,14 @@
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "The request is invalid.",
+    "request_id": "req_err_000000000099",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "field": "description",
+      "full_address": "100 Synthetic Avenue, Sydney NSW 2000"
+    }
+  },
+  "approval_id": "appr_dtc_00000042"
+}

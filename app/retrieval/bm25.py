@@ -6,8 +6,9 @@ from collections import defaultdict
 
 from rank_bm25 import BM25Okapi
 
+from app.retrieval.policy import chunk_matches_scope, review_chunk_matches_query
 from app.retrieval.tokenizer import tokenize
-from app.schemas.retrieval import RetrievedChunk
+from app.schemas.retrieval import PolicyScope, RetrievedChunk
 
 
 class BM25Retriever:
@@ -25,20 +26,40 @@ class BM25Retriever:
         # BM25Okapi requires a non-empty corpus; keep None if ingest has not run.
         self._bm25 = BM25Okapi(tokenized) if tokenized else None
 
-    def search(self, query: str, *, top_k: int) -> list[RetrievedChunk]:
+    def search(
+        self, query: str, *, top_k: int, scope: PolicyScope | None = None
+    ) -> list[RetrievedChunk]:
         if self._bm25 is None or not self._chunks:
             return []
+        resolved_scope = scope or PolicyScope()
         scores = self._bm25.get_scores(tokenize(query))
-        ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
+        ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
         results: list[RetrievedChunk] = []
-        for rank, index in enumerate(ranked, start=1):
+        for index in ranked:
+            chunk = self._chunks[index]
+            if not chunk_matches_scope(chunk, resolved_scope):
+                continue
             # BM25 IDF can be negative on tiny corpora; still return the ranked docs.
-            chunk = self._chunks[index].model_copy(deep=True)
-            chunk.score = float(scores[index])
-            chunk.rank = rank
-            chunk.source = "bm25"
-            results.append(chunk)
+            result = chunk.model_copy(deep=True)
+            result.score = float(scores[index])
+            result.rank = len(results) + 1
+            result.source = "bm25"
+            results.append(result)
+            if len(results) >= top_k:
+                break
         return results
+
+    def matching_review_chunks(
+        self, query: str, *, scope: PolicyScope | None = None
+    ) -> list[RetrievedChunk]:
+        """Match structured exception rules without depending on BM25 top_k."""
+        resolved_scope = scope or PolicyScope()
+        return [
+            chunk.model_copy(deep=True)
+            for chunk in self._chunks
+            if chunk_matches_scope(chunk, resolved_scope)
+            and review_chunk_matches_query(query, chunk)
+        ]
 
 
 class InvertedIndex:

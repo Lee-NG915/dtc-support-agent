@@ -205,7 +205,7 @@
         "operationId": "createAfterSalesRequest",
         "tags": ["consumer"],
         "summary": "Create an after-sales request",
-        "description": "Creates a consumer request for an owned order with at most three active attachments. description is required and nonempty; malformed or missing description is rejected at intake. needs_info is a downstream workflow concern only for accepted requests with insufficient evidence, never a substitute for intake validation. Idempotency-Key is required and scoped by market, verified cart_id, and this operation. The fingerprint covers order_id, type, description, and attachment_ids. A replay returns the CURRENT representation of the originally created request with status 200 and Idempotency-Replayed: true; a changed fingerprint returns 409 IDEMPOTENCY_CONFLICT. Clients must not overwrite newer state with older snapshots. A request enters status pending and later changes to ticket_created when its ticket is created.",
+        "description": "Creates a consumer request for an owned order with at most three active attachments. description is required and nonempty; malformed or missing description is rejected at intake. needs_info is a downstream workflow concern only for accepted requests with insufficient evidence, never a substitute for intake validation. Idempotency-Key is required and scoped by market, verified cart_id, and this operation. The fingerprint covers order_id, type, description, and attachment_ids; omitted attachment_ids is equivalent to an empty array, and attachment IDs are sorted before fingerprinting. A replay returns the CURRENT representation of the originally created request with status 200 and Idempotency-Replayed: true; a changed fingerprint returns 409 IDEMPOTENCY_CONFLICT. Clients must not overwrite newer state with older snapshots. A request enters status pending and later changes to ticket_created when its ticket is created.",
         "x-requirement-ids": ["AS-REQ-AUTH-001", "AS-REQ-REQ-001", "AS-REQ-REQ-002", "AS-REQ-SEC-001", "AS-REQ-COMPAT-001"],
         "security": [
           {
@@ -1439,7 +1439,8 @@
           "description": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 5000
+            "maxLength": 5000,
+            "pattern": "\\S"
           },
           "attachment_ids": {
             "type": "array",
@@ -1457,6 +1458,32 @@
         "additionalProperties": false,
         "description": "Producer-allowlisted consumer-safe request DTO. It contains no service-only audit data; receiver tolerance does not permit producer leakage.",
         "required": ["request_id", "order_id", "market", "type", "description", "attachments", "status", "progress", "ticket_id", "created_at", "updated_at"],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "pending"
+                }
+              },
+              "required": ["status"]
+            },
+            "then": {
+              "properties": {
+                "ticket_id": {
+                  "type": "null"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "ticket_id": {
+                  "$ref": "#/components/schemas/OpaqueId"
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "request_id": {
             "$ref": "#/components/schemas/OpaqueId"
@@ -1473,7 +1500,8 @@
           "description": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 5000
+            "maxLength": 5000,
+            "pattern": "\\S"
           },
           "attachments": {
             "type": "array",
@@ -1571,6 +1599,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 10000,
+            "pattern": "\\S",
             "description": "The one immutable final consumer reply."
           },
           "status": {
@@ -1652,7 +1681,7 @@
       },
       "ServiceOrder": {
         "type": "object",
-        "additionalProperties": true,
+        "additionalProperties": false,
         "description": "Service-only order data with integer minor-unit money and masked recipient summary. No full shipping address is returned.",
         "required": ["order_id", "market", "currency", "items", "subtotal_minor", "shipping_minor", "tax_minor", "discount_minor", "total_minor", "status", "created_at", "order_version", "recipient_summary"],
         "properties": {
@@ -1776,6 +1805,32 @@
         "additionalProperties": true,
         "description": "Full ingestion DTO for DTC with attachment metadata and no consumer credential data.",
         "required": ["request_id", "sequence", "order_id", "market", "type", "description", "attachments", "status", "ticket_id", "created_at", "updated_at"],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "pending"
+                }
+              },
+              "required": ["status"]
+            },
+            "then": {
+              "properties": {
+                "ticket_id": {
+                  "type": "null"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "ticket_id": {
+                  "$ref": "#/components/schemas/OpaqueId"
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "request_id": {
             "$ref": "#/components/schemas/OpaqueId"
@@ -1797,7 +1852,8 @@
           "description": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 5000
+            "maxLength": 5000,
+            "pattern": "\\S"
           },
           "attachments": {
             "type": "array",
@@ -1870,6 +1926,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 10000,
+            "pattern": "\\S",
             "description": "Immutable final consumer reply. Internal approval rejection is never submitted."
           },
           "draft_version": {
@@ -1960,7 +2017,8 @@
           "reply": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 10000
+            "maxLength": 10000,
+            "pattern": "\\S"
           },
           "status": {
             "$ref": "#/components/schemas/TicketStatus"
@@ -2003,9 +2061,58 @@
         "type": "string",
         "enum": ["VALIDATION_ERROR", "UNSUPPORTED_CONTRACT_VERSION", "INVALID_CURSOR", "UNAUTHORIZED", "FORBIDDEN_MARKET", "NOT_FOUND", "IDEMPOTENCY_CONFLICT", "REQUEST_STATE_CONFLICT", "ORDER_VERSION_CONFLICT", "ATTACHMENT_EXPIRED", "ATTACHMENT_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE", "RATE_LIMITED", "INTERNAL_ERROR", "UPSTREAM_UNAVAILABLE"]
       },
+      "ErrorDetails": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Producer-allowlisted non-PII diagnostics. No credentials, approval records, addresses, free-form customer content, or stack traces.",
+        "properties": {
+          "field": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "retry_after_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "allowed_media_types": {
+            "type": "array",
+            "maxItems": 3,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": ["image/jpeg", "image/png", "image/webp"]
+            }
+          },
+          "attachment_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "operation": {
+            "type": "string",
+            "enum": ["createAfterSalesRequest", "createServiceTicket"]
+          },
+          "max_size_bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/OpaqueId"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "supported_major": {
+            "type": "string",
+            "const": "1"
+          },
+          "market": {
+            "$ref": "#/components/schemas/Market"
+          }
+        }
+      },
       "Error": {
         "type": "object",
-        "additionalProperties": true,
+        "additionalProperties": false,
         "required": ["code", "message", "request_id", "retryable", "recovery_action"],
         "properties": {
           "code": {
@@ -2029,15 +2136,13 @@
             "$ref": "#/components/schemas/RecoveryAction"
           },
           "details": {
-            "type": "object",
-            "additionalProperties": true,
-            "description": "Optional safe structured diagnostics, such as a field name. Must not contain PII, credentials, approval records, or stack traces."
+            "$ref": "#/components/schemas/ErrorDetails"
           }
         }
       },
       "ErrorResponse": {
         "type": "object",
-        "additionalProperties": true,
+        "additionalProperties": false,
         "required": ["error"],
         "properties": {
           "error": {

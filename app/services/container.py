@@ -18,6 +18,7 @@ from app.repositories.db import create_engine, create_session_factory, init_sche
 from app.retrieval.cache import MemoryRetrievalCache, RedisRetrievalCache
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.ingest import ingest_knowledge
+from app.retrieval.policy import corpus_fingerprint
 from app.retrieval.reranker import DocumentReranker
 from app.retrieval.vector import VectorRetriever
 from app.services.chat_service import ChatService
@@ -76,7 +77,7 @@ async def build_retrieval(settings: Settings, redis):
         if redis is not None
         else MemoryRetrievalCache(ttl_seconds=settings.retrieval_cache_ttl_seconds)
     )
-    bm25, store, _ = await ingest_knowledge(
+    bm25, store, chunks = await ingest_knowledge(
         settings.knowledge_dir,
         embedder,
         settings=settings,
@@ -85,7 +86,11 @@ async def build_retrieval(settings: Settings, redis):
         embedding_dim=getattr(embedder, "dim", settings.embedding_dim),
     )
     retriever = HybridRetriever(
-        bm25, VectorRetriever(store, embedder), rrf_k=settings.rrf_k, cache=cache
+        bm25,
+        VectorRetriever(store, embedder),
+        rrf_k=settings.rrf_k,
+        cache=cache,
+        corpus_revision=corpus_fingerprint(chunks),
     )
     reranker = DocumentReranker(CrossEncoderRerankProvider(settings))
     return retriever, reranker, store

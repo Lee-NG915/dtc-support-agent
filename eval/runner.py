@@ -3,6 +3,7 @@
 python -m eval.runner --task all --llm
 python -m eval.runner --task intent --llm
 python -m eval.runner --task retrieval
+python -m eval.runner --task epig-policy
 python -m eval.runner --task generation --llm
 python -m eval.runner --task e2e --llm
 """
@@ -13,7 +14,8 @@ import argparse
 import asyncio
 import json
 import time
-from datetime import UTC, datetime
+from collections.abc import AsyncIterator
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +32,10 @@ from eval.metrics import (
 ROOT = Path(__file__).resolve().parents[1]
 INTENT_PATH = ROOT / "eval/dataset/intent_100.jsonl"
 RAG_PATH = ROOT / "eval/dataset/rag_eval.jsonl"
+EPIG_POLICY_PATH = ROOT / "eval/dataset/epig_policy_eval.jsonl"
 E2E_PATH = ROOT / "eval/dataset/e2e_eval.jsonl"
 REPORT_DIR = ROOT / "eval/reports"
+EPIG_DEMO_DISCLOSURE = "内部自编演示政策，非官方或生产批准"
 
 
 def load_jsonl(path: Path) -> list[dict]:
@@ -71,6 +75,17 @@ def _keyword_hit(answer: str, keywords: list[str]) -> bool:
     if not keywords:
         return True
     return all(word in answer for word in keywords)
+
+
+def _missing_answer_term_groups(row: dict, answer: str) -> list[str]:
+    groups = [list(alternatives) for alternatives in row.get("required_answer_term_groups") or []]
+    covered_terms = {term for alternatives in groups for term in alternatives}
+    groups.extend([term] for term in row.get("required_terms") or [] if term not in covered_terms)
+    return [
+        " / ".join(alternatives)
+        for alternatives in groups
+        if not any(term in answer for term in alternatives)
+    ]
 
 
 def eval_intent_rules() -> dict:
@@ -258,6 +273,100 @@ async def eval_retrieval() -> dict:
     }
 
 
+async def eval_epig_policy() -> dict:
+    """Deterministic scoped-retrieval eval; no paid model or live storefront calls."""
+    from app.providers.embeddings import HashEmbeddingProvider
+    from app.providers.reranker import LexicalRerankProvider
+    from app.retrieval.cache import MemoryRetrievalCache
+    from app.retrieval.hybrid import HybridRetriever
+    from app.retrieval.ingest import ingest_to_memory
+    from app.retrieval.policy import (
+        chunk_matches_scope,
+        corpus_fingerprint,
+        merge_policy_review_chunks,
+        policy_review_required,
+    )
+    from app.retrieval.reranker import DocumentReranker
+    from app.retrieval.vector import VectorRetriever
+    from app.schemas.retrieval import PolicyScope
+
+    embedder = HashEmbeddingProvider(dim=512)
+    bm25, store, chunks = await ingest_to_memory("knowledge", embedder)
+    retriever = HybridRetriever(
+        bm25,
+        VectorRetriever(store, embedder),
+        rrf_k=60,
+        cache=MemoryRetrievalCache(ttl_seconds=60),
+        corpus_revision=corpus_fingerprint(chunks),
+    )
+    rows = load_jsonl(EPIG_POLICY_PATH)
+    reranker = DocumentReranker(LexicalRerankProvider())
+    cases = []
+    for row in rows:
+        scope = PolicyScope(
+            brand=row["brand"],
+            market=row["market"],
+            as_of=date.fromisoformat(row["as_of"]),
+            product_category=row.get("product_category"),
+        )
+        candidates = await retriever.retrieve(row["query"], top_k=8, scope=scope)
+        found = await reranker.rerank(row["query"], candidates, top_n=6)
+        review_chunks = retriever.matching_review_chunks(row["query"], scope=scope)
+        found = merge_policy_review_chunks(found, review_chunks)
+        stems = _unique_stems(found)
+        scope_ok = all(chunk_matches_scope(chunk, scope) for chunk in found)
+        source_ok = all(
+            chunk.source_type == "internal_demo"
+            and bool(chunk.source_label.strip())
+            and bool(chunk.source_path.strip())
+            and chunk.source_urls == []
+            and chunk.policy_status == "demo"
+            for chunk in found
+        )
+        expected_empty = bool(row.get("expected_empty"))
+        expected_documents = set(row.get("expected_documents") or [])
+        documents_ok = bool(found) if not expected_empty else not found
+        if expected_documents:
+            documents_ok = expected_documents.issubset(stems)
+        expected_first = row.get("expected_first_document")
+        first_document_ok = not expected_first or (bool(stems) and stems[0] == expected_first)
+        terms = row.get("required_terms") or []
+        text = "\n".join(chunk.content for chunk in found)
+        terms_ok = all(term in text for term in terms)
+        review_ok = True
+        if "expect_review" in row and found:
+            review_ok = policy_review_required(row["query"], found) is row["expect_review"]
+        passed = (
+            scope_ok and source_ok and documents_ok and first_document_ok and terms_ok and review_ok
+        )
+        cases.append(
+            {
+                "id": row["id"],
+                "passed": passed,
+                "documents": stems,
+                "scope_ok": scope_ok,
+                "source_ok": source_ok,
+                "documents_ok": documents_ok,
+                "first_document_ok": first_document_ok,
+                "terms_ok": terms_ok,
+                "review_ok": review_ok,
+            }
+        )
+    return {
+        "n": len(cases),
+        "passed": sum(case["passed"] for case in cases),
+        "scope_violations": sum(not case["scope_ok"] for case in cases),
+        "source_failures": sum(not case["source_ok"] for case in cases),
+        "document_failures": sum(not case["documents_ok"] for case in cases),
+        "first_document_failures": sum(not case["first_document_ok"] for case in cases),
+        "term_failures": sum(not case["terms_ok"] for case in cases),
+        "review_failures": sum(not case["review_ok"] for case in cases),
+        "backend": "bm25+hash-vector+rrf+lexical-rerank+scoped-cache",
+        "model_generation_tested": False,
+        "cases": cases,
+    }
+
+
 async def _generate_answer(llm, query: str, evidence: str) -> str:
     from app.agents.nodes.generate import AnswerPayload
     from app.prompts.answer import ANSWER_SYSTEM, ANSWER_USER
@@ -282,6 +391,149 @@ async def _generate_answer(llm, query: str, evidence: str) -> str:
         response_format={"type": "json_object"},
     )
     return parse_model(response.content, AnswerPayload).answer
+
+
+async def eval_epig_policy_generation(llm: Any | None = None) -> dict:
+    """Evaluate the generation node separately from deterministic retrieval/guardrails."""
+    from app.agents.nodes.generate import generate_node
+    from app.core.enums import RetrievalStrategy
+    from app.providers.embeddings import HashEmbeddingProvider
+    from app.providers.reranker import LexicalRerankProvider
+    from app.retrieval.cache import MemoryRetrievalCache
+    from app.retrieval.hybrid import HybridRetriever
+    from app.retrieval.ingest import ingest_to_memory
+    from app.retrieval.policy import corpus_fingerprint, merge_policy_review_chunks
+    from app.retrieval.reranker import DocumentReranker
+    from app.retrieval.vector import VectorRetriever
+    from app.schemas.retrieval import PolicyScope
+
+    model_name = "test-double"
+    if llm is None:
+        from app.config.settings import get_settings
+        from app.providers.deepseek import DeepSeekProvider
+
+        settings = get_settings()
+        if not settings.llm_configured:
+            raise SystemExit("DEEPSEEK_API_KEY missing")
+        llm = DeepSeekProvider(settings)
+        model_name = settings.deepseek_model
+
+    class _CountingLLM:
+        def __init__(self, provider: Any) -> None:
+            self.provider = provider
+            self.calls = 0
+
+        async def generate(self, messages: list[dict[str, str]], **kwargs: Any):
+            self.calls += 1
+            return await self.provider.generate(messages, **kwargs)
+
+        async def ping(self) -> bool:
+            return await self.provider.ping()
+
+        def stream(self, messages: list[dict[str, str]], **kwargs: Any) -> AsyncIterator[str]:
+            return self.provider.stream(messages, **kwargs)
+
+    counted_llm = _CountingLLM(llm)
+    embedder = HashEmbeddingProvider(dim=512)
+    bm25, store, chunks = await ingest_to_memory("knowledge", embedder)
+    retriever = HybridRetriever(
+        bm25,
+        VectorRetriever(store, embedder),
+        rrf_k=60,
+        cache=MemoryRetrievalCache(ttl_seconds=60),
+        corpus_revision=corpus_fingerprint(chunks),
+    )
+    reranker = DocumentReranker(LexicalRerankProvider())
+    rows = load_jsonl(EPIG_POLICY_PATH)
+    cases = []
+    fallback_answers = 0
+    for row in rows:
+        scope = PolicyScope(
+            brand=row["brand"],
+            market=row["market"],
+            as_of=date.fromisoformat(row["as_of"]),
+            product_category=row.get("product_category"),
+        )
+        candidates = await retriever.retrieve(row["query"], top_k=8, scope=scope)
+        found = await reranker.rerank(row["query"], candidates, top_n=6)
+        review_chunks = retriever.matching_review_chunks(row["query"], scope=scope)
+        found = merge_policy_review_chunks(found, review_chunks)
+        calls_before = counted_llm.calls
+        result = await generate_node(
+            {
+                "user_query": row["query"],
+                "policy_scope": scope,
+                "strategy": RetrievalStrategy.SINGLE,
+                "retrieved_chunks": found,
+                "tool_results": [],
+            },
+            counted_llm,
+        )
+        expected_refused = bool(row.get("expected_empty") or row.get("expect_review"))
+        citations = result.get("citations") or []
+        answer = result.get("final_answer") or ""
+        refusal_ok = bool(result.get("refused")) is expected_refused
+        missing_terms: list[str] = []
+        if expected_refused:
+            citations_ok = not citations if row.get("expected_empty") else bool(citations)
+            terms_ok = True
+        else:
+            citations_ok = bool(citations)
+            missing_terms = _missing_answer_term_groups(row, answer)
+            terms_ok = not missing_terms
+        citations_ok = citations_ok and all(
+            citation.brand == scope.brand
+            and citation.market == scope.market
+            and citation.source_type == "internal_demo"
+            and bool(citation.source_label.strip())
+            and bool(citation.source_path.strip())
+            and citation.source_urls == []
+            for citation in citations
+        )
+        disclosure_ok = EPIG_DEMO_DISCLOSURE in answer
+        expected_calls = 0 if expected_refused else 1
+        model_call_ok = counted_llm.calls - calls_before == expected_calls
+        fallback = answer.startswith("暂时无法生成完整答复") or answer.startswith(
+            "暂时无法基于现有信息"
+        )
+        fallback_answers += int(fallback)
+        passed = all(
+            (
+                refusal_ok,
+                citations_ok,
+                terms_ok,
+                disclosure_ok,
+                model_call_ok,
+                not fallback,
+            )
+        )
+        cases.append(
+            {
+                "id": row["id"],
+                "passed": passed,
+                "refusal_ok": refusal_ok,
+                "citations_ok": citations_ok,
+                "terms_ok": terms_ok,
+                "disclosure_ok": disclosure_ok,
+                "missing_terms": missing_terms,
+                "model_call_ok": model_call_ok,
+                "fallback": fallback,
+                "citation_chunk_ids": [citation.chunk_id for citation in citations],
+            }
+        )
+    return {
+        "n": len(cases),
+        "passed": sum(case["passed"] for case in cases),
+        "model": model_name,
+        "model_generation_tested": True,
+        "attempted_model_calls": counted_llm.calls,
+        "fallback_answers": fallback_answers,
+        "disclosure_failures": sum(not case["disclosure_ok"] for case in cases),
+        "full_graph_tested": False,
+        "faithfulness_tested": False,
+        "note": "Direct generation-node eval with fixed scoped evidence; deterministic guards make no model calls.",
+        "cases": cases,
+    }
 
 
 async def eval_generation() -> dict:
@@ -336,7 +588,7 @@ async def eval_generation() -> dict:
             if not rag_judge.supported:
                 from app.agents.nodes.faithfulness import self_correct_answer
 
-                checked, checked_judge, _ = await self_correct_answer(
+                checked, checked_judge, _, _ = await self_correct_answer(
                     llm=llm,
                     checker=checker,
                     query=row["query"],
@@ -565,7 +817,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--task",
-        choices=["all", "intent", "retrieval", "generation", "e2e"],
+        choices=["all", "intent", "retrieval", "epig-policy", "generation", "e2e"],
         default="all",
     )
     parser.add_argument("--llm", action="store_true")
@@ -587,6 +839,11 @@ def main() -> None:
             return result
         if args.task == "retrieval":
             return {"retrieval": await eval_retrieval()}
+        if args.task == "epig-policy":
+            policy_result: dict[str, Any] = {"epig_policy": await eval_epig_policy()}
+            if args.llm:
+                policy_result["epig_policy_llm"] = await eval_epig_policy_generation()
+            return policy_result
         if args.task == "generation":
             return {"generation": await eval_generation()}
         return {"e2e": await eval_e2e()}
@@ -595,12 +852,23 @@ def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = REPORT_DIR / f"{args.task}_{stamp}.json"
-    latest = REPORT_DIR / "latest.json"
+    latest = REPORT_DIR / (
+        "epig_policy_latest.json" if args.task == "epig-policy" else "latest.json"
+    )
     text = json.dumps(report, ensure_ascii=False, indent=2)
     path.write_text(text, encoding="utf-8")
     latest.write_text(text, encoding="utf-8")
     print(text)
     print(f"\nWrote {path}")
+    if args.task == "epig-policy":
+        result = report["epig_policy"]
+        if result["passed"] != result["n"]:
+            raise SystemExit("E-pig policy evaluation failed; see the report for failing cases")
+        generation = report.get("epig_policy_llm")
+        if generation is not None and generation["passed"] != generation["n"]:
+            raise SystemExit(
+                "E-pig real-model generation evaluation failed; see the report for failing cases"
+            )
 
 
 if __name__ == "__main__":

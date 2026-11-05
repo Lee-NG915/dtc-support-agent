@@ -6,7 +6,7 @@ from app.core.enums import QueryComplexity, RetrievalStrategy
 from app.schemas.agent import AgentPlan, ComplexityResult, IntentResult, ToolResult
 from app.schemas.chat import ActionProposal, ChatMessage
 from app.schemas.common import LatencyBreakdown, TokenUsage
-from app.schemas.retrieval import Citation, RetrievedChunk
+from app.schemas.retrieval import Citation, PolicyScope, RetrievedChunk
 
 
 class AgentState(TypedDict, total=False):
@@ -34,6 +34,7 @@ class AgentState(TypedDict, total=False):
     confirmed_action: ActionProposal | None
     confirm_action_id: str | None
     idempotency_key: str | None
+    policy_scope: PolicyScope
     final_answer: str | None
     citations: list[Citation]
     refused: bool

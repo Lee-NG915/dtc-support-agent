@@ -94,7 +94,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        details = exc.errors() if resolved.app_env != "production" else None
+        details = (
+            [
+                {key: value for key, value in error.items() if key not in {"ctx", "url"}}
+                for error in exc.errors()
+            ]
+            if resolved.app_env != "production"
+            else None
+        )
         body = APIErrorBody(
             error_code=ErrorCode.INVALID_REQUEST,
             message="invalid request",

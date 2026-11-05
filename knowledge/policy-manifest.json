@@ -1,0 +1,779 @@
+{
+  "schema_version": 1,
+  "documents": [
+    {
+      "path": "epig/au/returns.md",
+      "title": "E-pig AU 退货期限与申请说明",
+      "brand": "epig",
+      "market": "au",
+      "category": "return_policy",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "used_or_damaged_return",
+          "all_of": [
+            ["已使用", "使用过", "用过", "污渍", "异味", "破损", "人为损坏", "明显磨损", "异常磨损"],
+            ["退货", "退回", "退", "体验期", "退款", "验收", "品相"]
+          ]
+        },
+        {
+          "topic": "custom_or_final_sale_return",
+          "all_of": [
+            ["定制", "定做", "按尺寸制作", "按我的尺寸", "按图制作", "专门制作", "专门定做", "专门给我做", "专门做", "专属定制", "最终销售", "清仓不退", "不可退商品"],
+            ["退货", "退回", "退", "取消", "改单", "退款"]
+          ]
+        },
+        {
+          "topic": "partial_return_allocation",
+          "all_of": [
+            ["部分退货", "部分退回", "部分商品", "其中一件", "单件退货"],
+            ["优惠", "赠品", "退款", "金额", "分摊", "退货"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/au/returns.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/au/refunds.md",
+      "title": "E-pig AU 退款时限与核对说明",
+      "brand": "epig",
+      "market": "au",
+      "category": "aftersale",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "service_fee_refund",
+          "all_of": [
+            ["配送费", "运费", "入户装配费", "装配服务费", "偏远附加费"],
+            ["退款", "退回", "退", "返还", "退还"]
+          ]
+        },
+        {
+          "topic": "payment_refund_exception",
+          "all_of": [
+            ["原支付账户失效", "支付账户失效", "原卡注销", "原支付方式不可用", "跨币种", "汇率差额", "优惠券", "礼品卡"],
+            ["退款", "退回", "退", "返还", "退还", "取消"]
+          ]
+        },
+        {
+          "topic": "acceptance_or_amount_dispute",
+          "all_of": [
+            ["污渍", "破损", "人为损坏", "验收不通过", "验收争议", "退款金额争议"],
+            ["退款", "退货", "退", "验收", "金额"]
+          ]
+        },
+        {
+          "topic": "partial_refund_allocation",
+          "all_of": [
+            ["部分取消", "部分退货", "部分退回", "部分商品", "其中一件"],
+            ["优惠", "赠品", "退款", "金额", "分摊"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/au/refunds.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/au/delivery.md",
+      "title": "E-pig AU 配送服务与交付说明",
+      "brand": "epig",
+      "market": "au",
+      "category": "shipping",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "regional_delivery",
+          "all_of": [
+            ["偏远", "乡村", "离岛", "山区", "服务范围外", "区域外", "邮编无法确认", "邮编不可达"],
+            ["配送", "送货", "送达", "发货", "运费", "地址", "订单", "送"]
+          ]
+        },
+        {
+          "topic": "shipped_delivery_change",
+          "all_of": [
+            ["已发货", "发货后", "已出库", "运输中", "配送途中"],
+            ["改地址", "变更地址", "更改地址", "改收货人", "改约", "改时间", "取消", "拦截"]
+          ]
+        },
+        {
+          "topic": "special_delivery_access",
+          "all_of": [
+            ["无电梯", "楼梯狭窄", "狭窄楼梯", "吊装", "门禁受限", "停车受限", "特殊入户"],
+            ["配送", "送货", "入户", "装配", "搬运", "送"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/au/delivery.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/au/cancellation.md",
+      "title": "E-pig AU 取消与改单政策说明",
+      "brand": "epig",
+      "market": "au",
+      "category": "aftersale",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "shipped_cancellation_or_change",
+          "all_of": [
+            ["已发货", "发货后", "已出库", "运输中", "配送途中"],
+            ["取消", "改单", "变更", "改地址", "拦截"]
+          ]
+        },
+        {
+          "topic": "partial_cancellation",
+          "all_of": [
+            ["部分取消", "部分商品", "其中一件", "单件取消", "几件商品"],
+            ["取消", "改单", "变更", "删除", "退款", "订单"]
+          ]
+        },
+        {
+          "topic": "custom_or_final_sale_cancellation",
+          "all_of": [
+            ["定制", "定做", "按尺寸制作", "按我的尺寸", "按图制作", "专门制作", "专门定做", "专门给我做", "专门做", "专属定制", "最终销售", "清仓不退", "不可退商品"],
+            ["取消", "改单", "变更", "退货", "退款"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/au/cancellation.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/au/faults-missing.md",
+      "title": "E-pig AU 交付损坏、错发与缺件说明",
+      "brand": "epig",
+      "market": "au",
+      "category": "aftersale",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "accidental_damage",
+          "all_of": [
+            ["意外损坏", "意外受损", "意外跌落", "自行跌落", "宠物抓咬", "宠物抓坏", "液体泼洒", "火灾", "水浸"],
+            ["商品", "床垫", "家具", "家居用品", "床品", "保修", "赔偿", "赔付", "赔", "处理", "怎么办"]
+          ]
+        },
+        {
+          "topic": "injury_property_or_legal_liability",
+          "all_of": [
+            ["人身伤害", "受伤", "财产损失", "法律责任", "赔偿责任", "索赔"],
+            ["商品", "床垫", "家具", "家居用品", "床品", "配送", "事故", "缺陷", "责任", "赔偿", "谁负责"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/au/faults-missing.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/au/warranty.md",
+      "title": "E-pig AU 有限保修与申请说明",
+      "brand": "epig",
+      "market": "au",
+      "category": "warranty",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "accidental_damage_warranty",
+          "all_of": [
+            ["意外损坏", "意外受损", "意外跌落", "自行跌落", "宠物抓咬", "宠物抓坏", "液体泼洒", "火灾", "水浸"],
+            ["保修", "质保", "商品", "床垫", "家具", "家居用品", "床品", "赔付", "赔偿", "处理"]
+          ]
+        },
+        {
+          "topic": "nonstandard_use_or_repair",
+          "all_of": [
+            ["商业使用", "商业用途", "酒店使用", "酒店用途", "自行改装", "非授权维修", "二手转让", "转售"],
+            ["保修", "质保", "资格", "赔付", "覆盖"]
+          ]
+        },
+        {
+          "topic": "injury_property_or_legal_liability",
+          "all_of": [
+            ["人身伤害", "受伤", "财产损失", "法律责任", "赔偿责任", "索赔"],
+            ["商品", "床垫", "家具", "家居用品", "床品", "配送", "事故", "缺陷", "责任", "赔偿", "谁负责"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/au/warranty.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/us/returns.md",
+      "title": "E-pig US 体验期与退货条件",
+      "brand": "epig",
+      "market": "us",
+      "category": "return_policy",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "used_or_damaged_return",
+          "all_of": [
+            ["已使用", "使用过", "用过", "污渍", "异味", "破损", "人为损坏", "明显磨损", "异常磨损"],
+            ["退货", "退回", "退", "体验期", "退款", "验收", "品相"]
+          ]
+        },
+        {
+          "topic": "custom_or_final_sale_return",
+          "all_of": [
+            ["定制", "定做", "按尺寸制作", "按我的尺寸", "按图制作", "专门制作", "专门定做", "专门给我做", "专门做", "专属定制", "最终销售", "清仓不退", "不可退商品"],
+            ["退货", "退回", "退", "取消", "改单", "退款"]
+          ]
+        },
+        {
+          "topic": "partial_return_allocation",
+          "all_of": [
+            ["部分退货", "部分退回", "部分商品", "其中一件", "单件退货"],
+            ["优惠", "赠品", "退款", "金额", "分摊", "退货"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/us/returns.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/us/refunds.md",
+      "title": "E-pig US 退款处理与金额边界",
+      "brand": "epig",
+      "market": "us",
+      "category": "aftersale",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "service_fee_refund",
+          "all_of": [
+            ["配送费", "运费", "入户装配费", "装配服务费", "偏远附加费"],
+            ["退款", "退回", "退", "返还", "退还"]
+          ]
+        },
+        {
+          "topic": "payment_refund_exception",
+          "all_of": [
+            ["原支付账户失效", "支付账户失效", "原卡注销", "原支付方式不可用", "跨币种", "汇率差额", "优惠券", "礼品卡"],
+            ["退款", "退回", "退", "返还", "退还", "取消"]
+          ]
+        },
+        {
+          "topic": "acceptance_or_amount_dispute",
+          "all_of": [
+            ["污渍", "破损", "人为损坏", "验收不通过", "验收争议", "退款金额争议"],
+            ["退款", "退货", "退", "验收", "金额"]
+          ]
+        },
+        {
+          "topic": "partial_refund_allocation",
+          "all_of": [
+            ["部分取消", "部分退货", "部分退回", "部分商品", "其中一件"],
+            ["优惠", "赠品", "退款", "金额", "分摊"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/us/refunds.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/us/delivery.md",
+      "title": "E-pig US 配送时效与特殊地址",
+      "brand": "epig",
+      "market": "us",
+      "category": "shipping",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "regional_delivery",
+          "all_of": [
+            ["偏远", "乡村", "离岛", "山区", "服务范围外", "区域外", "邮编无法确认", "邮编不可达"],
+            ["配送", "送货", "送达", "发货", "运费", "地址", "订单", "送"]
+          ]
+        },
+        {
+          "topic": "shipped_delivery_change",
+          "all_of": [
+            ["已发货", "发货后", "已出库", "运输中", "配送途中"],
+            ["改地址", "变更地址", "更改地址", "改收货人", "改约", "改时间", "取消", "拦截"]
+          ]
+        },
+        {
+          "topic": "special_delivery_access",
+          "all_of": [
+            ["无电梯", "楼梯狭窄", "狭窄楼梯", "吊装", "门禁受限", "停车受限", "特殊入户"],
+            ["配送", "送货", "入户", "装配", "搬运", "送"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/us/delivery.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/us/cancellation.md",
+      "title": "E-pig US 订单取消与变更边界",
+      "brand": "epig",
+      "market": "us",
+      "category": "aftersale",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "shipped_cancellation_or_change",
+          "all_of": [
+            ["已发货", "发货后", "已出库", "运输中", "配送途中"],
+            ["取消", "改单", "变更", "改地址", "拦截"]
+          ]
+        },
+        {
+          "topic": "partial_cancellation",
+          "all_of": [
+            ["部分取消", "部分商品", "其中一件", "单件取消", "几件商品"],
+            ["取消", "改单", "变更", "删除", "退款", "订单"]
+          ]
+        },
+        {
+          "topic": "custom_or_final_sale_cancellation",
+          "all_of": [
+            ["定制", "定做", "按尺寸制作", "按我的尺寸", "按图制作", "专门制作", "专门定做", "专门给我做", "专门做", "专属定制", "最终销售", "清仓不退", "不可退商品"],
+            ["取消", "改单", "变更", "退货", "退款"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/us/cancellation.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/us/faults-missing.md",
+      "title": "E-pig US 到货异常与材料清单",
+      "brand": "epig",
+      "market": "us",
+      "category": "aftersale",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "accidental_damage",
+          "all_of": [
+            ["意外损坏", "意外受损", "意外跌落", "自行跌落", "宠物抓咬", "宠物抓坏", "液体泼洒", "火灾", "水浸"],
+            ["商品", "床垫", "家具", "家居用品", "床品", "保修", "赔偿", "赔付", "赔", "处理", "怎么办"]
+          ]
+        },
+        {
+          "topic": "injury_property_or_legal_liability",
+          "all_of": [
+            ["人身伤害", "受伤", "财产损失", "法律责任", "赔偿责任", "索赔"],
+            ["商品", "床垫", "家具", "家居用品", "床品", "配送", "事故", "缺陷", "责任", "赔偿", "谁负责"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/us/faults-missing.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/us/warranty.md",
+      "title": "E-pig US 商品有限保修说明",
+      "brand": "epig",
+      "market": "us",
+      "category": "warranty",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "accidental_damage_warranty",
+          "all_of": [
+            ["意外损坏", "意外受损", "意外跌落", "自行跌落", "宠物抓咬", "宠物抓坏", "液体泼洒", "火灾", "水浸"],
+            ["保修", "质保", "商品", "床垫", "家具", "家居用品", "床品", "赔付", "赔偿", "处理"]
+          ]
+        },
+        {
+          "topic": "nonstandard_use_or_repair",
+          "all_of": [
+            ["商业使用", "商业用途", "酒店使用", "酒店用途", "自行改装", "非授权维修", "二手转让", "转售"],
+            ["保修", "质保", "资格", "赔付", "覆盖"]
+          ]
+        },
+        {
+          "topic": "injury_property_or_legal_liability",
+          "all_of": [
+            ["人身伤害", "受伤", "财产损失", "法律责任", "赔偿责任", "索赔"],
+            ["商品", "床垫", "家具", "家居用品", "床品", "配送", "事故", "缺陷", "责任", "赔偿", "谁负责"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/us/warranty.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/sg/returns.md",
+      "title": "E-pig SG 退货申请与商品状态",
+      "brand": "epig",
+      "market": "sg",
+      "category": "return_policy",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "used_or_damaged_return",
+          "all_of": [
+            ["已使用", "使用过", "用过", "污渍", "异味", "破损", "人为损坏", "明显磨损", "异常磨损"],
+            ["退货", "退回", "退", "体验期", "退款", "验收", "品相"]
+          ]
+        },
+        {
+          "topic": "custom_or_final_sale_return",
+          "all_of": [
+            ["定制", "定做", "按尺寸制作", "按我的尺寸", "按图制作", "专门制作", "专门定做", "专门给我做", "专门做", "专属定制", "最终销售", "清仓不退", "不可退商品"],
+            ["退货", "退回", "退", "取消", "改单", "退款"]
+          ]
+        },
+        {
+          "topic": "partial_return_allocation",
+          "all_of": [
+            ["部分退货", "部分退回", "部分商品", "其中一件", "单件退货"],
+            ["优惠", "赠品", "退款", "金额", "分摊", "退货"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/sg/returns.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/sg/refunds.md",
+      "title": "E-pig SG 退款时限与异常核对",
+      "brand": "epig",
+      "market": "sg",
+      "category": "aftersale",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "service_fee_refund",
+          "all_of": [
+            ["配送费", "运费", "入户装配费", "装配服务费", "偏远附加费"],
+            ["退款", "退回", "退", "返还", "退还"]
+          ]
+        },
+        {
+          "topic": "payment_refund_exception",
+          "all_of": [
+            ["原支付账户失效", "支付账户失效", "原卡注销", "原支付方式不可用", "跨币种", "汇率差额", "优惠券", "礼品卡"],
+            ["退款", "退回", "退", "返还", "退还", "取消"]
+          ]
+        },
+        {
+          "topic": "acceptance_or_amount_dispute",
+          "all_of": [
+            ["污渍", "破损", "人为损坏", "验收不通过", "验收争议", "退款金额争议"],
+            ["退款", "退货", "退", "验收", "金额"]
+          ]
+        },
+        {
+          "topic": "partial_refund_allocation",
+          "all_of": [
+            ["部分取消", "部分退货", "部分退回", "部分商品", "其中一件"],
+            ["优惠", "赠品", "退款", "金额", "分摊"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/sg/refunds.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/sg/delivery.md",
+      "title": "E-pig SG 配送范围与交付安排",
+      "brand": "epig",
+      "market": "sg",
+      "category": "shipping",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "regional_delivery",
+          "all_of": [
+            ["偏远", "乡村", "离岛", "山区", "服务范围外", "区域外", "邮编无法确认", "邮编不可达"],
+            ["配送", "送货", "送达", "发货", "运费", "地址", "订单", "送"]
+          ]
+        },
+        {
+          "topic": "shipped_delivery_change",
+          "all_of": [
+            ["已发货", "发货后", "已出库", "运输中", "配送途中"],
+            ["改地址", "变更地址", "更改地址", "改收货人", "改约", "改时间", "取消", "拦截"]
+          ]
+        },
+        {
+          "topic": "special_delivery_access",
+          "all_of": [
+            ["无电梯", "楼梯狭窄", "狭窄楼梯", "吊装", "门禁受限", "停车受限", "特殊入户"],
+            ["配送", "送货", "入户", "装配", "搬运", "送"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/sg/delivery.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/sg/cancellation.md",
+      "title": "E-pig SG 取消与订单变更说明",
+      "brand": "epig",
+      "market": "sg",
+      "category": "aftersale",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "shipped_cancellation_or_change",
+          "all_of": [
+            ["已发货", "发货后", "已出库", "运输中", "配送途中"],
+            ["取消", "改单", "变更", "改地址", "拦截"]
+          ]
+        },
+        {
+          "topic": "partial_cancellation",
+          "all_of": [
+            ["部分取消", "部分商品", "其中一件", "单件取消", "几件商品"],
+            ["取消", "改单", "变更", "删除", "退款", "订单"]
+          ]
+        },
+        {
+          "topic": "custom_or_final_sale_cancellation",
+          "all_of": [
+            ["定制", "定做", "按尺寸制作", "按我的尺寸", "按图制作", "专门制作", "专门定做", "专门给我做", "专门做", "专属定制", "最终销售", "清仓不退", "不可退商品"],
+            ["取消", "改单", "变更", "退货", "退款"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/sg/cancellation.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/sg/faults-missing.md",
+      "title": "E-pig SG 损坏、错发与缺件处理材料",
+      "brand": "epig",
+      "market": "sg",
+      "category": "aftersale",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "accidental_damage",
+          "all_of": [
+            ["意外损坏", "意外受损", "意外跌落", "自行跌落", "宠物抓咬", "宠物抓坏", "液体泼洒", "火灾", "水浸"],
+            ["商品", "床垫", "家具", "家居用品", "床品", "保修", "赔偿", "赔付", "赔", "处理", "怎么办"]
+          ]
+        },
+        {
+          "topic": "injury_property_or_legal_liability",
+          "all_of": [
+            ["人身伤害", "受伤", "财产损失", "法律责任", "赔偿责任", "索赔"],
+            ["商品", "床垫", "家具", "家居用品", "床品", "配送", "事故", "缺陷", "责任", "赔偿", "谁负责"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/sg/faults-missing.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    },
+    {
+      "path": "epig/sg/warranty.md",
+      "title": "E-pig SG 有限保修范围与期限",
+      "brand": "epig",
+      "market": "sg",
+      "category": "warranty",
+      "product_categories": ["mattress", "furniture", "homewares", "bedding"],
+      "policy_version": "demo-2026-11-05",
+      "retrieved_at": "2026-11-05",
+      "effective_from": "2026-11-05",
+      "effective_to": null,
+      "status": "demo",
+      "requires_human_review": true,
+      "review_sections": ["人工复核"],
+      "review_query_rules": [
+        {
+          "topic": "accidental_damage_warranty",
+          "all_of": [
+            ["意外损坏", "意外受损", "意外跌落", "自行跌落", "宠物抓咬", "宠物抓坏", "液体泼洒", "火灾", "水浸"],
+            ["保修", "质保", "商品", "床垫", "家具", "家居用品", "床品", "赔付", "赔偿", "处理"]
+          ]
+        },
+        {
+          "topic": "nonstandard_use_or_repair",
+          "all_of": [
+            ["商业使用", "商业用途", "酒店使用", "酒店用途", "自行改装", "非授权维修", "二手转让", "转售"],
+            ["保修", "质保", "资格", "赔付", "覆盖"]
+          ]
+        },
+        {
+          "topic": "injury_property_or_legal_liability",
+          "all_of": [
+            ["人身伤害", "受伤", "财产损失", "法律责任", "赔偿责任", "索赔"],
+            ["商品", "床垫", "家具", "家居用品", "床品", "配送", "事故", "缺陷", "责任", "赔偿", "谁负责"]
+          ]
+        }
+      ],
+      "source_type": "internal_demo",
+      "source_label": "E-pig 内部自编演示政策",
+      "source_path": "epig/sg/warranty.md",
+      "source_urls": [],
+      "source_updated": "内部自编演示，无外部来源"
+    }
+  ]
+}

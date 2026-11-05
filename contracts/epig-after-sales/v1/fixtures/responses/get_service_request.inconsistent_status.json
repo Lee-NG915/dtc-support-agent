@@ -1,0 +1,13 @@
+{
+  "request_id": "asr_000000000042",
+  "sequence": "00000000000000000042",
+  "order_id": "ord_au_00000042",
+  "market": "au",
+  "type": "damaged",
+  "description": "The synthetic parcel arrived with a crushed corner and the item inside is cracked.",
+  "attachments": [],
+  "status": "ticket_created",
+  "ticket_id": null,
+  "created_at": "2026-01-15T03:04:05Z",
+  "updated_at": "2026-01-15T04:00:00Z"
+}

@@ -5,5 +5,15 @@
 /contracts/epig-after-sales/ @Lee-NG915
 /scripts/check_epig_after_sales_contract.py @Lee-NG915
 /tests/contract/test_epig_after_sales_contract.py @Lee-NG915
+/knowledge/policy-manifest.json @Lee-NG915
+/knowledge/epig/ @Lee-NG915
+/app/config/policy_profiles.py @Lee-NG915
+/app/retrieval/policy.py @Lee-NG915
+/scripts/check_epig_policy.py @Lee-NG915
+/tests/unit/test_policy_scope.py @Lee-NG915
+/tests/unit/test_epig_policy_eval.py @Lee-NG915
+/tests/integration/test_epig_policy_retrieval.py @Lee-NG915
+/tests/e2e/test_epig_policy_api.py @Lee-NG915
+/eval/dataset/epig_policy_eval.jsonl @Lee-NG915
 /.github/workflows/ci.yml @Lee-NG915
 /.github/CODEOWNERS @Lee-NG915

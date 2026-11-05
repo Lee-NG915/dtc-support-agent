@@ -7,10 +7,15 @@ import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import date
+from typing import Any
 
+from app.config.policy_profiles import get_policy_profile
+from app.core.enums import DocumentCategory
 from app.core.exceptions import RetrievalError
 from app.providers.base import EmbeddingProvider
-from app.schemas.retrieval import RetrievedChunk
+from app.retrieval.policy import chunk_matches_scope
+from app.schemas.retrieval import PolicyScope, RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +49,14 @@ class InMemoryVectorStore:
             else:
                 self._records.append(record)
 
-    def search(self, query_vector: list[float], *, top_k: int) -> list[RetrievedChunk]:
+    def search(
+        self, query_vector: list[float], *, top_k: int, scope: PolicyScope | None = None
+    ) -> list[RetrievedChunk]:
+        resolved_scope = scope or PolicyScope()
         scored: list[tuple[float, VectorRecord]] = [
-            (cosine(query_vector, record.embedding), record) for record in self._records
+            (cosine(query_vector, record.embedding), record)
+            for record in self._records
+            if chunk_matches_scope(record.chunk, resolved_scope)
         ]
         scored.sort(key=lambda item: item[0], reverse=True)
         results: list[RetrievedChunk] = []
@@ -60,6 +70,32 @@ class InMemoryVectorStore:
 
     def ping(self) -> bool:
         return True
+
+
+def _date_ordinal(value: date | None) -> int | None:
+    return value.toordinal() if value is not None else None
+
+
+def _qdrant_scope_filter(scope: PolicyScope):
+    from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue, Range
+
+    must: list[Any] = [
+        FieldCondition(key="brand", match=MatchValue(value=scope.brand)),
+        FieldCondition(key="market", match=MatchValue(value=scope.market)),
+    ]
+    if scope.product_category:
+        must.append(
+            FieldCondition(key="product_categories", match=MatchAny(any=[scope.product_category]))
+        )
+    if get_policy_profile(scope.brand).filter_dates and scope.as_of is not None:
+        as_of = scope.as_of.toordinal()
+        must.extend(
+            [
+                FieldCondition(key="applicable_from_day", range=Range(lte=as_of)),
+                FieldCondition(key="applicable_to_day", range=Range(gte=as_of)),
+            ]
+        )
+    return Filter(must=must)
 
 
 class QdrantVectorStore:
@@ -103,7 +139,37 @@ class QdrantVectorStore:
                     "content": record.chunk.content,
                     "section": record.chunk.section,
                     "chunk_index": record.chunk.chunk_index,
+                    "category": record.chunk.category.value,
                     "policy_version": record.chunk.policy_version,
+                    "brand": record.chunk.brand,
+                    "market": record.chunk.market,
+                    "product_categories": record.chunk.product_categories,
+                    "retrieved_at": (
+                        record.chunk.retrieved_at.isoformat() if record.chunk.retrieved_at else None
+                    ),
+                    "effective_from": (
+                        record.chunk.effective_from.isoformat()
+                        if record.chunk.effective_from
+                        else None
+                    ),
+                    "effective_to": (
+                        record.chunk.effective_to.isoformat() if record.chunk.effective_to else None
+                    ),
+                    "applicable_from_day": _date_ordinal(
+                        record.chunk.effective_from or record.chunk.retrieved_at
+                    ),
+                    "applicable_to_day": _date_ordinal(record.chunk.effective_to)
+                    or date.max.toordinal(),
+                    "policy_status": record.chunk.policy_status,
+                    "requires_human_review": record.chunk.requires_human_review,
+                    "review_query_rules": [
+                        rule.model_dump() for rule in record.chunk.review_query_rules
+                    ],
+                    "source_type": record.chunk.source_type,
+                    "source_label": record.chunk.source_label,
+                    "source_path": record.chunk.source_path,
+                    "source_urls": record.chunk.source_urls,
+                    "source_updated": record.chunk.source_updated,
                     "source": record.chunk.metadata.get("source", "knowledge"),
                 },
             )
@@ -112,6 +178,33 @@ class QdrantVectorStore:
         if points:
             client.upsert(collection_name=self._collection, points=points)
 
+    def remove_stale(self, active_chunk_ids: set[str]) -> None:
+        """Delete documents/chunks removed from the source bundle after upsert."""
+        if not active_chunk_ids:
+            raise ValueError("refusing to remove Qdrant points for an empty corpus")
+        from qdrant_client.models import PointIdsList
+
+        client = self._ensure_client()
+        active_point_ids = {stable_point_id(chunk_id) for chunk_id in active_chunk_ids}
+        stale: list[int | str] = []
+        offset = None
+        while True:
+            points, offset = client.scroll(
+                collection_name=self._collection,
+                limit=256,
+                offset=offset,
+                with_payload=False,
+                with_vectors=False,
+            )
+            stale.extend(str(point.id) for point in points if str(point.id) not in active_point_ids)
+            if offset is None:
+                break
+        if stale:
+            client.delete(
+                collection_name=self._collection,
+                points_selector=PointIdsList(points=stale),
+            )
+
     def ping(self) -> bool:
         try:
             self._ensure_client().get_collections()
@@ -119,7 +212,15 @@ class QdrantVectorStore:
         except Exception:
             return False
 
-    def search(self, query_vector: list[float], *, top_k: int) -> list[RetrievedChunk]:
+    def search(
+        self, query_vector: list[float], *, top_k: int, scope: PolicyScope | None = None
+    ) -> list[RetrievedChunk]:
+        resolved_scope = scope or PolicyScope()
+        if (
+            get_policy_profile(resolved_scope.brand).requires_category
+            and not resolved_scope.product_category
+        ):
+            return []
         try:
             client = self._ensure_client()
             hits = client.search(
@@ -127,6 +228,7 @@ class QdrantVectorStore:
                 query_vector=query_vector,
                 limit=top_k,
                 with_payload=True,
+                query_filter=_qdrant_scope_filter(resolved_scope),
             )
         except Exception as exc:
             raise RetrievalError("qdrant search failed") from exc
@@ -142,9 +244,24 @@ class QdrantVectorStore:
                     score=float(hit.score),
                     rank=rank,
                     source="vector",
+                    category=DocumentCategory(str(payload.get("category") or "faq")),
                     section=payload.get("section"),
                     chunk_index=int(payload.get("chunk_index") or 0),
                     policy_version=str(payload.get("policy_version") or "v1"),
+                    brand=payload.get("brand") or "upstream_demo",
+                    market=payload.get("market") or "global",
+                    product_categories=list(payload.get("product_categories") or []),
+                    retrieved_at=payload.get("retrieved_at"),
+                    effective_from=payload.get("effective_from"),
+                    effective_to=payload.get("effective_to"),
+                    policy_status=payload.get("policy_status") or "demo",
+                    requires_human_review=bool(payload.get("requires_human_review")),
+                    review_query_rules=list(payload.get("review_query_rules") or []),
+                    source_type=payload.get("source_type") or "legacy",
+                    source_label=str(payload.get("source_label") or ""),
+                    source_path=str(payload.get("source_path") or ""),
+                    source_urls=list(payload.get("source_urls") or []),
+                    source_updated=str(payload.get("source_updated") or ""),
                     metadata={"source": str(payload.get("source", "qdrant"))},
                 )
             )
@@ -158,12 +275,14 @@ class VectorRetriever:
         self.store = store
         self.embedder = embedder
 
-    async def search(self, query: str, *, top_k: int) -> list[RetrievedChunk]:
+    async def search(
+        self, query: str, *, top_k: int, scope: PolicyScope | None = None
+    ) -> list[RetrievedChunk]:
         vectors = await self.embedder.embed([query])
         if not vectors:
             return []
         # Qdrant client is sync; do not block the event loop.
-        return await asyncio.to_thread(self.store.search, vectors[0], top_k=top_k)
+        return await asyncio.to_thread(self.store.search, vectors[0], top_k=top_k, scope=scope)
 
     async def ping(self) -> bool:
         return await asyncio.to_thread(self.store.ping)

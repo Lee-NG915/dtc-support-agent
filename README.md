@@ -2,7 +2,11 @@
 
 基于 [Adaptive-rag](https://github.com/JEen-wang/Adaptive-rag) 扩展的 DTC 电商售后 Agent。首期计划围绕订单查询、政策检索、工单草稿、人工审批与工单创建，完善身份权限、持久任务、幂等执行和效果评测。
 
-**当前状态（2026-11-03）：已建立初步方案、开发技能与学习文档，应用改造尚未开始。** 文档/技能检查与应用运行分开记录；尚未在本 fork 运行应用或业务评测。
+**当前状态（2026-11-05）：E-pig synthetic demo 政策增量与售后 v1 候选契约已实现并完成本地验证；完整售后工作台、持久审批和真实跨仓联调尚未实现。**
+
+- 当前政策为 AU/US/SG 共 18 篇内部自编演示条款，非官方或生产批准。最终全量测试为 **242 passed、覆盖率 80%**，固定离线集 **34/34**；DeepSeek Flash 生成节点评测本轮最后两次为 **33/34、34/34**，不代表完整 LangGraph 或 Faithfulness 固定集通过。详见[验证记录](docs/records/after-sales/epig-policy-v1.md)。
+- 售后 v1 候选包含 **13 个操作、49 个共享 fixtures**，本地语义、隐私和 checksum 检查通过；E-pig 运行时 vendor 与联调仍待实现。详见[契约记录](docs/records/after-sales/epig-contract-v1.md)。
+- `127.0.0.1:8003` 已重启加载本轮代码并通过健康、就绪、能力和 AU 政策 HTTP 冒烟；8002 旧进程未重启。验证范围与提交身份分别以记录和 Git 历史为准。
 
 - [项目背景、MVP 范围与实施方案](docs/project-plan.md)
 - [Issue #1：实施进度与验收跟踪](https://github.com/Lee-NG915/dtc-support-agent/issues/1)

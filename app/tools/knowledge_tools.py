@@ -2,8 +2,12 @@
 
 from pydantic import BaseModel, Field
 
+from app.config.policy_profiles import get_policy_profile
 from app.core.enums import ToolRisk
+from app.providers.reranker import LexicalRerankProvider
 from app.retrieval.hybrid import HybridRetriever
+from app.retrieval.policy import merge_policy_review_chunks
+from app.retrieval.reranker import DocumentReranker
 from app.schemas.agent import ToolResult
 from app.tools.base import Tool, ToolContext
 
@@ -40,25 +44,29 @@ class SearchKnowledgeTool(Tool):
         "何时不用：查真实订单/物流/库存/退款单；券码与叠用优先 get_coupon；有 sku 的保修摘要优先 get_warranty；客服营业时间优先 mcp_store_hours；仓库截单优先 mcp_warehouse_cutoff。"
         "优先：结构化券规则 → get_coupon；有 sku 的保修 → get_warranty；其余政策 → 本工具。"
         "参数 query：1–200 字检索问句，如「7天无理由退货是否含定制」，不要填 ORD1001。"
-        "返回 chunks[{chunk_id, title, content}]，content 已截断，只作政策依据，不能当成某笔订单的事实。"
+        "返回 chunks[{chunk_id, title, content}]，content 保留完整片段，只作政策依据，不能当成某笔订单的事实。"
     )
     risk = ToolRisk.READ
     input_model = KnowledgeSearchInput
 
     def __init__(self, retriever: HybridRetriever) -> None:
         self._retriever = retriever
+        self._reranker = DocumentReranker(LexicalRerankProvider())
 
     async def execute(self, parsed: KnowledgeSearchInput, context: ToolContext) -> ToolResult:
-        chunks = await self._retriever.retrieve(parsed.query, top_k=4)
+        candidates = await self._retriever.retrieve(
+            parsed.query, top_k=8, scope=context.policy_scope
+        )
+        chunks = await self._reranker.rerank(parsed.query, candidates, top_n=4)
+        review_chunks = self._retriever.matching_review_chunks(
+            parsed.query, scope=context.policy_scope
+        )
+        chunks = merge_policy_review_chunks(chunks, review_chunks)
+        serialized = [chunk.model_dump(mode="json") for chunk in chunks]
         return ToolResult(
             name=self.name,
             success=True,
-            output={
-                "chunks": [
-                    {"chunk_id": c.chunk_id, "title": c.title, "content": c.content[:400]}
-                    for c in chunks
-                ]
-            },
+            output={"chunks": serialized},
         )
 
 
@@ -76,6 +84,12 @@ class GetCouponTool(Tool):
     input_model = CouponInput
 
     async def execute(self, parsed: CouponInput, context: ToolContext) -> ToolResult:
+        if get_policy_profile(context.policy_scope.brand).block_generic_policy_tools:
+            return ToolResult(
+                name=self.name,
+                success=False,
+                error="no verified market-specific promotion rules; use scoped policy search",
+            )
         return ToolResult(
             name=self.name,
             success=True,
@@ -102,6 +116,12 @@ class GetWarrantyTool(Tool):
     input_model = WarrantyInput
 
     async def execute(self, parsed: WarrantyInput, context: ToolContext) -> ToolResult:
+        if get_policy_profile(context.policy_scope.brand).block_generic_policy_tools:
+            return ToolResult(
+                name=self.name,
+                success=False,
+                error="generic demo warranty cannot answer a scoped brand SKU; use policy search",
+            )
         return ToolResult(
             name=self.name,
             success=True,

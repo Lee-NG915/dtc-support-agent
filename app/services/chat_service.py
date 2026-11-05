@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.graph import build_graph
 from app.agents.state import AgentState
+from app.config.policy_profiles import get_policy_profile
 from app.config.settings import Settings
 from app.core.exceptions import AppError, GuardrailError, InvalidRequestError, RateLimitError
 from app.core.ids import new_id
@@ -25,6 +26,7 @@ from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.reranker import DocumentReranker
 from app.schemas.chat import ActionProposal, ChatRequest, ChatResponse
 from app.schemas.common import LatencyBreakdown, TokenUsage
+from app.schemas.retrieval import PolicyScope
 from app.tools.factory import build_tool_registry
 from app.tools.registry import ToolRegistry
 
@@ -36,7 +38,17 @@ class PendingConfirmation:
     session_id: str
     user_id: str
     action: ActionProposal
+    policy_scope: PolicyScope
     expires_at: float
+
+
+def _request_policy_scope(request: ChatRequest) -> PolicyScope:
+    return PolicyScope(
+        brand=request.brand,
+        market=request.market,
+        as_of=request.policy_as_of,
+        product_category=request.product_category,
+    )
 
 
 class ChatService:
@@ -77,7 +89,7 @@ class ChatService:
             response = self._to_response(result, session_id=session_id, trace_id=trace_id)
             await self._persist(db, request, response, summary=result.get("summary") or "")
             await db.commit()
-        self._remember_pending(request, response)
+        self._remember_pending(request, response, policy_scope=state["policy_scope"])
         self._observe(response, started)
         return response
 
@@ -144,7 +156,7 @@ class ChatService:
             response = self._to_response(merged, session_id=session_id, trace_id=trace_id)
             await self._persist(db, request, response, summary=merged.get("summary") or "")
             await db.commit()
-        self._remember_pending(request, response)
+        self._remember_pending(request, response, policy_scope=state["policy_scope"])
         self._observe(response, started)
         # Never stream the LLM's JSON envelope or an answer that may still be
         # replaced by the faithfulness check. Only the final answer is public.
@@ -165,10 +177,17 @@ class ChatService:
         session_id: str,
         trace_id: str,
     ) -> AgentState:
-        confirmed_action = self._resolve_confirmation(request, session_id)
+        policy_scope = _request_policy_scope(request)
+        confirmed_action = self._resolve_confirmation(request, session_id, policy_scope)
         sessions = SessionRepository(db)
         await sessions.get_or_create(session_id, request.user_id)
-        history = await sessions.recent_messages(session_id)
+        # Scoped policy turns are intentionally stateless until sessions persist
+        # their own brand/market scope; never reuse another market's answer text.
+        history = (
+            []
+            if get_policy_profile(request.brand).stateless_history
+            else await sessions.recent_messages(session_id)
+        )
         return {
             "trace_id": trace_id,
             "session_id": session_id,
@@ -186,9 +205,12 @@ class ChatService:
             "confirm_action_id": request.confirm_action_id,
             "confirmed_action": confirmed_action,
             "idempotency_key": request.idempotency_key,
+            "policy_scope": policy_scope,
         }
 
-    def _resolve_confirmation(self, request: ChatRequest, session_id: str) -> ActionProposal | None:
+    def _resolve_confirmation(
+        self, request: ChatRequest, session_id: str, policy_scope: PolicyScope
+    ) -> ActionProposal | None:
         if not request.confirm_action_id:
             return None
         pending = self._pending_actions.get(request.confirm_action_id)
@@ -197,11 +219,18 @@ class ChatService:
             or pending.expires_at < time.monotonic()
             or pending.session_id != session_id
             or pending.user_id != request.user_id
+            or pending.policy_scope != policy_scope
         ):
-            raise InvalidRequestError("待确认操作不存在或已过期，请重新发起。")
+            raise InvalidRequestError("待确认操作不存在、已过期或不属于当前政策范围，请重新发起。")
         return pending.action
 
-    def _remember_pending(self, request: ChatRequest, response: ChatResponse) -> None:
+    def _remember_pending(
+        self,
+        request: ChatRequest,
+        response: ChatResponse,
+        *,
+        policy_scope: PolicyScope | None = None,
+    ) -> None:
         now = time.monotonic()
         self._pending_actions = {
             key: value for key, value in self._pending_actions.items() if value.expires_at > now
@@ -212,6 +241,7 @@ class ChatService:
                 session_id=response.session_id,
                 user_id=request.user_id,
                 action=action,
+                policy_scope=policy_scope or _request_policy_scope(request),
                 expires_at=now + 15 * 60,
             )
 
@@ -237,6 +267,10 @@ class ChatService:
         *,
         summary: str = "",
     ) -> None:
+        # Stateless managed-policy turns must not become history for a later
+        # upstream-demo request that reuses the same session ID.
+        if get_policy_profile(request.brand).stateless_history:
+            return
         sessions = SessionRepository(db)
         await sessions.append_message(response.session_id, "user", request.message)
         await sessions.append_message(response.session_id, "assistant", response.answer)

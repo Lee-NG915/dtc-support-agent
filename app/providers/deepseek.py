@@ -49,8 +49,9 @@ class DeepSeekProvider:
     def _apply_reasoning_compat(self, payload: dict[str, object]) -> None:
         """Adapt payloads for reasoning models (effort + token headroom)."""
         min_tokens = self._settings.deepseek_min_max_tokens
-        if min_tokens > 0:
-            payload["max_tokens"] = max(int(payload["max_tokens"]), min_tokens)
+        current_max_tokens = payload.get("max_tokens")
+        if min_tokens > 0 and isinstance(current_max_tokens, int):
+            payload["max_tokens"] = max(current_max_tokens, min_tokens)
         effort = self._settings.deepseek_reasoning_effort
         if effort:
             payload["reasoning_effort"] = effort

@@ -476,6 +476,70 @@
       "http_status": 400,
       "requirement_ids": ["AS-REQ-COMPAT-001"],
       "acceptance_ids": ["AS-ACC-015"]
+    },
+    {
+      "fixture_id": "create_after_sales_request_blank_description",
+      "path": "requests/create_after_sales_request.blank_description.json",
+      "kind": "request",
+      "operation_id": "createAfterSalesRequest",
+      "schema": "#/components/schemas/CreateAfterSalesRequestInput",
+      "expected_valid": false,
+      "requirement_ids": ["AS-REQ-REQ-001", "AS-REQ-COMPAT-001"],
+      "acceptance_ids": ["AS-ACC-001", "AS-ACC-015"]
+    },
+    {
+      "fixture_id": "create_service_ticket_blank_reply",
+      "path": "requests/create_service_ticket.blank_reply.json",
+      "kind": "request",
+      "operation_id": "createServiceTicket",
+      "schema": "#/components/schemas/CreateServiceTicketInput",
+      "expected_valid": false,
+      "requirement_ids": ["AS-REQ-APR-001", "AS-REQ-TICKET-001", "AS-REQ-COMPAT-001"],
+      "acceptance_ids": ["AS-ACC-001", "AS-ACC-015"]
+    },
+    {
+      "fixture_id": "create_after_sales_request_error_leak",
+      "path": "responses/create_after_sales_request.error_leak.json",
+      "kind": "response",
+      "operation_id": "createAfterSalesRequest",
+      "schema": "#/components/schemas/ErrorResponse",
+      "expected_valid": false,
+      "http_status": 400,
+      "requirement_ids": ["AS-REQ-AUTH-001", "AS-REQ-REQ-001", "AS-REQ-SEC-001", "AS-REQ-COMPAT-001"],
+      "acceptance_ids": ["AS-ACC-003", "AS-ACC-015"]
+    },
+    {
+      "fixture_id": "get_service_order_full_address_top_level",
+      "path": "responses/get_service_order.full_address_top_level.json",
+      "kind": "response",
+      "operation_id": "getServiceOrder",
+      "schema": "#/components/schemas/ServiceOrder",
+      "expected_valid": false,
+      "http_status": 200,
+      "requirement_ids": ["AS-REQ-AUTH-002", "AS-REQ-DATA-001", "AS-REQ-SEC-001", "AS-REQ-COMPAT-001"],
+      "acceptance_ids": ["AS-ACC-015"]
+    },
+    {
+      "fixture_id": "get_after_sales_request_inconsistent_status",
+      "path": "responses/get_after_sales_request.inconsistent_status.json",
+      "kind": "response",
+      "operation_id": "getAfterSalesRequest",
+      "schema": "#/components/schemas/ConsumerAfterSalesRequest",
+      "expected_valid": false,
+      "http_status": 200,
+      "requirement_ids": ["AS-REQ-AUTH-001", "AS-REQ-REQ-002", "AS-REQ-COMPAT-001"],
+      "acceptance_ids": ["AS-ACC-001", "AS-ACC-015"]
+    },
+    {
+      "fixture_id": "get_service_request_inconsistent_status",
+      "path": "responses/get_service_request.inconsistent_status.json",
+      "kind": "response",
+      "operation_id": "getServiceRequest",
+      "schema": "#/components/schemas/ServiceAfterSalesRequest",
+      "expected_valid": false,
+      "http_status": 200,
+      "requirement_ids": ["AS-REQ-AUTH-002", "AS-REQ-REQ-002", "AS-REQ-DATA-001", "AS-REQ-COMPAT-001"],
+      "acceptance_ids": ["AS-ACC-001", "AS-ACC-015"]
     }
   ]
 }

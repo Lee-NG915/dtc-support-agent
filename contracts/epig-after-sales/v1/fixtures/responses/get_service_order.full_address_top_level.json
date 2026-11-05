@@ -1,0 +1,30 @@
+{
+  "order_id": "ord_au_00000042",
+  "market": "au",
+  "currency": "AUD",
+  "items": [
+    {
+      "order_item_id": "oit_000000000042",
+      "sku": "SYNTH-MUG-001",
+      "name": "Synthetic ceramic mug",
+      "quantity": 1,
+      "unit_price_minor": 12900,
+      "line_total_minor": 12900
+    }
+  ],
+  "subtotal_minor": 12900,
+  "shipping_minor": 895,
+  "tax_minor": 0,
+  "discount_minor": 0,
+  "total_minor": 13795,
+  "status": "fulfilled",
+  "created_at": "2026-01-10T02:30:00Z",
+  "order_version": "ov_000000000007",
+  "recipient_summary": {
+    "masked_name": "A*** B***",
+    "country_code": "AU",
+    "region": "NSW",
+    "postal_code_masked": "2***"
+  },
+  "full_address": "100 Synthetic Avenue, Sydney NSW 2000"
+}

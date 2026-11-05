@@ -1,12 +1,15 @@
 """Chat request/response and action-proposal schemas."""
 
+from __future__ import annotations
+
+from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.enums import IntentLabel, QueryComplexity, RetrievalStrategy, ToolRisk
 from app.schemas.common import LatencyBreakdown, TokenUsage
-from app.schemas.retrieval import Citation
+from app.schemas.retrieval import Citation, PolicyBrand, PolicyMarket, PolicyScope
 
 
 class ChatMessage(BaseModel):
@@ -22,6 +25,15 @@ class ChatRequest(BaseModel):
     stream: bool = False
     confirm_action_id: str | None = None
     idempotency_key: str | None = Field(default=None, max_length=128)
+    brand: PolicyBrand = "upstream_demo"
+    market: PolicyMarket = "global"
+    policy_as_of: date | None = None
+    product_category: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def validate_policy_scope(self) -> ChatRequest:
+        PolicyScope(brand=self.brand, market=self.market, as_of=self.policy_as_of)
+        return self
 
 
 class ActionProposal(BaseModel):

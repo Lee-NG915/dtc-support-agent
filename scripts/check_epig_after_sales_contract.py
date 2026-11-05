@@ -45,6 +45,10 @@ CONSUMER_ALLOWLIST_SCHEMAS = {
     "ConsumerTicketReceipt",
     "ConsumerTicket",
     "RecipientSummary",
+    "ServiceOrder",
+    "ErrorDetails",
+    "Error",
+    "ErrorResponse",
 }
 ERROR_STATUSES = {
     "VALIDATION_ERROR": {400},
@@ -205,6 +209,24 @@ def assert_special_invariants(document: dict[str, Any]) -> None:
         schema = schemas.get(name, {})
         if schema.get("type") != "object" or schema.get("additionalProperties") is not False:
             raise ContractError(f"{name}: safety-critical DTO must be a producer allowlist")
+
+    for name in (
+        "CreateAfterSalesRequestInput",
+        "ConsumerAfterSalesRequest",
+        "ServiceAfterSalesRequest",
+    ):
+        schema = resolve_reference(document, schemas.get(name, {}))
+        if schema.get("properties", {}).get("description", {}).get("pattern") != "\\S":
+            raise ContractError(f"{name}: description must contain non-whitespace text")
+    for name in ("CreateServiceTicketInput", "ConsumerTicket", "ServiceTicket"):
+        schema = resolve_reference(document, schemas.get(name, {}))
+        if schema.get("properties", {}).get("reply", {}).get("pattern") != "\\S":
+            raise ContractError(f"{name}: reply must contain non-whitespace text")
+    for name in ("ConsumerAfterSalesRequest", "ServiceAfterSalesRequest"):
+        schema = resolve_reference(document, schemas.get(name, {}))
+        linkage = schema.get("allOf", [])
+        if not linkage or "then" not in linkage[0] or "else" not in linkage[0]:
+            raise ContractError(f"{name}: status and ticket_id must be consistent")
 
     upload = resolve_reference(document, schemas.get("UploadAttachmentRequest", {}))
     if "order_id" not in upload.get("required", []):

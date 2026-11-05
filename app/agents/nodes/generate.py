@@ -7,15 +7,18 @@ import time
 
 from pydantic import BaseModel, Field
 
+from app.agents.nodes.intent import is_social_query
 from app.agents.state import AgentState
-from app.core.enums import RetrievalStrategy
+from app.config.policy_profiles import get_policy_profile
+from app.core.enums import IntentLabel, RetrievalStrategy
 from app.core.exceptions import LLMOutputError, LLMProviderError
 from app.prompts.answer import ANSWER_SYSTEM, ANSWER_USER
 from app.providers.base import LLMProvider
 from app.providers.fake import OfflineLLMProvider
 from app.providers.json_parser import parse_model
+from app.retrieval.policy import policy_review_chunks
 from app.schemas.common import LatencyBreakdown, TokenUsage
-from app.schemas.retrieval import Citation
+from app.schemas.retrieval import PolicyScope, RetrievedChunk, citation_from_chunk
 
 
 class AnswerPayload(BaseModel):
@@ -24,10 +27,82 @@ class AnswerPayload(BaseModel):
     refused: bool = False
 
 
+def _with_demo_disclosure(answer: str, brand: str) -> str:
+    disclosure = get_policy_profile(brand).demo_disclosure
+    if not disclosure or disclosure in answer:
+        return answer
+    return f"{answer}\n\n{disclosure}"
+
+
 async def generate_node(state: AgentState, llm: LLMProvider) -> dict:
     started = time.perf_counter()
     chunks = state.get("retrieved_chunks") or []
     tools = state.get("tool_results") or []
+    scope = state.get("policy_scope") or PolicyScope()
+    profile = get_policy_profile(scope.brand)
+    strategy = state.get("strategy") or RetrievalStrategy.DIRECT
+    intent = state.get("intent")
+    is_social = bool(
+        intent
+        and intent.label in {IntentLabel.GREETING, IntentLabel.CHITCHAT}
+        and is_social_query(state["user_query"])
+    )
+    if profile.force_retrieval and not is_social:
+        if profile.requires_category and not scope.product_category:
+            return {
+                "final_answer": _with_demo_disclosure(
+                    f"请先补充商品类别；未确定类别前不能套用 {scope.brand} 政策或形成退货、退款承诺。",
+                    scope.brand,
+                ),
+                "citations": [],
+                "refused": True,
+            }
+        if not chunks:
+            return {
+                "final_answer": _with_demo_disclosure(
+                    "当前品牌、市场、商品类别或政策日期下没有可用的政策证据。"
+                    "请补充商品与订单日期，并转人工客服处理。",
+                    scope.brand,
+                ),
+                "citations": [],
+                "refused": True,
+            }
+        review_chunks = policy_review_chunks(state["user_query"], chunks)
+        if review_chunks:
+            if scope.brand == "epig":
+                review_answer = (
+                    f"找到 E-pig {scope.market.upper()} 的内部自编演示条款，但相关内容涉及"
+                    "例外或适用条件，需人工核实，不能直接形成真实订单处理承诺。"
+                )
+            else:
+                review_answer = (
+                    f"找到 {scope.brand} {scope.market.upper()} 的政策资料，但相关条款存在"
+                    "来源冲突或适用条件需要人工解释，不能直接形成确定结论。"
+                    "请由客服对照引用来源复核；法定消费者权利仍需单独判断。"
+                )
+            return {
+                "final_answer": _with_demo_disclosure(review_answer, scope.brand),
+                "citations": [citation_from_chunk(chunk) for chunk in review_chunks[:6]],
+                "refused": True,
+            }
+        # Once no review condition matches, unrelated review sections are not
+        # answer evidence. Keep normal sections from the top-ranked document ahead
+        # of lower-ranked documents when its review section is removed.
+        preferred_document_id = chunks[0].document_id if chunks[0].requires_human_review else ""
+        chunks = [chunk for chunk in chunks if not chunk.requires_human_review]
+        if preferred_document_id:
+            chunks.sort(key=lambda chunk: chunk.document_id != preferred_document_id)
+        if not chunks:
+            return {
+                "final_answer": _with_demo_disclosure(
+                    "当前品牌、市场、商品类别或政策日期下没有可用的政策证据。"
+                    "请补充商品与订单日期，并转人工客服处理。",
+                    scope.brand,
+                ),
+                "citations": [],
+                "refused": True,
+                "retrieved_chunks": [],
+            }
     if tools and all(not tool.success for tool in tools):
         return {
             "final_answer": "暂时无法查到相关业务数据，请核对订单号或稍后重试。",
@@ -47,24 +122,28 @@ async def generate_node(state: AgentState, llm: LLMProvider) -> dict:
             "latency": latency,
         }
     evidence = (
-        "\n\n".join(f"[{c.chunk_id}] {c.title}\n{c.content}" for c in chunks[:6]) or "(无检索结果)"
+        "\n\n".join(
+            f"[{c.chunk_id}] {c.title} | {c.brand}/{c.market} | {c.policy_version} | "
+            f"{c.source_label or c.source_type}\n{c.content}"
+            for c in chunks[:6]
+        )
+        or "(无检索结果)"
+    )
+    evidence = (
+        f"政策范围：{scope.brand}/{scope.market}；日期：{scope.as_of or '未指定'}\n{evidence}"
     )
     tool_text = json.dumps([t.model_dump() for t in tools], ensure_ascii=False) if tools else "(无)"
-    intent = state.get("intent")
-    strategy = state.get("strategy") or RetrievalStrategy.DIRECT
     if isinstance(llm, OfflineLLMProvider):
-        answer, citation_ids = _offline_answer(state)
+        answer, citation_ids = _offline_answer(state, chunks)
         citations = [
-            Citation(
-                document_id=chunk.document_id,
-                title=chunk.title,
-                chunk_id=chunk.chunk_id,
-                section=chunk.section,
-            )
-            for chunk in chunks
-            if chunk.chunk_id in citation_ids
+            citation_from_chunk(chunk) for chunk in chunks if chunk.chunk_id in citation_ids
         ]
-        return {"final_answer": answer, "citations": citations, "refused": False}
+        return {
+            "final_answer": _with_demo_disclosure(answer, scope.brand),
+            "citations": citations,
+            "refused": False,
+            "retrieved_chunks": chunks,
+        }
     messages = [
         {"role": "system", "content": ANSWER_SYSTEM},
         {
@@ -81,7 +160,7 @@ async def generate_node(state: AgentState, llm: LLMProvider) -> dict:
     try:
         response = await llm.generate(
             messages,
-            temperature=0.2,
+            temperature=profile.temperature,
             max_tokens=700,
             response_format={"type": "json_object"},
         )
@@ -94,12 +173,7 @@ async def generate_node(state: AgentState, llm: LLMProvider) -> dict:
         )
         usage = TokenUsage()
     citations = [
-        Citation(
-            document_id=chunk.document_id,
-            title=chunk.title,
-            chunk_id=chunk.chunk_id,
-            section=chunk.section,
-        )
+        citation_from_chunk(chunk)
         for chunk in chunks
         if chunk.chunk_id in set(payload.citation_chunk_ids)
     ]
@@ -112,24 +186,29 @@ async def generate_node(state: AgentState, llm: LLMProvider) -> dict:
         total_tokens=prev_usage.total_tokens + usage.total_tokens,
     )
     return {
-        "final_answer": payload.answer,
+        "final_answer": _with_demo_disclosure(payload.answer, scope.brand),
         "citations": citations,
         "refused": payload.refused,
+        "retrieved_chunks": chunks,
         "latency": latency,
         "token_usage": merged,
     }
 
 
 async def refuse_node(state: AgentState) -> dict:
+    scope = state.get("policy_scope") or PolicyScope()
     return {
-        "final_answer": "这个问题超出电商客服范围，我无法协助。如需购物、订单、物流或售后帮助，请换个问题。",
+        "final_answer": _with_demo_disclosure(
+            "这个问题超出电商客服范围，我无法协助。如需购物、订单、物流或售后帮助，请换个问题。",
+            scope.brand,
+        ),
         "refused": True,
         "citations": [],
     }
 
 
 def _extractive_fallback(query: str, evidence: str, tool_text: str) -> str:
-    if evidence and evidence != "(无检索结果)":
+    if evidence and "(无检索结果)" not in evidence:
         snippet = evidence.split("\n", 1)[-1][:240].strip()
         return f"暂时无法生成完整答复。相关资料节选：\n\n> {snippet}\n\n请以原文为准。"
     if tool_text and tool_text != "(无)":
@@ -137,10 +216,21 @@ def _extractive_fallback(query: str, evidence: str, tool_text: str) -> str:
     return "暂时无法基于现有信息给出可靠答复，请补充相关信息或转人工。"
 
 
-def _offline_answer(state: AgentState) -> tuple[str, set[str]]:
+def _offline_answer(
+    state: AgentState, chunks: list[RetrievedChunk] | None = None
+) -> tuple[str, set[str]]:
     """Use only retrieved text or whitelisted tool fields when no LLM is configured."""
     strategy = state.get("strategy")
-    if strategy == RetrievalStrategy.DIRECT:
+    intent = state.get("intent")
+    scope = state.get("policy_scope") or PolicyScope()
+    is_social = bool(
+        intent
+        and intent.label in {IntentLabel.GREETING, IntentLabel.CHITCHAT}
+        and is_social_query(state["user_query"])
+    )
+    if strategy == RetrievalStrategy.DIRECT and (
+        not get_policy_profile(scope.brand).force_retrieval or is_social
+    ):
         return "你好，我可以帮你查看商品政策、订单、物流和售后问题。", set()
 
     for result in reversed(state.get("tool_results") or []):
@@ -186,17 +276,11 @@ def _offline_answer(state: AgentState) -> tuple[str, set[str]]:
                     set(),
                 )
         if result.name == "search_knowledge":
-            found = data.get("chunks") or []
-            if found and isinstance(found[0], dict):
-                item = found[0]
-                title = str(item.get("title") or "相关政策")
-                excerpt = str(item.get("content") or "").strip()[:260]
-                return (
-                    f"当前未配置生成模型。找到《{title}》中的资料节选，请核对原文：\n\n> {excerpt}",
-                    set(),
-                )
+            # The executor also exposes full policy chunks; use that path so the
+            # offline answer receives the same source/market citations as LLM answers.
+            break
 
-    chunks = state.get("retrieved_chunks") or []
+    chunks = chunks if chunks is not None else state.get("retrieved_chunks") or []
     if chunks:
         chunk = chunks[0]
         excerpt = chunk.content.strip()[:260]

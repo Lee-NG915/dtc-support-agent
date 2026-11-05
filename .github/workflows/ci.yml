@@ -49,6 +49,12 @@ jobs:
       - name: After-sales contract
         run: uv run python scripts/check_epig_after_sales_contract.py
 
+      - name: E-pig demo policy bundle
+        run: uv run python scripts/check_epig_policy.py
+
+      - name: E-pig policy retrieval eval
+        run: uv run python -m eval.runner --task epig-policy
+
       - name: Ruff format check
         run: uv run ruff format --check .
 

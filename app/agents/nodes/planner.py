@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from app.agents.state import AgentState
+from app.config.policy_profiles import get_policy_profile
 from app.core.exceptions import LLMOutputError, LLMProviderError
 from app.core.ids import new_id
 from app.prompts.planner import PLANNER_SYSTEM, PLANNER_USER
@@ -13,6 +14,7 @@ from app.providers.fake import OfflineLLMProvider
 from app.providers.json_parser import parse_model
 from app.schemas.agent import AgentPlan, PlanStep
 from app.schemas.chat import ActionProposal
+from app.schemas.retrieval import PolicyScope
 from app.skills.loader import match_skill
 from app.tools.permissions import WRITE_RISKS
 from app.tools.registry import ToolRegistry
@@ -167,6 +169,14 @@ def _knowledge_fallback(query: str, registry: ToolRegistry) -> AgentPlan:
 
 
 async def planner_node(state: AgentState, planner: Planner) -> dict:
+    scope = state.get("policy_scope") or PolicyScope()
+    if get_policy_profile(scope.brand).policy_only:
+        # Scoped policy brands provide evidence only. Generic demo order tools
+        # must not turn a policy answer into a return/refund/cancel action.
+        return {
+            "plan": _knowledge_fallback(state["user_query"], planner._registry),
+            "pending_action": None,
+        }
     confirmed = state.get("confirmed_action")
     if confirmed is not None:
         return {
