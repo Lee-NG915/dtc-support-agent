@@ -23,6 +23,7 @@ from app.retrieval.ingest import ingest_knowledge
 from app.retrieval.policy import corpus_fingerprint
 from app.retrieval.reranker import DocumentReranker
 from app.retrieval.vector import VectorRetriever
+from app.services.after_sales.execution import AfterSalesExecution
 from app.services.after_sales.service import AfterSalesWorkflow
 from app.services.chat_service import ChatService
 from app.services.seed import seed_demo_data
@@ -44,6 +45,7 @@ class AppContainer:
         vector_store=None,
         business_connector: BusinessConnector | None = None,
         after_sales_workflow: AfterSalesWorkflow | None = None,
+        after_sales_execution: AfterSalesExecution | None = None,
     ) -> None:
         self.settings = settings
         self.llm = llm
@@ -55,6 +57,7 @@ class AppContainer:
         self.vector_store = vector_store
         self.business_connector = business_connector
         self.after_sales_workflow = after_sales_workflow
+        self.after_sales_execution = after_sales_execution
 
     async def aclose(self) -> None:
         if self.business_connector is not None:
@@ -136,6 +139,16 @@ async def build_container(settings: Settings, seed: bool = False) -> AppContaine
         if settings.after_sales_enabled and business_connector is not None
         else None
     )
+    after_sales_execution = (
+        AfterSalesExecution(
+            settings=settings,
+            session_factory=session_factory,
+            connector=business_connector,
+            workflow=after_sales_workflow,
+        )
+        if after_sales_workflow is not None and business_connector is not None
+        else None
+    )
     if settings.mcp_enabled:
         specs = list(LOCAL_CATALOG)
         if settings.mcp_remote_url:
@@ -182,4 +195,5 @@ async def build_container(settings: Settings, seed: bool = False) -> AppContaine
         vector_store=store,
         business_connector=business_connector,
         after_sales_workflow=after_sales_workflow,
+        after_sales_execution=after_sales_execution,
     )

@@ -50,7 +50,7 @@ from app.repositories.models import (
 )
 from app.repositories.staff_repository import StaffRepository
 from app.retrieval.hybrid import HybridRetriever
-from app.schemas.after_sales import StaffActor
+from app.schemas.after_sales import AFTER_SALES_MARKETS, StaffActor
 from app.schemas.after_sales_workflow import (
     ApprovalView,
     ApproveRequest,
@@ -228,6 +228,23 @@ class AfterSalesWorkflow:
     # ------------------------------------------------------------------ sync
 
     async def sync(self, actor: StaffActor, market: str) -> SyncResponse:
+        """Staff-triggered supplement to the background service poll."""
+        return await self._sync_page(market, actor_staff_id=actor.staff_id, service_poll=False)
+
+    async def sync_service(self, market: str) -> SyncResponse:
+        """Background service poll.
+
+        This entry never invents a staff identity or an approval. Events carry
+        ``actor_staff_id=None`` and a ``service_poll`` reason so operator
+        auditing can distinguish an E-pig observation from a human action.
+        """
+        return await self._sync_page(market, actor_staff_id=None, service_poll=True)
+
+    async def _sync_page(
+        self, market: str, *, actor_staff_id: str | None, service_poll: bool
+    ) -> SyncResponse:
+        if market not in AFTER_SALES_MARKETS:
+            raise ValueError(f"unsupported after-sales market: {market}")
         async with self._session_factory() as session:
             cursor = await AfterSalesRepository(session).get_cursor(market)
             cursor_exists = cursor is not None
@@ -276,15 +293,16 @@ class AfterSalesWorkflow:
                         await repository.append_event(
                             case_id=case.case_id,
                             event_type="case_received",
-                            actor_staff_id=actor.staff_id,
+                            actor_staff_id=actor_staff_id,
                             old_state=None,
                             new_state=case.state,
                             entity_type="case",
                             entity_id=str(case.case_id),
-                            reason=(
+                            reason=_sync_event_reason(
                                 "remote_ticket_unverified"
                                 if case.state == _REMOTE_VERIFICATION_STATE
-                                else None
+                                else None,
+                                service_poll=service_poll,
                             ),
                         )
                         created += 1
@@ -321,15 +339,16 @@ class AfterSalesWorkflow:
                         event_type=(
                             "remote_ticket_unverified" if state_changed else "remote_updated"
                         ),
-                        actor_staff_id=actor.staff_id,
+                        actor_staff_id=actor_staff_id,
                         old_state=old_state,
                         new_state=existing.state,
                         entity_type="case",
                         entity_id=str(existing.case_id),
-                        reason=(
+                        reason=_sync_event_reason(
                             "remote_ticket_observed_without_receipt"
                             if state_changed
-                            else "remote_projection"
+                            else "remote_projection",
+                            service_poll=service_poll,
                         ),
                     )
                     updated += 1
@@ -942,6 +961,172 @@ class AfterSalesWorkflow:
             raise DatabaseError("failed to persist the rejection") from exc
         return await self.get_case_detail(market, case_id)
 
+    # --------------------------------------------------------- execution guard
+
+    @staticmethod
+    def _requester_problems(
+        *,
+        market: str,
+        requester_snapshot: object,
+        requester_actor: StaffActor | None,
+    ) -> list[str]:
+        if requester_actor is None or not isinstance(requester_snapshot, dict):
+            return ["requester_authorization_changed"]
+        if (
+            sorted(requester_actor.roles) != requester_snapshot.get("roles")
+            or sorted(requester_actor.allowed_markets) != requester_snapshot.get("allowed_markets")
+            or not requester_actor.has_role("support")
+            or not requester_actor.may_read_market(market)
+        ):
+            return ["requester_authorization_changed"]
+        return []
+
+    @staticmethod
+    def _decider_problems(
+        *,
+        market: str,
+        approval: AfterSalesApprovalRow,
+        decider_actor: StaffActor | None,
+    ) -> list[str]:
+        if (
+            decider_actor is None
+            or approval.decided_by_staff_id is None
+            or decider_actor.staff_id == approval.requester_staff_id
+            or not decider_actor.has_role("approver")
+            or not decider_actor.may_read_market(market)
+        ):
+            return ["decider_authorization_changed"]
+        return []
+
+    def final_execution_problems(
+        self,
+        *,
+        market: str,
+        approval: AfterSalesApprovalRow,
+        snapshot: dict[str, Any],
+        requester_actor: StaffActor | None,
+        decider_actor: StaffActor | None,
+        now: datetime,
+    ) -> list[str]:
+        """Local-only fence re-run inside the dispatch transaction.
+
+        It deliberately performs no network reads, so it can run while the
+        operation row is locked by the dispatching write. Any problem means
+        the network validation that happened just before is stale.
+        """
+        problems: list[str] = []
+        if approval.status not in {"approved", "executing"}:
+            problems.append("approval_not_executable")
+        if as_utc(approval.expires_at) <= now:
+            problems.append("approval_expired")
+        problems.extend(
+            self._requester_problems(
+                market=market,
+                requester_snapshot=snapshot.get("requester"),
+                requester_actor=requester_actor,
+            )
+        )
+        problems.extend(
+            self._decider_problems(
+                market=market,
+                approval=approval,
+                decider_actor=decider_actor,
+            )
+        )
+        return list(dict.fromkeys(problems))
+
+    async def revalidate_execution_context(
+        self,
+        *,
+        market: str,
+        case: AfterSalesCaseRow,
+        approval: AfterSalesApprovalRow,
+        draft: AfterSalesDraftRow,
+        snapshot: dict[str, Any],
+        materials: list[AfterSalesMaterialRow],
+        requester_actor: StaffActor | None,
+        decider_actor: StaffActor | None,
+        now: datetime,
+    ) -> list[str]:
+        """Re-run the 2b approval checks immediately before a dispatch.
+
+        The immutable approval snapshot is authoritative for market/order
+        identity. The current case is only compared against it; it never
+        substitutes for the approved values. ``_approval_problems`` remains
+        the single business-context validator.
+        """
+        problems: list[str] = []
+        snapshot_case = snapshot.get("case")
+        snapshot_order = snapshot.get("order")
+        snapshot_draft = snapshot.get("draft")
+        snapshot_evidence = snapshot.get("evidence")
+        snapshot_requester = snapshot.get("requester")
+        if not all(
+            isinstance(item, dict)
+            for item in (
+                snapshot_case,
+                snapshot_order,
+                snapshot_draft,
+                snapshot_evidence,
+                snapshot_requester,
+            )
+        ):
+            return ["snapshot_invalid"]
+        case_snapshot = cast(dict[str, Any], snapshot_case)
+        order_snapshot = cast(dict[str, Any], snapshot_order)
+        draft_snapshot = cast(dict[str, Any], snapshot_draft)
+        evidence_snapshot = cast(dict[str, Any], snapshot_evidence)
+        requester_snapshot = cast(dict[str, Any], snapshot_requester)
+
+        problems.extend(
+            self.final_execution_problems(
+                market=market,
+                approval=approval,
+                snapshot=snapshot,
+                requester_actor=requester_actor,
+                decider_actor=decider_actor,
+                now=now,
+            )
+        )
+        if approval.snapshot_sha256 != approval_snapshot_digest(snapshot):
+            problems.append("snapshot_digest_mismatch")
+        if approval.requester_staff_id != requester_snapshot.get("staff_id"):
+            problems.append("requester_authorization_changed")
+
+        identity_mismatch = (
+            case_snapshot.get("case_id") != case.case_id
+            or case_snapshot.get("market") != case.market
+            or case_snapshot.get("request_id") != case.request_id
+            or case_snapshot.get("order_id") != case.order_id
+            or order_snapshot.get("order_id") != case_snapshot.get("order_id")
+            or case_snapshot.get("market") != market
+        )
+        if identity_mismatch:
+            problems.append("case_context_changed")
+            return list(dict.fromkeys(problems))
+
+        if (
+            draft_snapshot.get("draft_id") != draft.draft_id
+            or str(draft_snapshot.get("version")) != str(draft.version)
+            or draft_snapshot.get("action") != draft.action
+            or draft_snapshot.get("consumer_reply") != draft.consumer_reply
+            or draft.status not in {"approved", "executing"}
+        ):
+            problems.append("draft_context_changed")
+        if not evidence_snapshot.get("policy_version"):
+            problems.append("policy_changed")
+
+        problems.extend(
+            await self._approval_problems(
+                market=market,
+                case=case,
+                snapshot=snapshot,
+                materials=materials,
+                requester_actor=requester_actor,
+            )
+        )
+        return list(dict.fromkeys(problems))
+
     # --------------------------------------------------------------- internal
 
     async def _order_or_none(self, market: str, order_id: str) -> ServiceOrder | None:
@@ -1226,17 +1411,13 @@ class AfterSalesWorkflow:
             elif _canonical(current_proof) != _canonical(snapshot["delivery_proof"]):
                 problems.append("delivery_proof_changed")
 
-        if requester_actor is None:
-            problems.append("requester_authorization_changed")
-        else:
-            expected_requester = snapshot["requester"]
-            if (
-                sorted(requester_actor.roles) != expected_requester["roles"]
-                or sorted(requester_actor.allowed_markets) != expected_requester["allowed_markets"]
-                or not requester_actor.has_role("support")
-                or not requester_actor.may_read_market(market)
-            ):
-                problems.append("requester_authorization_changed")
+        problems.extend(
+            self._requester_problems(
+                market=market,
+                requester_snapshot=snapshot.get("requester"),
+                requester_actor=requester_actor,
+            )
+        )
 
         if order is not None:
             categories, missing = _trusted_categories(order, self._categories)
@@ -1956,6 +2137,13 @@ def _operation_view(operation: AfterSalesOperationRow) -> OperationView:
         receipt=receipt if isinstance(receipt, dict) else None,
         last_error_code=operation.last_error_code,
         failure_reason=operation.failure_reason,
+        lookup_count=operation.lookup_count,
+        reconciliation_state=operation.reconciliation_state,
+        reconcile_started_at=(
+            as_utc(operation.reconcile_started_at)
+            if operation.reconcile_started_at is not None
+            else None
+        ),
         created_at=as_utc(operation.created_at),
         updated_at=as_utc(operation.updated_at),
     )
@@ -1973,3 +2161,10 @@ def _event_view(event: AfterSalesEventRow) -> EventView:
         reason=event.reason,
         created_at=as_utc(event.created_at),
     )
+
+
+def _sync_event_reason(base: str | None, *, service_poll: bool) -> str | None:
+    """Keep the audit reason explicit without changing staff-triggered reasons."""
+    if not service_poll:
+        return base
+    return f"service_poll:{base}"[:128] if base else "service_poll"

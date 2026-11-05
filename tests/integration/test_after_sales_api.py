@@ -512,13 +512,20 @@ def test_no_public_after_sales_write_route_is_exposed(tmp_path: Path) -> None:
             if path.startswith("/api/v1/after-sales")
         }
         assert after_sales_methods
-        # 2b exposes internal workflow POSTs, but never a direct ticket or
-        # execution endpoint. Approval only prepares a persisted operation.
+        # Internal workflow POSTs are allowed, but there is still no direct
+        # ticket or execution endpoint. DTC-2c adds only the operator read
+        # surface: a sanitised list/detail and one bounded receipt lookup.
         assert not any(
-            marker in path
-            for path in after_sales_methods
-            for marker in ("tickets", "execute", "/operations")
+            marker in path for path in after_sales_methods for marker in ("tickets", "execute")
         )
+        operator_paths = {
+            path: methods for path, methods in after_sales_methods.items() if "/operations" in path
+        }
+        assert operator_paths == {
+            "/api/v1/after-sales/{market}/operations": {"get"},
+            "/api/v1/after-sales/{market}/operations/{operation_id}": {"get"},
+            "/api/v1/after-sales/{market}/operations/{operation_id}/lookup": {"post"},
+        }
         assert {method for methods in after_sales_methods.values() for method in methods} <= {
             "get",
             "post",

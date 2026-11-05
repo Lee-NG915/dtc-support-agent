@@ -1,6 +1,6 @@
 # DTC 内部售后流程：实现设计与执行计划
 
-更新日期：2026-11-06。状态：已确认产品范围内的实现方案；2a/2b已实现并通过各章本地范围验收，Worker及页面等其余能力按下文分阶段实施，阶段结果在[实施记录](../../../records/after-sales/dtc-workflow.md)持续记录。产品行为/状态机仍以[产品蓝图](product-blueprint.md)为正本，线上E-pig字段仍以[OpenAPI](../../../../contracts/epig-after-sales/v1/openapi.json)为正本。
+更新日期：2026-11-06。状态：已确认产品范围内的实现方案；2a/2b及2c执行核心已实现并通过各章本地范围验收，跨仓HTTP、页面及其余能力按下文分阶段实施，阶段结果在[实施记录](../../../records/after-sales/dtc-workflow.md)持续记录。产品行为/状态机仍以[产品蓝图](product-blueprint.md)为正本，线上E-pig字段仍以[OpenAPI](../../../../contracts/epig-after-sales/v1/openapi.json)为正本。
 
 ## 目标与分步落点
 
@@ -96,7 +96,7 @@ AI建议与人工审批分离：2b先交付手工草稿及真实证据选择，�
 
 ## DTC-2c：执行、租约与恢复（实施前约束）
 
-Worker作为同一代码库的独立进程，不引入Celery或消息代理。周期轮询已配置市场并领取prepared/到期重试/需对账操作；有界批次、超时和退避，退出时关闭Connector/DB。每次领取持久owner/epoch/lease_until，所有提交以owner+epoch+状态条件更新。租约不是撤销外部调用：过期的dispatching先对账，不能直接重发。
+Worker作为同一代码库的独立进程，不引入Celery或消息代理。每轮先对配置服务市场各拉取有界一页E-pig feed，复用2b原子游标；服务接收actor_staff_id为空并注明service poll，不伪造员工身份。单市场失败不推进游标，记录安全错误并继续其他市场和已有批准操作。员工手工同步是补充，不能替代后台拉取。随后领取prepared/到期重试/需对账操作；有界批次、超时和退避，退出时关闭Connector/DB。每次领取持久owner/epoch/lease_until，所有提交以owner+epoch+状态条件更新。租约不是撤销外部调用：过期的dispatching先对账，不能直接重发。
 
 第一次派遣前验证批准、权限、所有业务版本；持久dispatching/attempt/event后才发同key同payload。成功响应仍经按ID/按键读回并核验全部审批字段和receipt；匹配才原子succeeded/consumed/completed。写超时、丢响应、读回暂404、IN_FLIGHT或未知协议错误进入reconciliation_required，不能标普通失败或换key。恢复时即使批准过期也先查原结果；查到则消耗旧批准。只有契约允许同key重试且当前批准/版本仍有效才进入retry_wait；次数或对账时间上限后保留人工待核验，不盲目把unknown转failed。
 
@@ -118,9 +118,21 @@ operator只能请求继续查询、查看脱敏进度及登记有来源的对账
 
 ## 后续AI建议与员工工作台（实施前设计）
 
-在2b/2c基础行为验收后实施。员工不应复制数据库ID才能选证据，因此计划增加本case上下文的只读evidence入口：服务器从当前订单SKU映射、市场和政策日期派生scope，返回真实可用chunk/来源/版本与缺资料原因。support/approver/auditor按同一市场授权，不接受客户端policy_version或商品范围覆盖。该内部读取不新增E-pig wire操作。
+在2b/2c基础行为验收后实施。员工不应复制数据库ID才能选证据，因此计划增加本case上下文的只读evidence入口：服务器从当前订单SKU映射、市场和政策日期派生scope，返回真实可用chunk/来源/版本与缺资料原因。support/approver/auditor按同一市场授权，不接受客户端policy_version或商品范围覆盖。该内部读取不新增E-pig wire操作。详情结果还需要本case的只读ticket入口：按已关联远端ID经现有Connector读真实工单，核验market/order/request及receipt，有本地operation时继续匹配原payload。仅support/approver/auditor可读；operator不能借此看回复。读取不伪造本地批准或推进完成，返回查询时间；失败时UI只能把此前已核验回执标陈旧，不能当最新履行状态。复用源ServiceTicket，不新增E-pig接口。
 
 AI建议入口仅support可用，带expected_revision；复用已有检索与LLMProvider，关闭通用业务工具。网络/模型调用在事务外，固定服务器订单/材料/政策上下文；候选action/reply/summary及引用需白名单校验，引用必须属于本次真实匹配chunk。模型内容不改变身份、材料真伪、审批或操作。成功只保存一个新的editing草稿版本，保存前复用业务校验重读staff角色/市场并比较生成时订单/材料/附件/政策指纹，再次CAS；即使case revision未变，权限变化也403、业务上下文变化409，不保存候选且不覆盖；无证据/冲突/模型故障明确返回未生成。默认OfflineLLM/Fake，真实模型评测未授权前不调用。建议仍经过人工修改、送审、不同人批准与Worker核验，不自动形成工单。
+
+实施时采用三个内部入口，复用现有case路径，不增加E-pig wire操作：
+
+| 计划入口 | 输入与结果 | 守卫 |
+|---|---|---|
+| `GET /after-sales/{market}/cases/{case_id}/evidence` | 当前可信范围、真实政策chunk及来源/版本、查询时间、缺资料原因 | support/approver/auditor；市场、SKU类别与日期由服务端派生，禁止客户端扩大范围 |
+| `GET /after-sales/{market}/cases/{case_id}/ticket` | 实际远端工单、查询时间；尚无工单明确未找到 | 同上；核对case身份、receipt及存在的原operation payload，读取不改审批或完成状态 |
+| `POST /after-sales/{market}/cases/{case_id}/suggestion` | 仅expected_revision；成功返回保存后的case详情 | support；有界结构化生成、严格候选/引用验证，保存前再次读取员工与业务指纹并CAS |
+
+完整路径含既有`/api/v1`前缀。模型上下文只包含该case必要事实和已过滤的政策，不传凭证、其他市场或业务写工具；消费者文本按资料处理。复用`LLMProvider.generate(response_format={"type":"json_object"})`，非法JSON/未知字段/动作/伪引用返回安全错误，不自动修补成可审批内容。运行时`OfflineLLMProvider`未配置生成模型时明确提示不可用并允许人工草稿，不把测试JSON展示为AI建议；注入Fake用于工程验收，真实质量保留未测。生成期间不持有数据库事务；保存前复用`StaffRepository.get_current_actor`及当前源数据核验。无需新增模型代理框架、表或工作流引擎。
+
+建议成功必须至少有一条本次有效引用，不能让空集合通过子集检查。审批人需看到送审时冻结的依据：在既有授权case详情的ApprovalView增加白名单化snapshot展示，包含当时的草稿、订单、材料、证据/版本、权限与到期依据；从已存不可变snapshot读取，不以当前case拼装，不返回凭据或执行密钥。operator仍无该业务详情权限。这是当前摘要字段不足的最小补充，不另建审批系统。
 
 前端复用现有React/TypeScript/Vite、CSS变量和lucide，采用独立员工工作台入口，不引入router/状态管理/UI框架。员工凭证只在内存，刷新重新认证；/me提供角色和允许市场。退出、401/403或身份/市场切换时清除详情、附件blob、草稿和聊天内存，并中止旧请求，避免迟到响应跨身份回填。业务文本/回复/凭证不保存localStorage；原上游demo聊天的本地历史不混入员工模式。
 
@@ -141,10 +153,44 @@ prepared派遣前重验申请人/审批人仍启用、未过期、角色/市场�
 
 核验以operation持久payload及其绑定的原始不可变approval snapshot为准；wire payload没有market/order_id，这两项取原始snapshot的case.market/order.order_id，不能用当前可被同步更新的case替代。核对market/order/request、action/reply、draft/approval/policy/order版本及receipt内部关联均匹配。创建201/重放200仍经GET读回；未知写协议错误与timeout都lookup-first。只在匹配后同事务operation succeeded、原draft/approval consumed、case completed与ticket投影/event。case revision因保存新candidate变化不应抹掉已发生的旧结果；完成事务读取当前revision并条件提交，不能消耗新candidate或重新计算原wire参数。
 
-lookup为IN_FLIGHT或暂不可见时保持未知，次数与时间均有限退避。RETRY_CREATE_WITH_SAME_KEY只允许当前原批准/上下文仍有效时回到retry_wait，永远原key原payload，不能清空指纹或新建operation。重试上限/信息不足进入manual_review且停止自动派遣，保留可审计记录。超过期限不证明外部失败；真正明确无外部效果的拒绝才failed。reconciliation状态复用operation字段及event历史表达产品7.6，不新增另一个队列。
+lookup为IN_FLIGHT或暂不可见时保持未知，次数与时间均有限退避。RETRY_CREATE_WITH_SAME_KEY只允许当前原批准/上下文仍有效时回到retry_wait，永远原key原payload，不能清空指纹或新建operation。重试上限/信息不足进入manual_review且停止自动派遣，保留可审计记录。超过期限不证明外部失败；真正明确无外部效果的拒绝才failed；若此前已有未知尝试，后一次401/400等只证明该次被拒绝，不能据此释放整笔操作的活跃限制，仍须核验原结果或转人工。原批准过期/撤权时只停止新派遣，未知历史不能被改写成从未发生。reconciliation状态复用operation字段及event历史表达产品7.6，不新增另一个队列。
 
 远端观察已有ticket但无可匹配本地operation/批准链时，可以读取验证外部事实，但不能伪造本地审批或把不匹配结果消耗为本操作成功；保持人工核验并封锁新写。operator只经脱敏运行列表/详情及“继续查询”入口推进查证，不能提交成功标志或自造receipt。排队重试不得改变payload/key，日志与metrics标签不包含回复/描述、认证或原请求体。
 
 交付仓内专用PG runner，生命周期参考已验证E-pig方案：新随机命名/端口/密码容器、最终TCP目标SQL就绪、显式0001～head迁移、仅传本次连接、子进程组有界结束、finally只删本容器/卷。默认pytest仍离线不隐式启动Docker，专用入口缺Docker明确失败；将2b现有workflow测试的专用PG适配由临时验收产物收敛到可重跑入口，生产实现不因测试关闭pool或改变事务。
 
 2c验证至少包括：两个真实PG连接竞争领取（确认不同session/有界屏障）、租约过期与迟到提交、外部成功但本地结果落库失败、同键同payload恢复、IN_FLIGHT/暂404/失效批准先对账、有效批准的有限重试、错误回执拒绝、无本地批准链转人工、事件重放/游标事务回滚。Fake用于可控故障，实际跨仓HTTP/进程重启在两仓独立合成库执行，不用给Fake新增一套生产持久平台。CLI/health/操作指南仅在入口实际存在并运行后更新，不预填性能/SLA或真实试用结果。
+
+
+## 评测与本地交付窗口（实施前方案）
+
+评测先分清要证明的事：工程测试验证权限、事务与恢复；Fake评测验证流程和评分器可运行；真实模型评测才讨论输出/引用质量。现有34条政策固定集作为开发回归，不能冒称完整Agent/保留集；旧e2e16条为upstream_demo问答，答案中出现订单号也不等于实际工具调用正确。上游MEASURED数据不转为本fork指标。
+
+当前代码审查发现旧`generation/e2e`任务不带`--llm`仍会调用模型，e2e还读取环境并seed；在隔离/显式真实模型开关改造前不执行。新入口默认Fake/离线、Settings(_env_file=None)/专用数据，不使用现有DB或凭据；真实模型必须显式Provider/模型与累计预算/凭据配置，预算未确认不新增收费调用。既有历史真实生成节点结果保留来源边界，不外推完整图或Faithfulness已测。
+
+最小集合：固定10个合成种子案例绑定六故事，另加内部驳回vs正式reject、签收证明不足、并发审批和未知中候选修改。保留34政策开发回归；在prompt/知识/参数冻结后运行12条独立保留样例，包含政策、多条件订单上下文、草稿、无证据/注入与恢复边界。保留集不参与调参，若据其失败修改方案，它即成为回归集，下一轮另建未用样例，不靠删例美化通过率。
+
+报告至少记录源提交/数据digest、Fake或Provider/模型、提示词/知识版本、每例期望与禁止行为、实际工具名/参数/调用次数、引用支持性/转人工、业务状态/回执、失败分类、成本和延迟（仅实测）。人工按事实正确、证据充分和可执行性逐例裁决，不能只靠关键词自评。缺模型或实际试用时明确未测，不计算虚构效率提升。完整图与Faithfulness必须有自己的运行证据，不能由生成节点22例或确定性门控12例拼出模型全链路通过。
+
+交付复用Docker/现有应用定义，目标是两仓独立合成数据库、显式迁移、API/Worker/前端、健康与版本配置可核对；不共享业务表、不新增微服务/队列。补干净安装/升级、备份还原、受控故障恢复、日志脱敏和演示脚本，保留实际命令/失败/未测。生产部署、真实客户试用和未授权付费评测不在本次默认授权内；本地完整演示与真实采用分别验收。
+
+
+## 从送审到prepared：2b源码与小实验
+
+客服修改回复后，主管先前的批准为什么不能继续用？因为批准针对的是“这一版材料和这一段回复”。这里的快照就是把审批时看到的订单、附件、政策、人工核验与草稿版本冻结保存；摘要用于发现版本差异，不是代替真实身份或给模型授予权限。
+
+先读[内部路由](../../../../app/api/routes/after_sales_workflow.py)的submit_draft/approve，再读[业务服务](../../../../app/services/after_sales/service.py)的submit_draft/approve与_approval_problems，最后看[仓储](../../../../app/repositories/after_sales_repository.py)的cas_case/advance_cursor。条件更新类似前端提交表单时带版本号，但正确性来自数据库`WHERE revision=...`只有一方能更新，而不是浏览器按钮被禁用。游标推进和本批诉求同事务，因此失败不能只推进游标把未保存记录跳过去。
+
+批准返回prepared只说明参数已冻结、等待执行，不表示工单存在。[payload模块](../../../../app/services/after_sales/payload.py)从原审批快照生成wire字段，不能让页面再传一份随时变化的参数。实际建单与回执由2c负责；内部驳回只把工作退给客服，不发送消费者回复。
+
+在根目录运行`.venv/bin/pytest -q tests/integration/test_after_sales_workflow.py -k 'approval_prepares or internal_rejection or concurrent_empty_sync'`。预期：批准只准备一笔操作且Fake create调用0；内部驳回无外部工单；两次空页同步只一方推进revision。这条默认命令使用临时SQLite，不当作PG成绩，真实PG独立结果见实施记录；仓内专用入口见下节。阅读后应能解释为何未知结果不换key、为何新candidate不能覆盖旧执行版本、为何政策或签收材料变化需要重新审核。
+
+## 从prepared到回执：2c源码与小实验
+
+Worker在发送建单后被杀，数据库可能只知道“已经开始派遣”。租约是一次领取的有效期限，epoch是领取版本：旧进程即使迟到，也不能覆盖新领取者的结果；它们不能撤回已经发出的HTTP，因此恢复仍要用原key查询真实工单。
+
+先读[Worker入口](../../../../app/worker/main.py)的ContainerWorkerRuntime/run_worker_loop，看到每市场有界同步、执行和资源关闭；再读[执行服务](../../../../app/services/after_sales/execution.py)的_claim_due、_dispatch、_lookup、_complete。派遣前检查批准与当前材料，未知后保留原批准/payload进行查询；找到回执后核对对象和内容，同事务消费原草稿/批准并记录完成。operator的lookup只继续查询，不重新授权POST；manual_review保持人工边界。
+
+仓库根目录运行`.venv/bin/python -m app.worker --help`可查看实际参数，不会派遣。仅在明确配置的专用合成环境、显式迁移后运行`--once --markets au`；Worker读取运行配置，不能把这条派遣参数直接用于已有业务库的小实验。无需业务凭据的数据库实验使用`.venv/bin/python scripts/run_after_sales_pg.py`：需Docker与项目依赖，会自行新建随机PG容器、运行固定测试并清理所属资源，不接收任意库URL/命令，也不读取.env。
+
+预期观察三组真实进程/backend：竞争只一个owner，过期重领epoch增加且旧提交被拒，进程被杀后租约仍可恢复。报告中的pg_adapted/pg_concurrency/pg_migration与sqlite_migration分别计数；默认pytest的PG skip不是通过。实际版本、结果、失败历史与跨仓/浏览器边界见[实施记录](../../../records/after-sales/dtc-workflow.md)。阅读后应能说明：为什么需要外部幂等、为什么未知时不能换key、为什么后来一次明确拒绝不能抹去更早未知、为什么批准与completed是不同事实。

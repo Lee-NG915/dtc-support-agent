@@ -315,6 +315,16 @@ class AfterSalesOperationRow(Base):
     receipt_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # DTC-2c: bounded receipt reconciliation. The operator-facing status stays
+    # on the operation row; no second reconciliation queue or task framework.
+    lookup_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Number of dispatch attempts whose external effect was never disproven.
+    # Any value above zero means a later rejection cannot fail the operation.
+    unknown_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reconciliation_state: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reconcile_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -34,6 +34,11 @@ from app.schemas.after_sales import (
     AFTER_SALES_MARKETS,
     READ_ROLES,
     StaffActor,
+    is_valid_opaque_id,
+)
+from app.schemas.after_sales_worker import (
+    WorkerOperationDetail,
+    WorkerOperationListResponse,
 )
 from app.schemas.after_sales_workflow import (
     APPROVE_REJECT_ROLES,
@@ -44,10 +49,12 @@ from app.schemas.after_sales_workflow import (
     DraftCreateRequest,
     EventListResponse,
     MaterialCreateRequest,
+    OperationStatus,
     RejectRequest,
     SubmitRequest,
     SyncResponse,
 )
+from app.services.after_sales.execution import AfterSalesExecution
 from app.services.after_sales.service import AfterSalesWorkflow
 from app.services.container import AppContainer
 
@@ -65,6 +72,17 @@ def get_after_sales_workflow(
             raise AfterSalesDisabledError()
         raise ConnectorUnavailableError()
     return workflow
+
+
+def get_after_sales_execution(
+    container: AppContainer = Depends(get_container),
+) -> AfterSalesExecution:
+    execution = container.after_sales_execution
+    if execution is None:
+        if not container.settings.after_sales_enabled:
+            raise AfterSalesDisabledError()
+        raise ConnectorUnavailableError()
+    return execution
 
 
 @router.get("/{market}/cases", response_model=CaseListResponse)
@@ -211,6 +229,53 @@ async def reject(
     return await workflow.reject(actor, market, case_id, approval_id, request)
 
 
+# ----------------------------------------------------------- operator views
+
+
+@router.get("/{market}/operations", response_model=WorkerOperationListResponse)
+async def list_operations(
+    market: str,
+    status: OperationStatus | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=100_000),
+    actor: StaffActor = Depends(get_required_staff),
+    execution: AfterSalesExecution = Depends(get_after_sales_execution),
+) -> WorkerOperationListResponse:
+    _authorize_operator(actor, market)
+    return await execution.list_operations(market, status=status, limit=limit, offset=offset)
+
+
+@router.get(
+    "/{market}/operations/{operation_id}",
+    response_model=WorkerOperationDetail,
+)
+async def get_operation(
+    market: str,
+    operation_id: str = Path(),
+    actor: StaffActor = Depends(get_required_staff),
+    execution: AfterSalesExecution = Depends(get_after_sales_execution),
+) -> WorkerOperationDetail:
+    _authorize_operator(actor, market)
+    _validate_operation_id(operation_id)
+    return await execution.get_operation(market, operation_id)
+
+
+@router.post(
+    "/{market}/operations/{operation_id}/lookup",
+    response_model=WorkerOperationDetail,
+)
+async def continue_operation_lookup(
+    market: str,
+    operation_id: str = Path(),
+    actor: StaffActor = Depends(get_required_staff),
+    execution: AfterSalesExecution = Depends(get_after_sales_execution),
+) -> WorkerOperationDetail:
+    """Run one bounded receipt lookup. Never authorizes a new POST."""
+    _authorize_operator(actor, market)
+    _validate_operation_id(operation_id)
+    return await execution.continue_lookup(market, operation_id)
+
+
 # ------------------------------------------------------------------ helpers
 
 
@@ -237,6 +302,17 @@ def _authorize_approver(actor: StaffActor, market: str) -> None:
     _authorize_market(actor, market)
     if not actor.has_role(*APPROVE_REJECT_ROLES):
         raise ForbiddenRoleError()
+
+
+def _authorize_operator(actor: StaffActor, market: str) -> None:
+    _authorize_market(actor, market)
+    if not actor.has_role("operator"):
+        raise ForbiddenRoleError()
+
+
+def _validate_operation_id(value: str) -> None:
+    if not is_valid_opaque_id(value):
+        raise InvalidRequestError("invalid operation_id")
 
 
 def _validate_approval_id(value: str) -> None:

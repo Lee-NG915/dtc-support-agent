@@ -102,6 +102,13 @@ def test_sqlite_upgrade_from_empty_and_0002_is_repeatable(tmp_path: Path) -> Non
     assert ("uq_after_sales_approval_pending_draft", 1) in _indexes(
         database_path, "after_sales_approval"
     )
+    operation_columns = _columns(database_path, "after_sales_operation")
+    assert {
+        "lookup_count",
+        "unknown_attempts",
+        "reconciliation_state",
+        "reconcile_started_at",
+    } <= set(operation_columns)
 
 
 def test_sqlite_downgrade_removes_the_staff_table(tmp_path: Path) -> None:

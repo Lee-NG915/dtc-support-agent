@@ -33,11 +33,21 @@ DraftStatus = Literal[
     "editing",
     "pending_approval",
     "approved",
+    "executing",
+    "consumed",
     "rejected",
     "invalidated",
     "superseded",
 ]
-ApprovalStatus = Literal["pending", "approved", "rejected", "expired", "invalidated"]
+ApprovalStatus = Literal[
+    "pending",
+    "approved",
+    "executing",
+    "consumed",
+    "rejected",
+    "expired",
+    "invalidated",
+]
 OperationStatus = Literal[
     "prepared",
     "dispatching",
@@ -183,6 +193,9 @@ class OperationView(BaseModel):
     receipt: dict[str, object] | None
     last_error_code: str | None
     failure_reason: str | None
+    lookup_count: int = 0
+    reconciliation_state: str | None = None
+    reconcile_started_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

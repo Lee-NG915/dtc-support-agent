@@ -108,6 +108,19 @@ class Settings(BaseSettings):
     after_sales_approval_ttl_seconds: int = Field(default=14400, ge=60, le=86400)
     after_sales_sync_batch_limit: int = Field(default=50, ge=1, le=200)
 
+    # DTC-2c worker limits. The worker is a separate process over the same
+    # database; these values bound one cycle and one external attempt.
+    after_sales_worker_markets: str = ""
+    after_sales_worker_batch_limit: int = Field(default=10, ge=1, le=100)
+    after_sales_worker_poll_interval_seconds: float = Field(default=2.0, ge=0.1, le=60.0)
+    after_sales_worker_lease_seconds: int = Field(default=60, ge=10, le=3600)
+    after_sales_worker_operation_timeout_seconds: float = Field(default=20.0, ge=1.0, le=300.0)
+    after_sales_worker_lookup_budget: int = Field(default=10, ge=1, le=100)
+    after_sales_worker_write_budget: int = Field(default=3, ge=1, le=10)
+    after_sales_worker_retry_base_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
+    after_sales_worker_retry_max_seconds: float = Field(default=60.0, ge=1.0, le=3600.0)
+    after_sales_worker_reconciliation_max_seconds: int = Field(default=86400, ge=60, le=604800)
+
     @field_validator("after_sales_sku_category_map")
     @classmethod
     def validate_sku_category_map(cls, value: str) -> str:

@@ -15,7 +15,7 @@
 | `app/tools/` / `app/repositories/` | 工具调用、权限规则、持久数据访问 |
 | `app/skills/` | 应用业务技能配置；不加载本次开发助手技能 |
 | `frontend/package.json` | React/TypeScript/Vite/Vitest 脚本 |
-| `alembic/` / `docker-compose.yml` | 既有迁移与环境定义；新增 Worker 仍在方案中 |
+| `alembic/` / `docker-compose.yml` | 既有环境定义；迁移0005与独立Worker已实现，Compose整合仍待交付 |
 | `tests/` / `eval/` | 工程测试与模型评测 |
 | `.agents/skills/` | 本仓开发助手技能正本，随分支版本管理 |
 
@@ -61,4 +61,6 @@ Docker已启动，Postgres16官方镜像用于专用隔离测试；尚不代表D
 DTC-2a增量（2026-11-06，本地验收）：新增`app/connectors/`、staff repository与`/api/v1/after-sales`只读路由，`AFTER_SALES_ENABLED`缺省false；启用后员工Bearer认证也保护旧chat。迁移入口不读取.env，显式设置`ALEMBIC_DATABASE_URL`后运行`uv run alembic upgrade head`；PG启动不create_all。合成员工工具`uv run python -m scripts.seed_after_sales_staff --database-url <新的本地SQLite URL>`只作用新库，凭据默认写忽略目录0600新文件，不打印。命令细节和证据见[流程设计](../docs/architecture/modules/after-sales/dtc-workflow.md)与[实施记录](../docs/records/after-sales/dtc-workflow.md)；该2a范围不含审批/Worker；当前2b状态见下节。
 
 
-DTC-2b增量（2026-11-06，本地验收）：`app/services/after_sales/`、after_sales_repository和after_sales_workflow routes提供持久同步、材料/证据、版本草稿、审批及prepared操作；迁移0004新增业务表。`POST /api/v1/after-sales/{market}/cases/sync`为support入口，批准不调用外部create。Worker/租约执行与员工页面仍待后续章节；实际验收分层见流程记录，不能把prepared称为已建单。
+DTC-2b增量（2026-11-06，本地验收）：`app/services/after_sales/`、after_sales_repository和after_sales_workflow routes提供持久同步、材料/证据、版本草稿、审批及prepared操作；迁移0004新增业务表。`POST /api/v1/after-sales/{market}/cases/sync`为support入口，批准不调用外部create。Worker/租约执行已完成2c核心本地范围验收，员工页面仍待后续章节；实际验收分层见流程记录，不能把prepared称为已建单。
+
+DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sales/execution.py`及`python -m app.worker`提供有界feed轮询、租约/epoch派遣、原键回执核验、有限重试与人工对账；0005补操作恢复字段。`uv run python scripts/run_after_sales_pg.py`在全新专用合成PG16容器执行固定测试并清理，不读取.env/继承目标；真实PG与SQLite迁移分列。`uv run python -m app.worker --help`可查看参数，真正派遣前必须核对专用环境和显式迁移。当前结果不等于Compose、跨仓HTTP、浏览器或生产验收；详见流程设计/记录。
