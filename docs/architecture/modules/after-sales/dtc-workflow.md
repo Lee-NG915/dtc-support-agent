@@ -1,6 +1,6 @@
 # DTC 内部售后流程：实现设计与执行计划
 
-更新日期：2026-11-06。状态：已确认产品范围内的实现方案；2a已有候选实现并通过本章本地验收，其余新增能力按下文分阶段实施，阶段结果在[实施记录](../../../records/after-sales/dtc-workflow.md)持续记录。产品行为/状态机仍以[产品蓝图](product-blueprint.md)为正本，线上E-pig字段仍以[OpenAPI](../../../../contracts/epig-after-sales/v1/openapi.json)为正本。
+更新日期：2026-11-06。状态：已确认产品范围内的实现方案；2a/2b已实现并通过各章本地范围验收，Worker及页面等其余能力按下文分阶段实施，阶段结果在[实施记录](../../../records/after-sales/dtc-workflow.md)持续记录。产品行为/状态机仍以[产品蓝图](product-blueprint.md)为正本，线上E-pig字段仍以[OpenAPI](../../../../contracts/epig-after-sales/v1/openapi.json)为正本。
 
 ## 目标与分步落点
 
@@ -52,13 +52,13 @@ staff表追加到现有metadata，新增Alembic0003；不把E-pig订单/工单�
 2b必须遵守产品7.1～7.4完整状态语义，不能用一列approved布尔代替。政策类别缺失要通过可信SKU映射或经授权的线下核验处理，不让消费者/模型自报范围；当前E-pig快照只有paid、缺真实物流时不能编造签收日期来适用退货条款。草稿、人工补充材料、政策/订单/附件/权限版本都要进入审批快照；未知外部结果先对账再处理失效，不以新key重建来“恢复”。具体表/接口在该片段开始前补充，同一主题持续维护。
 
 
-## DTC-2b：持久草稿与审批（实施前方案）
+## DTC-2b：持久草稿与审批（已实现、本地范围验收）
 
 先解决一个具体问题：两名客服打开同一诉求时，不能互相覆盖草稿；主管批准后，执行内容必须与其看到的版本一致。复用现有SQLAlchemy会话、staff认证和Connector；旧聊天内存确认不适合跨重启审批，故新增专用持久业务对象，不重做通用工作流。
 
 ### 数据与并发边界
 
-计划新增迁移0004及业务模块`app/services/after_sales/`、对应repository/schema/routes。表按实际生命周期划分：
+新增迁移0004及业务模块`app/services/after_sales/`、对应repository/schema/routes。表按实际生命周期划分：
 
 | 对象 | 持久内容与约束 |
 |---|---|
@@ -70,19 +70,19 @@ staff表追加到现有metadata，新增Alembic0003；不把E-pig订单/工单�
 | operation | approval、稳定随机key唯一、规范化payload与摘要、状态、attempt、租约owner/epoch/期限、下次执行时间、已核验回执；一case同时只能一个未解决操作 |
 | event | case内单调seq，类型、actor、旧/新状态、版本/操作关联及安全原因；与相应变更同事务，只追加 |
 
-SQLite与PG都用带revision的条件UPDATE检测并发，HTTP修改请求必须带expected_revision，失败409并返回安全冲突信息。PG领取Worker时增加数据库租约，不能靠进程内锁。网络读取放在事务外，提交前重新确认revision；不持有数据库锁等待远端。同步upsert只更新远端投影，不重置内部状态、draft指针或已核验回执；记录远端sequence/updated_at并拒绝旧快照倒退。重放旧pending页不得覆盖ticket_created/已完成结果，必要时用service detail重新核验。字段、enum与合法迁移遵从产品7.1～7.6，不允许客户端任意赋state。
+SQLite与PG都用带revision的条件UPDATE检测并发，HTTP修改请求必须带expected_revision，失败409并返回安全冲突信息。PG领取Worker时增加数据库租约，不能靠进程内锁。网络读取放在事务外，提交前重新确认revision；不持有数据库锁等待远端。同步upsert只更新远端投影，不重置内部状态、draft指针或已核验回执；记录远端sequence/updated_at并拒绝旧快照倒退；sequence沿用契约十进制字符串或可容纳完整远端范围的表示，不能使用PG int32字段缩小范围。重放旧pending页不得覆盖ticket_created/已完成结果，必要时用service detail重新核验。远端ticket_created只是投影，必须读回核验ticket与receipt才算完成；有旧操作时须同事务更新原operation/approval/draft/case。2b尚无恢复器时保持明确待核验且禁止新送审，不能仅凭feed宣称completed或抹掉执行上下文。列表摘要只用类型/附件数等结构化信息，不截取消费者自由描述。SQLite读回时间先统一UTC再比较，避免重放页因naive/aware差异失败。字段、enum与合法迁移遵从产品7.1～7.6，不允许客户端任意赋state。
 
 ### 内部API与权限
 
 所有路径位于现有`/api/v1/after-sales/{market}`下。计划提供`GET /cases`（有界分页/状态/类型/时间筛选）、`GET /cases/{case_id}`及`.../events`；support/approver/auditor可以读取本市场；operator只用独立脱敏运行视图，不经此入口读取材料或回复。列表不返回描述全文和凭据。对象查询必须同时限定market和id。
 
-support可`POST /sync`拉取一页（后续由Worker持续轮询），`POST /cases/{id}/materials`、`POST .../drafts`新版本、`POST .../drafts/{version}/submit`送审。approver可`POST .../approvals/{approval_id}/approve`或`.../reject`；同时拥有两角色也禁止批准本人发起的申请。内部驳回必须原因，仅返回processing，不创建操作、不通知消费者。auditor只读。同步跨市场、operator业务写入、客户端传staff/approved/receipt或任意Connector参数均拒绝。
+support可`POST /cases/sync`拉取一页（后续由Worker持续轮询），`POST /cases/{id}/materials`、`POST .../drafts`新版本、`POST .../drafts/{version}/submit`送审。approver可`POST .../approvals/{approval_id}/approve`或`.../reject`；同时拥有两角色也禁止批准本人发起的申请。内部驳回必须原因，仅返回processing，不创建操作、不通知消费者。auditor只读。同步跨市场、operator业务写入、客户端传staff/approved/receipt或任意Connector参数均拒绝。
 
 批准只持久化approved及prepared操作，不在HTTP决定请求中调用create_ticket。执行由2cWorker完成；2b没有公开“直接建单”接口。HTTP重复批准只能返回同一结果或409，不能准备第二个操作。审批ID与draft/action/reply/order_version/policy_version共同生成固定wire payload；审批记录与操作事务一起提交。尚未派遣的prepared若因过期、撤权或版本变化不能执行，必须在确认dispatch从未发生后同事务置failed、保留安全原因/event并释放活跃守卫，允许重新送审；产品7.4已明确此迁移。已派遣或未知的操作不走此路径。
 
 ### 证据与审批失效
 
-政策不是可自由填写的版本字符串。复用已有policy manifest、实际chunk和corpus_fingerprint，服务端按E-pig品牌、market和可信商品类别选取条款，保存文档/chunk id、版本、来源路径、原文、hash和demo标记。支持的SKU类别由显式服务端配置映射；无映射时进入needs_info，不信任消费者或模型的商品类别。授权客服可以登记有来源的线下核验材料，由审批人审阅；它与真实订单/物流字段分开，不能覆盖Connector快照。缺签收证明不适用依赖签收日期的退货期限判断。
+政策不是可自由填写的版本字符串。复用已有policy manifest、实际chunk和corpus_fingerprint，服务端按E-pig品牌、market和可信商品类别选取条款，保存文档/chunk id、版本、来源路径、原文、hash、服务器判定as_of、生效/失效日期和demo标记；复用已有PolicyScope日期规则，过期/未来/适用日不明的证据不能送审。支持的SKU类别由显式服务端配置映射；无映射时进入needs_info，不信任消费者或模型的商品类别。授权客服可以登记有来源的线下核验材料，由审批人审阅；它与真实订单/物流字段分开，不能覆盖Connector快照。缺签收证明不适用依赖签收日期的退货期限判断。动作必须匹配实际政策主题：退货对应returns，退款对应refunds，破损/错发补发对应faults-missing；reject/other必须有明确相关条款及人工核验说明，不能只选任意同市场chunk。涉及退货期限时，采用真实shipment已交付事件，或授权客服以明确类型、商品关联、实际交付日期及来源登记的线下核验；自由文本internal_note不充当签收证明。所需照片/商品状态等由带来源的人工核验记录说明已检查，纳入审批快照，不伪称代码能从照片自动判定资格。必要材料缺失进入needs_info，审批人不能绕过；不新增通用规则DSL。
 
 draft保存人工编辑内容，送审时必须有足够且不冲突的匹配政策/材料；服务端重算订单关键版本、附件id/状态/到期、材料revision及政策内容指纹。摘要包含全部执行字段、case/market/order/request、申请人、授权范围、批准到期与审批人决定身份。批准前再读实际订单、诉求及附件当前状态，并比较当前staff权限与所有快照；任一不符明确invalidated并返工。执行前仍须再验，不能用批准时查询代替执行时查询。
 
@@ -114,3 +114,18 @@ operator只能请求继续查询、查看脱敏进度及登记有来源的对账
 小实验在仓库根目录执行`.venv/bin/pytest -q tests/unit/test_staff_repository.py tests/integration/test_after_sales_api.py`。预期：不存在/过期/禁用凭证被拒绝，support不能访问未授权市场，operator不能下载业务附件；将员工禁用后下一次请求立即拒绝。实际结果须看本章验收记录，不能把这里的预期当通过计数。迁移实验使用临时库，见`tests/integration/test_after_sales_migrations.py`；PG测试缺专用URL会skip，这表示未测。
 
 阅读后应能回答：为什么只存hash仍要保护原token；为什么市场限制要在路由和Connector两端校验；为什么协议Schema合法还要核对对象ID；为什么PG启动不执行create_all；为什么这些只读能力尚不足以证明审批与恢复已完成。
+
+
+## 后续AI建议与员工工作台（实施前设计）
+
+在2b/2c基础行为验收后实施。员工不应复制数据库ID才能选证据，因此计划增加本case上下文的只读evidence入口：服务器从当前订单SKU映射、市场和政策日期派生scope，返回真实可用chunk/来源/版本与缺资料原因。support/approver/auditor按同一市场授权，不接受客户端policy_version或商品范围覆盖。该内部读取不新增E-pig wire操作。
+
+AI建议入口仅support可用，带expected_revision；复用已有检索与LLMProvider，关闭通用业务工具。网络/模型调用在事务外，固定服务器订单/材料/政策上下文；候选action/reply/summary及引用需白名单校验，引用必须属于本次真实匹配chunk。模型内容不改变身份、材料真伪、审批或操作。成功只保存一个新的editing草稿版本，保存前复用业务校验重读staff角色/市场并比较生成时订单/材料/附件/政策指纹，再次CAS；即使case revision未变，权限变化也403、业务上下文变化409，不保存候选且不覆盖；无证据/冲突/模型故障明确返回未生成。默认OfflineLLM/Fake，真实模型评测未授权前不调用。建议仍经过人工修改、送审、不同人批准与Worker核验，不自动形成工单。
+
+前端复用现有React/TypeScript/Vite、CSS变量和lucide，采用独立员工工作台入口，不引入router/状态管理/UI框架。员工凭证只在内存，刷新重新认证；/me提供角色和允许市场。退出、401/403或身份/市场切换时清除详情、附件blob、草稿和聊天内存，并中止旧请求，避免迟到响应跨身份回填。业务文本/回复/凭证不保存localStorage；原上游demo聊天的本地历史不混入员工模式。
+
+工作台按“队列→详情→审批/执行结果”组织：队列有市场/状态/类型/时间筛选及最后同步时间；详情展示订单快照的查询时间、消费者材料/内部补充的区别、授权附件、真实政策原文、AI/人工草稿版本和事件时间线。support能补资料/保存新版本/送审；approver能查看完整冻结快照及批准/内部驳回原因；自批/越权/旧revision以服务端结果为准。operator只显示脱敏执行/对账面板，不能走业务详情读取PII。无直接“绕过审批建单”按钮，批准成功与工单已核验分开显示。
+
+加载/空数据/无权限/错误/陈旧/冲突/有限重试/成功均有明确文字，关键结果可在时间线再次读取。409保存用户未提交输入并引导查看最新版本，不静默覆盖；附件object URL在切换/退出撤销。政策聊天复用低层SSE解析与现有回答/引用组件，但独立内存会话并携带员工认证，不沿用持久本地历史hook。界面只展示demo政策声明与实测状态，不展示内部工具实现细节或虚构采用率。
+
+验收含API角色/引用造假/无证据/模型失败/生成期间revision变化，以及revision未变但订单/政策/权限变化、AI不触发create、前端构建与相关测试、实际浏览器键盘/窄屏/角色切换/409/权限撤销/完整审批与回执旅程；jsdom或Fake结果不代替实际浏览器与跨仓HTTP。界面通过后再做隔离Compose与演示脚本，不先搭复杂发布平台。

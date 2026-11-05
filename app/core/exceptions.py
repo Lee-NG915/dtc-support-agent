@@ -171,6 +171,37 @@ class DatabaseError(AppError):
         )
 
 
+class RevisionConflictError(AppError):
+    """A conditional write lost against a newer persisted revision."""
+
+    def __init__(self, message: str = "the resource revision changed") -> None:
+        super().__init__(
+            message,
+            error_code=ErrorCode.REVISION_CONFLICT,
+            http_status=409,
+        )
+
+
+class StateConflictError(AppError):
+    """The requested business transition is not legal in the current state."""
+
+    def __init__(self, message: str = "the resource state does not allow this action") -> None:
+        super().__init__(
+            message,
+            error_code=ErrorCode.STATE_CONFLICT,
+            http_status=409,
+        )
+
+
+class SelfApprovalForbiddenError(AppError):
+    def __init__(self, message: str = "the requester cannot decide their own approval") -> None:
+        super().__init__(
+            message,
+            error_code=ErrorCode.SELF_APPROVAL_FORBIDDEN,
+            http_status=403,
+        )
+
+
 class GuardrailError(AppError):
     def __init__(self, message: str, error_code: ErrorCode) -> None:
         super().__init__(message, error_code=error_code, http_status=400)

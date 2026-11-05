@@ -173,14 +173,16 @@ v1 的 `needs_info` 不是隐形聊天室。需要补资料时，客服按既有
 
 | 当前状态 | 允许到达 | 触发与守卫 |
 |---|---|---|
-| `pending` | `processing`、`needs_info` | DTC 持久接收后开始处理；材料不足则进入补资料 |
-| `needs_info` | `processing` | 授权客服登记线下补充和核验结果；不能自动创建工单 |
-| `processing` | `needs_info`、`waiting_approval`、`failed` | 证据和草稿通过校验才送审；明确无外部写入的内部失败可记录为 `failed` |
-| `waiting_approval` | `executing`、`processing`、`needs_info` | 有效批准后执行；内部驳回或版本失效后返工；缺材料则补资料 |
+| `pending` | `processing`、`needs_info`、`reconciliation_required` | DTC 持久接收后开始处理；材料不足则进入补资料 |
+| `needs_info` | `processing`、`reconciliation_required` | 授权客服登记线下补充和核验结果；不能自动创建工单 |
+| `processing` | `needs_info`、`waiting_approval`、`failed`、`reconciliation_required` | 证据和草稿通过校验才送审；明确无外部写入的内部失败可记录为 `failed` |
+| `waiting_approval` | `executing`、`processing`、`needs_info`、`reconciliation_required` | 有效批准后执行；内部驳回或版本失效后返工；缺材料则补资料 |
 | `executing` | `completed`、`reconciliation_required`、`failed` | 读回成功才完成；结果未知必须对账；只有契约明确拒绝且未产生外部效果时才可记失败 |
 | `reconciliation_required` | `completed`、`executing`、`processing` | 找到回执则完成；按契约经过退避和重验后，只能以原键原参数重试；批准失效则返工 |
-| `failed` | `processing` | 授权人员确认失败发生在任何外部效果之前并排除故障后重开；不是对消费者的业务拒绝 |
+| `failed` | `processing`、`reconciliation_required` | 授权人员确认失败发生在任何外部效果之前并排除故障后重开；不是对消费者的业务拒绝 |
 | `completed` | 无 | v1 终态；不能重开生成第二张工单或第二条最终回复 |
+
+可信E-pig服务若报告已有工单，但DTC尚未核验其ticket/receipt，任一非终态可进入`reconciliation_required`并封锁新派遣；这是外部结果观察的恢复入口，不表示曾获本地批准或已经完成。已有执行上下文必须保留，不能用同步覆盖；无本地操作的历史记录也不能伪造审批历史。核验与终结仍遵从第7.6节。
 
 禁止 `pending/processing/needs_info → completed` 的直达，也禁止内部审批驳回直接完成诉求。正式业务拒绝必须走批准后的 `reject` 工单。
 

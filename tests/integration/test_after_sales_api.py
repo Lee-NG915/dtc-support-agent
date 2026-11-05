@@ -512,8 +512,17 @@ def test_no_public_after_sales_write_route_is_exposed(tmp_path: Path) -> None:
             if path.startswith("/api/v1/after-sales")
         }
         assert after_sales_methods
-        assert all(methods == {"get"} for methods in after_sales_methods.values())
-        assert not any("tickets" in path for path in after_sales_methods)
+        # 2b exposes internal workflow POSTs, but never a direct ticket or
+        # execution endpoint. Approval only prepares a persisted operation.
+        assert not any(
+            marker in path
+            for path in after_sales_methods
+            for marker in ("tickets", "execute", "/operations")
+        )
+        assert {method for methods in after_sales_methods.values() for method in methods} <= {
+            "get",
+            "post",
+        }
 
         response = client.post(
             "/api/v1/after-sales/au/service/tickets",

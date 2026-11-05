@@ -23,6 +23,7 @@ from app.retrieval.ingest import ingest_knowledge
 from app.retrieval.policy import corpus_fingerprint
 from app.retrieval.reranker import DocumentReranker
 from app.retrieval.vector import VectorRetriever
+from app.services.after_sales.service import AfterSalesWorkflow
 from app.services.chat_service import ChatService
 from app.services.seed import seed_demo_data
 from app.tools.factory import build_tool_registry
@@ -42,6 +43,7 @@ class AppContainer:
         redis=None,
         vector_store=None,
         business_connector: BusinessConnector | None = None,
+        after_sales_workflow: AfterSalesWorkflow | None = None,
     ) -> None:
         self.settings = settings
         self.llm = llm
@@ -52,6 +54,7 @@ class AppContainer:
         self.redis = redis
         self.vector_store = vector_store
         self.business_connector = business_connector
+        self.after_sales_workflow = after_sales_workflow
 
     async def aclose(self) -> None:
         if self.business_connector is not None:
@@ -123,6 +126,16 @@ async def build_container(settings: Settings, seed: bool = False) -> AppContaine
     business_connector = (
         build_business_connector(settings) if settings.after_sales_enabled else None
     )
+    after_sales_workflow = (
+        AfterSalesWorkflow(
+            settings=settings,
+            session_factory=session_factory,
+            connector=business_connector,
+            retriever=retriever,
+        )
+        if settings.after_sales_enabled and business_connector is not None
+        else None
+    )
     if settings.mcp_enabled:
         specs = list(LOCAL_CATALOG)
         if settings.mcp_remote_url:
@@ -168,4 +181,5 @@ async def build_container(settings: Settings, seed: bool = False) -> AppContaine
         redis=redis,
         vector_store=store,
         business_connector=business_connector,
+        after_sales_workflow=after_sales_workflow,
     )

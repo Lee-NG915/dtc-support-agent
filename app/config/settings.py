@@ -1,10 +1,11 @@
 """Environment-backed settings with a cached accessor."""
 
+import json
 import os
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -99,6 +100,43 @@ class Settings(BaseSettings):
     epig_allowed_markets: str = ""
     epig_timeout_seconds: float = Field(default=5.0, ge=0.5, le=30.0)
     epig_max_connections: int = Field(default=10, ge=1, le=20)
+
+    # Server-trusted SKU -> policy product category map. This is the only
+    # source of category scope for after-sales evidence; request fields are
+    # never trusted. Empty means no mapping (production stays needs_info).
+    after_sales_sku_category_map: str = ""
+    after_sales_approval_ttl_seconds: int = Field(default=14400, ge=60, le=86400)
+    after_sales_sync_batch_limit: int = Field(default=50, ge=1, le=200)
+
+    @field_validator("after_sales_sku_category_map")
+    @classmethod
+    def validate_sku_category_map(cls, value: str) -> str:
+        if not value.strip():
+            return ""
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError("after_sales_sku_category_map must be valid JSON") from exc
+        if not isinstance(decoded, dict):
+            raise ValueError("after_sales_sku_category_map must be a JSON object")
+        for sku, category in decoded.items():
+            if (
+                not isinstance(sku, str)
+                or not sku.strip()
+                or len(sku) > 128
+                or not isinstance(category, str)
+                or not category.strip()
+                or len(category) > 64
+            ):
+                raise ValueError("SKU category map entries must be non-empty short strings")
+        return value
+
+    @property
+    def sku_category_map(self) -> dict[str, str]:
+        if not self.after_sales_sku_category_map.strip():
+            return {}
+        decoded = json.loads(self.after_sales_sku_category_map)
+        return {sku.strip(): category.strip() for sku, category in decoded.items()}
 
     @property
     def llm_configured(self) -> bool:

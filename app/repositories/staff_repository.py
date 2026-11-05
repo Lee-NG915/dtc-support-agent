@@ -22,6 +22,15 @@ from app.schemas.after_sales import (
 )
 
 
+def _actor_from_row(row: AfterSalesStaffRow) -> StaffActor:
+    return StaffActor(
+        staff_id=row.staff_id,
+        display_name=row.display_name,
+        roles=parse_staff_roles(row.roles),
+        allowed_markets=parse_staff_markets(row.allowed_markets),
+    )
+
+
 class StaffRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -45,12 +54,17 @@ class StaffRepository:
             raise DatabaseError("failed to authenticate staff") from exc
         if row is None or not row.enabled or as_utc(row.expires_at) <= utcnow():
             return None
-        return StaffActor(
-            staff_id=row.staff_id,
-            display_name=row.display_name,
-            roles=parse_staff_roles(row.roles),
-            allowed_markets=parse_staff_markets(row.allowed_markets),
-        )
+        return _actor_from_row(row)
+
+    async def get_current_actor(self, staff_id: str) -> StaffActor | None:
+        """Re-read current role/market/expiry without any cached identity."""
+        try:
+            row = await self._session.get(AfterSalesStaffRow, staff_id)
+        except SQLAlchemyError as exc:
+            raise DatabaseError("failed to read staff authorization") from exc
+        if row is None or not row.enabled or as_utc(row.expires_at) <= utcnow():
+            return None
+        return _actor_from_row(row)
 
     async def create(
         self,

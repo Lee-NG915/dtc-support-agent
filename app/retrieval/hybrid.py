@@ -36,6 +36,14 @@ class HybridRetriever:
         self._cache = cache
         self._corpus_revision = corpus_revision
 
+    @property
+    def corpus(self) -> list[RetrievedChunk]:
+        return self._bm25.corpus
+
+    @property
+    def corpus_revision(self) -> str:
+        return self._corpus_revision
+
     def matching_review_chunks(
         self, query: str, *, scope: PolicyScope | None = None
     ) -> list[RetrievedChunk]:

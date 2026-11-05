@@ -72,6 +72,37 @@ def test_sqlite_upgrade_from_empty_and_0002_is_repeatable(tmp_path: Path) -> Non
     assert columns["expires_at"][1] == 1
     assert ("ix_after_sales_staff_token_sha256", 1) in _indexes(database_path, "after_sales_staff")
 
+    with sqlite3.connect(database_path) as connection:
+        workflow_tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+    assert {
+        "after_sales_case",
+        "after_sales_sync_cursor",
+        "after_sales_material",
+        "after_sales_draft",
+        "after_sales_approval",
+        "after_sales_operation",
+        "after_sales_event",
+    } <= workflow_tables
+
+    case_columns = _columns(database_path, "after_sales_case")
+    assert case_columns["remote_sequence"][0].startswith("varchar")
+    assert case_columns["current_draft_id"][0].startswith("varchar")
+    assert any(unique == 1 for _, unique in _indexes(database_path, "after_sales_case"))
+    assert ("ix_after_sales_case_market_state_updated", 0) in _indexes(
+        database_path, "after_sales_case"
+    )
+    assert ("uq_after_sales_operation_active_case", 1) in _indexes(
+        database_path, "after_sales_operation"
+    )
+    assert ("uq_after_sales_approval_pending_draft", 1) in _indexes(
+        database_path, "after_sales_approval"
+    )
+
 
 def test_sqlite_downgrade_removes_the_staff_table(tmp_path: Path) -> None:
     database_path = tmp_path / "migration.db"

@@ -20,6 +20,11 @@ class BM25Retriever:
         if corpus:
             self.build(corpus)
 
+    @property
+    def corpus(self) -> list[RetrievedChunk]:
+        """Read-only view of the ingested corpus used for evidence binding."""
+        return list(self._chunks)
+
     def build(self, corpus: list[RetrievedChunk]) -> None:
         self._chunks = list(corpus)
         tokenized = [tokenize(chunk.content) for chunk in self._chunks]

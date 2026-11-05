@@ -58,4 +58,7 @@ CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前
 Docker已启动，Postgres16官方镜像用于专用隔离测试；尚不代表DTC现有Compose已改为Postgres/Worker。E-pig已通过恢复真实技能源解决agent-doctor失败；本仓技能仍自包含，不依赖该软链。持续授权与审批边界见协作规范。
 
 
-DTC-2a增量（2026-11-06，本地验收）：新增`app/connectors/`、staff repository与`/api/v1/after-sales`只读路由，`AFTER_SALES_ENABLED`缺省false；启用后员工Bearer认证也保护旧chat。迁移入口不读取.env，显式设置`ALEMBIC_DATABASE_URL`后运行`uv run alembic upgrade head`；PG启动不create_all。合成员工工具`uv run python -m scripts.seed_after_sales_staff --database-url <新的本地SQLite URL>`只作用新库，凭据默认写忽略目录0600新文件，不打印。命令细节和证据见[流程设计](../docs/architecture/modules/after-sales/dtc-workflow.md)与[实施记录](../docs/records/after-sales/dtc-workflow.md)；审批/Worker仍未实现。
+DTC-2a增量（2026-11-06，本地验收）：新增`app/connectors/`、staff repository与`/api/v1/after-sales`只读路由，`AFTER_SALES_ENABLED`缺省false；启用后员工Bearer认证也保护旧chat。迁移入口不读取.env，显式设置`ALEMBIC_DATABASE_URL`后运行`uv run alembic upgrade head`；PG启动不create_all。合成员工工具`uv run python -m scripts.seed_after_sales_staff --database-url <新的本地SQLite URL>`只作用新库，凭据默认写忽略目录0600新文件，不打印。命令细节和证据见[流程设计](../docs/architecture/modules/after-sales/dtc-workflow.md)与[实施记录](../docs/records/after-sales/dtc-workflow.md)；该2a范围不含审批/Worker；当前2b状态见下节。
+
+
+DTC-2b增量（2026-11-06，本地验收）：`app/services/after_sales/`、after_sales_repository和after_sales_workflow routes提供持久同步、材料/证据、版本草稿、审批及prepared操作；迁移0004新增业务表。`POST /api/v1/after-sales/{market}/cases/sync`为support入口，批准不调用外部create。Worker/租约执行与员工页面仍待后续章节；实际验收分层见流程记录，不能把prepared称为已建单。

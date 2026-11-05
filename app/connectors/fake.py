@@ -90,6 +90,7 @@ class FakeConnector:
         self._state = _FakeState()
         self._lock = asyncio.Lock()
         self._closed = False
+        self._create_ticket_calls = 0
         for market in sorted(AFTER_SALES_MARKETS):
             self._add_market(market)
 
@@ -254,6 +255,7 @@ class FakeConnector:
         idempotency_key: str,
         payload: CreateServiceTicketInput,
     ) -> TicketCreationResult:
+        self._create_ticket_calls += 1
         self._maybe_fail("create_ticket")
         self._validate_market(market)
         if not validate_idempotency_key(idempotency_key):
@@ -360,6 +362,11 @@ class FakeConnector:
     @property
     def closed(self) -> bool:
         return self._closed
+
+    @property
+    def create_ticket_calls(self) -> int:
+        """Number of actual create attempts, including injected failures."""
+        return self._create_ticket_calls
 
     # ----------------------------------------------------------------- helpers
 
