@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，真实HTTP恢复片段已通过，员工证据/建议后端已本地范围验收、准备交付，完整旅程仍待验收，E-pig5d已完成本地/CI验收并推送，消费者组件已实现但实际浏览器验收受工具阻塞。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
+更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，真实HTTP恢复片段已通过，员工证据/建议后端已验收推送d9e97ff，远端SHA/关键文件回读一致，完整旅程仍待验收，E-pig5d已完成本地/CI验收并推送，消费者组件已实现但实际浏览器验收受工具阻塞。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
 
 ## 2a首轮与独立核验
 
@@ -118,3 +118,6 @@ Review先后修复临时脚本的glob/mtime差集清理、仅组长退出检查�
 Codex独立最终：Ruff格式217文件/静态与mypy148通过；普通pytest **502 passed、4 skipped、1 warning**（36.86s）。仓内PG入口已最小纳入26条workbench测试，根独立exit0，**120 passed、1 warning**（56.55s）：116真实PG（112适配、3多进程、1PG迁移）与4 SQLite迁移；PG16.15/0005、113 live engine探针且backend PID互异，三组进程竞争仍exactly_one，container_removed=true。默认skip未算通过。日志`/tmp/dtc-workbench-codex-final-pytest.log`、`/tmp/dtc-workbench-codex-final-pg.log`；10文件SHA-256候选清单`/tmp/dtc-workbench-final-candidate-sha256.json`，验证期间无变化。
 
 Review关闭撤权窗口与跨日证据：五项回归确实到达目标窗口，旧代码全部RED，修复GREEN；含源查询期间role/market撤销、跨日条款失效/仍有效、fresh重验后保存入口跨日，403/409且无新draft/event、旧approved/prepared保持。原始497项通过未被误当最终验收。固定源码的真实跨仓恢复与临时EPERM局部5项根复验见上节；它们不代表新增AI端点真实模型质量或页面通过。下一步提交推送回读后实施员工工作台UI，持续保留消费者浏览器阻塞及评测/Compose边界。
+
+
+员工后端交付回读（2026-11-06）：已提交推送`d9e97ff806efa88a32be6349a1ab78048809349d`至`codex/2-epig-after-sales`；远端ref与HEAD一致，service/verification/26项workbench测试/本记录逐字节回读一致。查询该SHA实际Actions仍0个run，不宣称远端CI成功；未合并/部署。下一章Claude auto仅在frontend实施员工工作台；独立eval片段仅修默认离线/新临时库/真实模型显式开关，预算未确认不运行真实路径，两个实现范围不互改。
