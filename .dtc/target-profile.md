@@ -38,7 +38,7 @@
 | 应用启动与依赖配置 | 按 [现有快速开始](../docs/02-getting-started.md)；不要编造尚不存在的 Worker 命令 |
 | 部署 | 读 [现有部署文档](../docs/11-deployment.md) 与当前 Compose；变更前核对目标环境和授权 |
 
-CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前工作流定义已包含文档、契约、政策检查和Python3.11/3.12测试。开发分支push不匹配main触发条件；2026-11-06尝试workflow_dispatch因默认分支未登记工作流返回404，已建立草稿PR#4，但截至本次检查尚无远端run，不能写CI通过。
+CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前工作流定义已包含文档、契约、政策检查和Python3.11/3.12测试。2026-11-06已补当前codex/2-epig-after-sales分支push触发，保留main/PR/dispatch及只读权限，不含部署。此前dispatch因默认分支未登记返回404，草稿PR#4也未产生run；本次push是否实际执行与结果必须回读，不能仅凭配置写CI通过。
 
 ## 文档与交付入口
 
