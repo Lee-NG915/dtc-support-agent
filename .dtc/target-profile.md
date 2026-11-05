@@ -1,6 +1,6 @@
 # 项目档案
 
-核对日期：2026-11-03。范围：开发助手接入与文档维护。后续发生源码或命令变化时更新本文件。
+核对日期：2026-11-06。范围：开发助手接入、文档维护与隔离开发环境。后续发生源码或命令变化时更新本文件。
 
 ## 项目定位与代码事实
 
@@ -38,7 +38,7 @@
 | 应用启动与依赖配置 | 按 [现有快速开始](../docs/02-getting-started.md)；不要编造尚不存在的 Worker 命令 |
 | 部署 | 读 [现有部署文档](../docs/11-deployment.md) 与当前 Compose；变更前核对目标环境和授权 |
 
-CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前工作流没有调用文档检查器；文档检查是本地交付步骤。开发分支 push 也不一定触发 CI，应读取实际运行状态。
+CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前工作流定义已包含文档、契约、政策检查和Python3.11/3.12测试。开发分支push不匹配main触发条件；2026-11-06尝试workflow_dispatch因默认分支未登记工作流返回404，已建立草稿PR#4，但截至本次检查尚无远端run，不能写CI通过。
 
 ## 文档与交付入口
 
@@ -50,3 +50,9 @@ CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前
 - [Issue #1](https://github.com/Lee-NG915/dtc-support-agent/issues/1)：规划上下文；已有关联分支 `codex/1-project-plan`，操作前仍需核对实际 Git 状态。
 
 仓库远端为 `Lee-NG915/dtc-support-agent`。这是项目身份信息，不是合并、部署、访问真实店铺或发送消费者消息的授权。
+
+## 本机环境恢复证据（2026-11-06）
+
+本轮已安装uv与Python3.12，并用`uv sync --frozen --extra dev --python 3.12`按原锁文件建立环境。锁检查、Ruff格式/静态、mypy125源文件和pytest242项通过；依赖4条警告保留。命令可用是本轮结果，不等于将来环境自动满足。真实模型预算未确认，默认Fake/离线测试。
+
+Docker已启动，Postgres16官方镜像用于专用隔离测试；尚不代表DTC现有Compose已改为Postgres/Worker。E-pig已通过恢复真实技能源解决agent-doctor失败；本仓技能仍自包含，不依赖该软链。持续授权与审批边界见协作规范。
