@@ -129,3 +129,22 @@ AI建议入口仅support可用，带expected_revision；复用已有检索与LLM
 加载/空数据/无权限/错误/陈旧/冲突/有限重试/成功均有明确文字，关键结果可在时间线再次读取。409保存用户未提交输入并引导查看最新版本，不静默覆盖；附件object URL在切换/退出撤销。政策聊天复用低层SSE解析与现有回答/引用组件，但独立内存会话并携带员工认证，不沿用持久本地历史hook。界面只展示demo政策声明与实测状态，不展示内部工具实现细节或虚构采用率。
 
 验收含API角色/引用造假/无证据/模型失败/生成期间revision变化，以及revision未变但订单/政策/权限变化、AI不触发create、前端构建与相关测试、实际浏览器键盘/窄屏/角色切换/409/权限撤销/完整审批与回执旅程；jsdom或Fake结果不代替实际浏览器与跨仓HTTP。界面通过后再做隔离Compose与演示脚本，不先搭复杂发布平台。
+
+
+### 2c执行落点与可恢复边界
+
+Worker实现独立`app/services/after_sales/execution.py`和进程入口，复用2b业务校验、规范payload与repository；不继续把执行循环堆入审批service，也不重写整个业务模块。首次需要的lookup计数/对账状态可由0005最小追加到operation，不建通用任务/对账平台。审批和草稿响应补产品既有executing/consumed等状态，不能以输出模型遗漏导致核验后500。
+
+领取在数据库原子条件更新owner/epoch/lease_until；条件含可领取状态和期限，使用数据库时钟或统一可验证UTC，不凭进程内锁。完成、错误、重试和租约释放均带当前owner+epoch+状态条件；过期派遣的领取者先lookup。每次外部尝试的状态/event先提交，数据库事务不跨网络await。单次命令可执行有限一轮，持续循环有配置上限和有界退出，取消不把已发写标成未发生。
+
+prepared派遣前重验申请人/审批人仍启用、未过期、角色/市场、自批分离、批准期限、case/draft/material及订单/附件/政策/交付证明。使用现有2b校验，新增公共窄接口即可，不复制整个校验器。失败明确从未派遣时原子failed/expired或invalidated并释放活跃限制；已经dispatching/unknown则先查回执，不先归档旧批准。
+
+核验以operation持久payload及其绑定的原始不可变approval snapshot为准；wire payload没有market/order_id，这两项取原始snapshot的case.market/order.order_id，不能用当前可被同步更新的case替代。核对market/order/request、action/reply、draft/approval/policy/order版本及receipt内部关联均匹配。创建201/重放200仍经GET读回；未知写协议错误与timeout都lookup-first。只在匹配后同事务operation succeeded、原draft/approval consumed、case completed与ticket投影/event。case revision因保存新candidate变化不应抹掉已发生的旧结果；完成事务读取当前revision并条件提交，不能消耗新candidate或重新计算原wire参数。
+
+lookup为IN_FLIGHT或暂不可见时保持未知，次数与时间均有限退避。RETRY_CREATE_WITH_SAME_KEY只允许当前原批准/上下文仍有效时回到retry_wait，永远原key原payload，不能清空指纹或新建operation。重试上限/信息不足进入manual_review且停止自动派遣，保留可审计记录。超过期限不证明外部失败；真正明确无外部效果的拒绝才failed。reconciliation状态复用operation字段及event历史表达产品7.6，不新增另一个队列。
+
+远端观察已有ticket但无可匹配本地operation/批准链时，可以读取验证外部事实，但不能伪造本地审批或把不匹配结果消耗为本操作成功；保持人工核验并封锁新写。operator只经脱敏运行列表/详情及“继续查询”入口推进查证，不能提交成功标志或自造receipt。排队重试不得改变payload/key，日志与metrics标签不包含回复/描述、认证或原请求体。
+
+交付仓内专用PG runner，生命周期参考已验证E-pig方案：新随机命名/端口/密码容器、最终TCP目标SQL就绪、显式0001～head迁移、仅传本次连接、子进程组有界结束、finally只删本容器/卷。默认pytest仍离线不隐式启动Docker，专用入口缺Docker明确失败；将2b现有workflow测试的专用PG适配由临时验收产物收敛到可重跑入口，生产实现不因测试关闭pool或改变事务。
+
+2c验证至少包括：两个真实PG连接竞争领取（确认不同session/有界屏障）、租约过期与迟到提交、外部成功但本地结果落库失败、同键同payload恢复、IN_FLIGHT/暂404/失效批准先对账、有效批准的有限重试、错误回执拒绝、无本地批准链转人工、事件重放/游标事务回滚。Fake用于可控故障，实际跨仓HTTP/进程重启在两仓独立合成库执行，不用给Fake新增一套生产持久平台。CLI/health/操作指南仅在入口实际存在并运行后更新，不预填性能/SLA或真实试用结果。
