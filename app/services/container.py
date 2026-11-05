@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 
 from app.config.settings import Settings
+from app.connectors.base import BusinessConnector
+from app.connectors.factory import build_business_connector
 from app.infra.rate_limit import InMemoryRateLimiter, RedisRateLimiter
 from app.infra.redis_client import connect_redis
 from app.mcp.adapter import merge_mcp_tools
@@ -39,6 +41,7 @@ class AppContainer:
         retriever: HybridRetriever,
         redis=None,
         vector_store=None,
+        business_connector: BusinessConnector | None = None,
     ) -> None:
         self.settings = settings
         self.llm = llm
@@ -48,8 +51,13 @@ class AppContainer:
         self.retriever = retriever
         self.redis = redis
         self.vector_store = vector_store
+        self.business_connector = business_connector
 
     async def aclose(self) -> None:
+        if self.business_connector is not None:
+            closer = getattr(self.business_connector, "aclose", None)
+            if closer:
+                await closer()
         closer = getattr(self.llm, "aclose", None)
         if closer:
             await closer()
@@ -108,7 +116,13 @@ async def build_container(settings: Settings, seed: bool = False) -> AppContaine
         else InMemoryRateLimiter(limit=settings.rate_limit_per_minute)
     )
     retriever, reranker, store = await build_retrieval(settings, redis)
-    registry = build_tool_registry(retriever)
+    registry = build_tool_registry(
+        retriever,
+        include_demo_writes=not settings.after_sales_enabled,
+    )
+    business_connector = (
+        build_business_connector(settings) if settings.after_sales_enabled else None
+    )
     if settings.mcp_enabled:
         specs = list(LOCAL_CATALOG)
         if settings.mcp_remote_url:
@@ -129,6 +143,7 @@ async def build_container(settings: Settings, seed: bool = False) -> AppContaine
         session_factory=session_factory,
         rate_limiter=rate_limiter,
         registry=registry,
+        staff_mode=settings.after_sales_enabled,
     )
     if seed:
         async with session_factory() as session:
@@ -152,4 +167,5 @@ async def build_container(settings: Settings, seed: bool = False) -> AppContaine
         retriever=retriever,
         redis=redis,
         vector_store=store,
+        business_connector=business_connector,
     )

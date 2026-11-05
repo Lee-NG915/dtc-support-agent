@@ -15,7 +15,14 @@ from app.agents.graph import build_graph
 from app.agents.state import AgentState
 from app.config.policy_profiles import get_policy_profile
 from app.config.settings import Settings
-from app.core.exceptions import AppError, GuardrailError, InvalidRequestError, RateLimitError
+from app.core.exceptions import (
+    AppError,
+    ForbiddenMarketError,
+    GuardrailError,
+    InvalidRequestError,
+    RateLimitError,
+    UnauthorizedError,
+)
 from app.core.ids import new_id
 from app.core.request_scope import request_session
 from app.infra.rate_limit import RateLimiter
@@ -24,6 +31,7 @@ from app.providers.base import LLMProvider
 from app.repositories.session_repository import SessionRepository
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.reranker import DocumentReranker
+from app.schemas.after_sales import StaffActor
 from app.schemas.chat import ActionProposal, ChatRequest, ChatResponse
 from app.schemas.common import LatencyBreakdown, TokenUsage
 from app.schemas.retrieval import PolicyScope
@@ -62,6 +70,7 @@ class ChatService:
         session_factory: async_sessionmaker[AsyncSession],
         rate_limiter: RateLimiter,
         registry: ToolRegistry | None = None,
+        staff_mode: bool = False,
     ) -> None:
         self._settings = settings
         self._llm = llm
@@ -69,6 +78,7 @@ class ChatService:
         self._reranker = reranker
         self._session_factory = session_factory
         self._rate_limiter = rate_limiter
+        self._staff_mode = staff_mode
         self.registry = registry or build_tool_registry(retriever)
         self._pending_actions: dict[str, PendingConfirmation] = {}
         self._graph = build_graph(
@@ -79,27 +89,58 @@ class ChatService:
             registry=self.registry,
         )
 
-    async def chat(self, request: ChatRequest, *, trace_id: str) -> ChatResponse:
+    async def chat(
+        self,
+        request: ChatRequest,
+        *,
+        trace_id: str,
+        staff: StaffActor | None = None,
+    ) -> ChatResponse:
+        request = self._apply_staff_identity(request, staff)
         await self._enforce_rate_limit(request.user_id)
         started = time.perf_counter()
         session_id = request.session_id or new_id("sess_")
         async with request_session(self._session_factory) as db:
-            state = await self._initial_state(db, request, session_id, trace_id)
+            state = await self._initial_state(
+                db,
+                request,
+                session_id,
+                trace_id,
+                enforce_session_owner=staff is not None,
+            )
             result = await self._invoke(state)
             response = self._to_response(result, session_id=session_id, trace_id=trace_id)
             await self._persist(db, request, response, summary=result.get("summary") or "")
             await db.commit()
-        self._remember_pending(request, response, policy_scope=state["policy_scope"])
+        self._remember_pending(
+            request,
+            response,
+            policy_scope=state["policy_scope"],
+            staff_mode=staff is not None,
+        )
         self._observe(response, started)
         return response
 
-    async def stream(self, request: ChatRequest, *, trace_id: str) -> AsyncIterator[dict]:
+    async def stream(
+        self,
+        request: ChatRequest,
+        *,
+        trace_id: str,
+        staff: StaffActor | None = None,
+    ) -> AsyncIterator[dict]:
         """SSE: report progress, then send only the validated user-facing answer."""
+        request = self._apply_staff_identity(request, staff)
         await self._enforce_rate_limit(request.user_id)
         started = time.perf_counter()
         session_id = request.session_id or new_id("sess_")
         async with request_session(self._session_factory) as db:
-            state = await self._initial_state(db, request, session_id, trace_id)
+            state = await self._initial_state(
+                db,
+                request,
+                session_id,
+                trace_id,
+                enforce_session_owner=staff is not None,
+            )
             yield {"event": "started", "trace_id": trace_id}
             queue: asyncio.Queue[dict | None] = asyncio.Queue()
             holder: dict = {"merged": dict(state), "guardrail": None, "error": None}
@@ -156,7 +197,12 @@ class ChatService:
             response = self._to_response(merged, session_id=session_id, trace_id=trace_id)
             await self._persist(db, request, response, summary=merged.get("summary") or "")
             await db.commit()
-        self._remember_pending(request, response, policy_scope=state["policy_scope"])
+        self._remember_pending(
+            request,
+            response,
+            policy_scope=state["policy_scope"],
+            staff_mode=staff is not None,
+        )
         self._observe(response, started)
         # Never stream the LLM's JSON envelope or an answer that may still be
         # replaced by the faithfulness check. Only the final answer is public.
@@ -164,6 +210,59 @@ class ChatService:
             yield {"event": "token", "text": response.answer[index : index + 48]}
         yield {"event": "answer", "data": response.model_dump(mode="json")}
         yield {"event": "done", "trace_id": trace_id}
+
+    async def prepare_stream_request(
+        self,
+        request: ChatRequest,
+        *,
+        staff: StaffActor | None,
+    ) -> ChatRequest:
+        """Reject identity/session violations before an SSE 200 is committed."""
+        prepared = self._apply_staff_identity(request, staff)
+        if staff is not None and prepared.session_id:
+            async with request_session(self._session_factory) as db:
+                await SessionRepository(db).get_or_create_owned(
+                    prepared.session_id,
+                    prepared.user_id,
+                )
+        return prepared
+
+    def _apply_staff_identity(self, request: ChatRequest, staff: StaffActor | None) -> ChatRequest:
+        """Replace client identity with the server actor in staff mode."""
+        if self._staff_mode and staff is None:
+            raise UnauthorizedError("staff authentication is required")
+        if staff is None:
+            try:
+                PolicyScope(
+                    brand=request.brand,
+                    market=request.market,
+                    as_of=request.policy_as_of,
+                    product_category=request.product_category,
+                )
+            except ValueError as exc:
+                raise InvalidRequestError(str(exc)) from exc
+            return request
+        if request.confirm_action_id:
+            # The upstream in-memory confirmation must not bypass the persistent
+            # approval flow that the after-sales feature introduces.
+            raise InvalidRequestError("confirm_action_id is not supported in staff mode")
+        if request.market not in staff.allowed_markets:
+            raise ForbiddenMarketError()
+        try:
+            PolicyScope(
+                brand="epig",
+                market=request.market,
+                as_of=request.policy_as_of,
+                product_category=request.product_category,
+            )
+        except ValueError as exc:
+            raise InvalidRequestError(str(exc)) from exc
+        return request.model_copy(
+            update={
+                "user_id": staff.staff_id,
+                "brand": "epig",
+            }
+        )
 
     async def _enforce_rate_limit(self, user_id: str) -> None:
         allowed = await self._rate_limiter.allow(f"user:{user_id}")
@@ -176,11 +275,16 @@ class ChatService:
         request: ChatRequest,
         session_id: str,
         trace_id: str,
+        *,
+        enforce_session_owner: bool = False,
     ) -> AgentState:
         policy_scope = _request_policy_scope(request)
         confirmed_action = self._resolve_confirmation(request, session_id, policy_scope)
         sessions = SessionRepository(db)
-        await sessions.get_or_create(session_id, request.user_id)
+        if enforce_session_owner:
+            await sessions.get_or_create_owned(session_id, request.user_id)
+        else:
+            await sessions.get_or_create(session_id, request.user_id)
         # Scoped policy turns are intentionally stateless until sessions persist
         # their own brand/market scope; never reuse another market's answer text.
         history = (
@@ -230,7 +334,10 @@ class ChatService:
         response: ChatResponse,
         *,
         policy_scope: PolicyScope | None = None,
+        staff_mode: bool = False,
     ) -> None:
+        if staff_mode:
+            return
         now = time.monotonic()
         self._pending_actions = {
             key: value for key, value in self._pending_actions.items() if value.expires_at > now

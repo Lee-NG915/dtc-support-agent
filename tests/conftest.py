@@ -15,4 +15,25 @@ os.environ["LOG_LEVEL"] = "WARNING"
 
 from pathlib import Path
 
+import pytest
+
 Path("data/local").mkdir(parents=True, exist_ok=True)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_sse_app_status():
+    """Give every test a shutdown Event bound to its own event loop.
+
+    sse-starlette stores one process-wide ``AppStatus.should_exit_event``.
+    ``TestClient`` creates a fresh loop per test, so reusing an Event across
+    tests can hang or fail with a closed-loop error.
+    """
+    from sse_starlette.sse import AppStatus
+
+    AppStatus.should_exit = False
+    AppStatus.should_exit_event = None
+    try:
+        yield
+    finally:
+        AppStatus.should_exit = False
+        AppStatus.should_exit_event = None

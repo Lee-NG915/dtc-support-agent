@@ -51,6 +51,58 @@ class UnauthorizedError(AppError):
         super().__init__(message, error_code=ErrorCode.UNAUTHORIZED, http_status=401)
 
 
+class ForbiddenRoleError(AppError):
+    def __init__(self, message: str = "role is not permitted for this operation") -> None:
+        super().__init__(message, error_code=ErrorCode.FORBIDDEN_ROLE, http_status=403)
+
+
+class ForbiddenMarketError(AppError):
+    def __init__(self, message: str = "market is not permitted for this actor") -> None:
+        super().__init__(message, error_code=ErrorCode.FORBIDDEN_MARKET, http_status=403)
+
+
+class AfterSalesDisabledError(AppError):
+    def __init__(self, message: str = "after-sales feature is disabled") -> None:
+        super().__init__(
+            message,
+            error_code=ErrorCode.AFTER_SALES_DISABLED,
+            http_status=404,
+        )
+
+
+class NotFoundError(AppError):
+    def __init__(self, message: str = "resource not found") -> None:
+        super().__init__(message, error_code=ErrorCode.NOT_FOUND, http_status=404)
+
+
+class AttachmentExpiredError(AppError):
+    def __init__(self, message: str = "attachment has expired") -> None:
+        super().__init__(
+            message,
+            error_code=ErrorCode.ATTACHMENT_EXPIRED,
+            http_status=410,
+        )
+
+
+class ConnectorUnavailableError(AppError):
+    def __init__(self, message: str = "business connector is unavailable") -> None:
+        super().__init__(
+            message,
+            error_code=ErrorCode.CONNECTOR_UNAVAILABLE,
+            retryable=True,
+            http_status=503,
+        )
+
+
+class ConnectorContractError(AppError):
+    def __init__(self, message: str = "business connector returned an invalid response") -> None:
+        super().__init__(
+            message,
+            error_code=ErrorCode.CONNECTOR_ERROR,
+            http_status=502,
+        )
+
+
 class LLMProviderError(AppError):
     def __init__(
         self,

@@ -32,6 +32,12 @@ class ChatRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_policy_scope(self) -> ChatRequest:
+        # In enabled staff mode ChatService replaces every client-supplied
+        # brand/market with the server actor and epig scope. Keep the request
+        # parseable so that a stale upstream_demo + market payload reaches that
+        # trusted override instead of failing validation first.
+        if self.brand == "upstream_demo" and self.market != "global":
+            return self
         PolicyScope(brand=self.brand, market=self.market, as_of=self.policy_as_of)
         return self
 

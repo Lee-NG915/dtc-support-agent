@@ -223,7 +223,7 @@ v1 的 `needs_info` 不是隐形聊天室。需要补资料时，客服按既有
 
 | 当前状态 | 允许到达 | 触发与守卫 |
 |---|---|---|
-| `prepared` | `dispatching` | 审批和参数已持久化，Worker 取得有效租约 |
+| `prepared` | `dispatching`、`failed` | 审批和参数已持久化，Worker 取得有效租约才派遣；若确认从未派遣而批准到期、撤权或版本失效，可原子终止为 `failed`，保留原因与审计并释放该诉求活跃操作守卫 |
 | `dispatching` | `awaiting_receipt`、`retry_wait`、`reconciliation_required`、`failed` | 已发送则等回执；只有契约允许的安全失败才直接重试；超时/未知进对账 |
 | `retry_wait` | `dispatching`、`reconciliation_required`、`failed` | 有限退避后使用同键；执行前重验失败则停止，不得换键绕过去重 |
 | `awaiting_receipt` | `succeeded`、`reconciliation_required` | 读回并核验才成功；响应丢失或无法判定进对账 |

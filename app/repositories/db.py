@@ -40,6 +40,13 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 
 async def init_schema(engine: AsyncEngine) -> None:
+    """Create tables for SQLite development convenience only.
+
+    PostgreSQL deployments must run the explicit Alembic migration first;
+    startup never mutates a production schema with ``create_all``.
+    """
+    if engine.dialect.name != "sqlite":
+        return
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
 

@@ -71,6 +71,23 @@ def test_chat_stream_emits_token_and_node_events() -> None:
     assert '"label":"faq_policy"' not in joined
 
 
+def test_validation_error_never_echoes_user_input() -> None:
+    marker = "USER-SECRET-MARKER-91c7"
+    for path in ("/api/v1/chat", "/api/v1/chat/stream"):
+        with _client() as client:
+            response = client.post(
+                path,
+                json={"message": marker * 500, "user_id": "u_demo"},
+            )
+            assert response.status_code == 422
+            body = response.json()
+            assert marker not in response.text
+            errors = body["details"]["errors"]
+            assert errors
+            assert all(set(item) == {"type", "loc", "msg"} for item in errors)
+            assert all(item["msg"] == "invalid value" for item in errors)
+
+
 def test_admin_tools_open_in_testing() -> None:
     with _client() as client:
         response = client.get("/api/v1/admin/tools")

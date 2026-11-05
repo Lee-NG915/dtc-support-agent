@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.core.time import utcnow
@@ -112,4 +112,24 @@ class IdempotencyRow(Base):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     fingerprint: Mapped[str] = mapped_column(String(64))
     response_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AfterSalesStaffRow(Base):
+    """Internal pilot staff credential.
+
+    Only the SHA-256 digest of the bearer token is stored. Roles and markets
+    are comma-separated allowlists read on every authenticated request so that
+    revocation takes effect without caching.
+    """
+
+    __tablename__ = "after_sales_staff"
+
+    staff_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(128))
+    token_sha256: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    roles: Mapped[str] = mapped_column(String(128), default="")
+    allowed_markets: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

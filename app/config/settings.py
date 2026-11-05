@@ -1,9 +1,10 @@
 """Environment-backed settings with a cached accessor."""
 
+import os
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -89,6 +90,16 @@ class Settings(BaseSettings):
     mcp_enabled: bool = True
     mcp_remote_url: str = ""
 
+    # After-sales feature boundary. Disabled by default so the upstream demo
+    # keeps its existing behaviour until an operator explicitly opts in.
+    after_sales_enabled: bool = False
+    business_connector: Literal["fake", "epig"] = "fake"
+    epig_base_url: str = ""
+    epig_service_token: SecretStr = SecretStr("")
+    epig_allowed_markets: str = ""
+    epig_timeout_seconds: float = Field(default=5.0, ge=0.5, le=30.0)
+    epig_max_connections: int = Field(default=10, ge=1, le=20)
+
     @property
     def llm_configured(self) -> bool:
         return bool(self.deepseek_api_key.get_secret_value())
@@ -134,9 +145,21 @@ class Settings(BaseSettings):
     def use_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
 
+    @property
+    def epig_configured(self) -> bool:
+        return bool(
+            self.epig_base_url.strip()
+            and self.epig_service_token.get_secret_value().strip()
+            and self.epig_allowed_markets.strip()
+        )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    # Test runs must never read a developer's real .env (which may contain
+    # production secrets). The pytest bootstrap sets APP_ENV before import.
+    if os.getenv("APP_ENV", "").strip().lower() == "testing":
+        return Settings(_env_file=None)  # type: ignore[call-arg]
     return Settings()
 
 

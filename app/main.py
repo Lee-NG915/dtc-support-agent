@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 
-from app.api.routes import admin, chat, health
+from app.api.routes import admin, after_sales, chat, health
 from app.config.settings import Settings, get_settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Build the container on startup and release it on shutdown."""
-    settings = get_settings()
+    # Use the settings resolved by create_app. Calling get_settings() here
+    # would discard explicit test/embedded settings and reintroduce cached
+    # environment values.
+    settings = app.state.settings
     configure_logging(settings)
     container = await build_container(settings)
     app.state.container = container
@@ -63,10 +66,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    app.state.settings = resolved
     prefix = resolved.api_v1_prefix
     app.include_router(health.router, prefix=prefix)
     app.include_router(chat.router, prefix=prefix)
     app.include_router(admin.router, prefix=prefix)
+    app.include_router(after_sales.router, prefix=prefix)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
@@ -94,9 +99,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Expose only stable diagnostics. Pydantic's ``input`` (and custom
+        # ``ctx``/``url`` values) can contain the user's message or secrets.
         details = (
             [
-                {key: value for key, value in error.items() if key not in {"ctx", "url"}}
+                {
+                    "type": error.get("type", "validation_error"),
+                    "loc": list(error.get("loc", ())),
+                    "msg": "invalid value",
+                }
                 for error in exc.errors()
             ]
             if resolved.app_env != "production"
