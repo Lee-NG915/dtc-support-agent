@@ -44,14 +44,17 @@ from app.schemas.after_sales_workflow import (
     APPROVE_REJECT_ROLES,
     ApproveRequest,
     CaseDetail,
+    CaseEvidenceResponse,
     CaseListResponse,
     CaseState,
+    CaseTicketResponse,
     DraftCreateRequest,
     EventListResponse,
     MaterialCreateRequest,
     OperationStatus,
     RejectRequest,
     SubmitRequest,
+    SuggestionRequest,
     SyncResponse,
 )
 from app.services.after_sales.execution import AfterSalesExecution
@@ -144,6 +147,58 @@ async def get_case_events(
 ) -> EventListResponse:
     _authorize_read(actor, market)
     return await workflow.list_events(market, case_id, after_seq=after_seq, limit=limit)
+
+
+@router.get(
+    "/{market}/cases/{case_id}/evidence",
+    response_model=CaseEvidenceResponse,
+)
+async def get_case_evidence(
+    market: str,
+    case_id: int = Path(ge=1),
+    actor: StaffActor = Depends(get_required_staff),
+    workflow: AfterSalesWorkflow = Depends(get_after_sales_workflow),
+) -> CaseEvidenceResponse:
+    _authorize_read(actor, market)
+    try:
+        return await workflow.get_case_evidence(market, case_id)
+    except ConnectorError as exc:
+        _raise_connector_error(exc)
+
+
+@router.get(
+    "/{market}/cases/{case_id}/ticket",
+    response_model=CaseTicketResponse,
+)
+async def get_case_ticket(
+    market: str,
+    case_id: int = Path(ge=1),
+    actor: StaffActor = Depends(get_required_staff),
+    workflow: AfterSalesWorkflow = Depends(get_after_sales_workflow),
+) -> CaseTicketResponse:
+    _authorize_read(actor, market)
+    try:
+        return await workflow.get_case_ticket(market, case_id)
+    except ConnectorError as exc:
+        _raise_connector_error(exc)
+
+
+@router.post(
+    "/{market}/cases/{case_id}/suggestion",
+    response_model=CaseDetail,
+)
+async def generate_suggestion(
+    market: str,
+    request: SuggestionRequest,
+    case_id: int = Path(ge=1),
+    actor: StaffActor = Depends(get_required_staff),
+    workflow: AfterSalesWorkflow = Depends(get_after_sales_workflow),
+) -> CaseDetail:
+    _authorize_support(actor, market)
+    try:
+        return await workflow.generate_suggestion(actor, market, case_id, request)
+    except ConnectorError as exc:
+        _raise_connector_error(exc)
 
 
 @router.post("/{market}/cases/{case_id}/materials", response_model=CaseDetail)

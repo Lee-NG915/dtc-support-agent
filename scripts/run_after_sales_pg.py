@@ -56,12 +56,14 @@ RUN_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 TEST_FILES = (
     "tests/integration/test_after_sales_workflow.py",
     "tests/integration/test_after_sales_execution.py",
+    "tests/integration/test_after_sales_workbench.py",
     "tests/integration/test_after_sales_migrations.py",
     "tests/integration/test_after_sales_pg_concurrency.py",
 )
 REQUIRED_PG_MODULES = (
     "tests/integration/test_after_sales_workflow.py",
     "tests/integration/test_after_sales_execution.py",
+    "tests/integration/test_after_sales_workbench.py",
 )
 REQUIRED_CONCURRENCY_TESTS = (
     "tests/integration/test_after_sales_pg_concurrency.py::test_two_processes_claim_exactly_one_owner",

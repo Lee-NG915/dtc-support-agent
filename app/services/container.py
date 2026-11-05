@@ -135,6 +135,7 @@ async def build_container(settings: Settings, seed: bool = False) -> AppContaine
             session_factory=session_factory,
             connector=business_connector,
             retriever=retriever,
+            llm=llm,
         )
         if settings.after_sales_enabled and business_connector is not None
         else None

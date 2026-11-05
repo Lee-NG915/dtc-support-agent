@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，跨仓HTTP仍独立验证，E-pig5d已完成本地/CI验收并推送，消费者组件已实现但实际浏览器验收受工具阻塞。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
+更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，真实HTTP恢复片段已通过，员工证据/建议后端已本地范围验收、准备交付，完整旅程仍待验收，E-pig5d已完成本地/CI验收并推送，消费者组件已实现但实际浏览器验收受工具阻塞。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
 
 ## 2a首轮与独立核验
 
@@ -90,3 +90,31 @@ Review关闭：实际pytest模块适配和数据库身份、旧unknown不可误�
 
 
 2c交付回读（2026-11-06）：源码/测试/对应文档已提交推送`b01513bb5ed79d52f08fc046905fa287eb55767c`至`codex/2-epig-after-sales`。根核对远端ref与本地HEAD一致，并逐字节回读execution、PG runner、流程设计与实施记录一致。实际Actions查询该SHA为0个run，未宣称远端CI通过；未合并/部署。后续员工后端实现已恢复，跨仓真实HTTP与浏览器边界仍保持独立。
+
+
+## 员工后端首轮与Review（2026-11-06，尚未验收）
+
+在aa2be9e后，Claude已返回case evidence/ticket只读、严格结构化建议、冻结审批snapshot白名单及共享ticket校验候选。Codex独立Ruff格式217文件/静态、mypy148通过，全量普通497 passed、4 skipped、1 warning（33.86s）；没有真实模型质量或PG增量结论。
+
+独立Review实际复现P1：模型返回后的第二次源订单读取回调把support撤为approver，case revision未变，接口仍200且保存1草稿。原因是fresh staff检查在远端await之前，真实保存事务未再查权限；已交Claude将最后授权重读放在保存事务内，403且不得新草稿/event或失效旧prepared。另fresh证据沿用生成前as_of，跨UTC日可能接受旧日条款，要求当前日期核验和409边界回归。现有严格字段/非空真实引用/Offline明确不可用/冻结快照/原批准工单身份已通过只读核对，仍不能用497项代替修复后的验收。
+
+跨仓临时旅程作者曾返回197c9de8e6a84bc0通过：真实上游提交后阻断响应、杀Worker、自然租约过期、新进程按原键回执恢复、外部单例及消费者归属；尚未采纳最终验收。Review要求临时脚本只清精确所属路径、验证整个进程组退出，并对固定b01513b源码运行，避免并行员工候选影响证据；第一次TypeError失败保留。根已准备无.env的干净b01513b归档；其结构检查32篇/9技能通过，和共享工作区33篇的区别来自未提交学习文档，不把后者假作远端文件。
+
+## 2c真实跨仓HTTP恢复验收（2026-11-06，Codex）
+
+结论：此项通过；不是消费者/员工界面、AI质量或六故事整体验收。根独立运行`PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python /tmp/dtc_epig_e2e/run_journey.py`，exit0，报告`/tmp/dtc_epig_e2e/runs/9b9ad702f882499d/report.json`；203个旅程检查点不是203项独立业务测试。DTC API/Worker/知识/迁移来自无.env的固定b01513bb5ed79d52f08fc046905fa287eb55767c归档，依赖复用项目venv，未混入并行员工候选；E-pig使用新专用持久运行时，凭据仅本次合成。临时编排/报告不承诺长期保留。
+
+实际经HTTP提交诉求、同步、人工材料、新草稿、不同员工送审/批准。真实E-pig建单201后，回环代理尚未转回响应时杀Worker1（PID33288）；本地dispatching、attempt1、有租约且receipt_json为空，源requests/tickets/keys已1/1/1。等待自然租约到期8.96s，Worker2（33307）先按原key查再GET核验，claimed1/succeeded1；原key/payload摘要保持，case completed、operation succeeded/reconciliation matched、原approval/draft consumed。Worker3（33355）claimed0，代理累计建单POST仍1，DTC operation/approval/draft仍1/1/1，E-pig仍1/1/1。消费者真实GET诉求/工单200并读到最终回复；第二主体读本单两接口404，错误cookie401。
+
+Review先后修复临时脚本的glob/mtime差集清理、仅组长退出检查；作者历史a2ab失败、197c9通过、b2bba清理失败及777283复跑保留，不改写。根另行只读ps核对所有记录PGID的成员列表为空；Docker daemon健康27.3.1下精确查两个容器和两个所属匿名卷均不存在，精确owned copy/data目录也不存在。没有全局清理或现有业务库。
+
+脚本后续EPERM被误当组消失的通用分支另作局部修复：只有ps确认无成员/全zombie才判无live成员，探测失败/非zombie失败关闭；本次根真实清理证明不依赖旧分支。未为命名额外增加同义对账事件：operation持久matched/lookup_count/unknown_attempts及operation_succeeded、case_completed事件保留恢复事实。feed负责新增诉求，不要求票据状态变化重新发布一条；本次恢复由原操作key查询完成，不伪造remote_ticket_unverified事件。
+
+
+## 员工证据/工单/建议后端最终本地范围验收（2026-11-06，Codex）
+
+结论：本章后端通过，aa2be9e基线加本批候选尚未推送。交付三个内部case子入口、真实scope证据、只读ticket原批准核验、冻结审批snapshot白名单与严格结构化候选；复用既有Provider/检索/认证/SQLAlchemy和一个共享只读核验模块，无新表/依赖/模型代理或工作流框架。生成、远端查询在事务外，真实保存事务最后重读授权/UTC日期并CAS，建议只到editing。无模型返回503可人工处理，不用Fake冒充质量。
+
+Codex独立最终：Ruff格式217文件/静态与mypy148通过；普通pytest **502 passed、4 skipped、1 warning**（36.86s）。仓内PG入口已最小纳入26条workbench测试，根独立exit0，**120 passed、1 warning**（56.55s）：116真实PG（112适配、3多进程、1PG迁移）与4 SQLite迁移；PG16.15/0005、113 live engine探针且backend PID互异，三组进程竞争仍exactly_one，container_removed=true。默认skip未算通过。日志`/tmp/dtc-workbench-codex-final-pytest.log`、`/tmp/dtc-workbench-codex-final-pg.log`；10文件SHA-256候选清单`/tmp/dtc-workbench-final-candidate-sha256.json`，验证期间无变化。
+
+Review关闭撤权窗口与跨日证据：五项回归确实到达目标窗口，旧代码全部RED，修复GREEN；含源查询期间role/market撤销、跨日条款失效/仍有效、fresh重验后保存入口跨日，403/409且无新draft/event、旧approved/prepared保持。原始497项通过未被误当最终验收。固定源码的真实跨仓恢复与临时EPERM局部5项根复验见上节；它们不代表新增AI端点真实模型质量或页面通过。下一步提交推送回读后实施员工工作台UI，持续保留消费者浏览器阻塞及评测/Compose边界。

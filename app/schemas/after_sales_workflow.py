@@ -8,12 +8,19 @@ receipts, arbitrary policy versions or connector parameters.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.connectors.models import RequestStatus, RequestType, ServiceOrder, TicketAction
+from app.connectors.models import (
+    RequestStatus,
+    RequestType,
+    ServiceOrder,
+    ServiceShipment,
+    ServiceTicket,
+    TicketAction,
+)
 from app.core.time import as_utc, utcnow
 from app.schemas.after_sales import AfterSalesMarket, StaffRole
 
@@ -163,6 +170,148 @@ class DraftView(BaseModel):
     decided_at: datetime | None
 
 
+class TrustedCategoryView(BaseModel):
+    sku: str
+    category: str
+    source: str
+
+
+class CaseEvidenceResponse(BaseModel):
+    """Server-derived policy evidence for one case; never a whole-corpus dump."""
+
+    case_id: int
+    market: AfterSalesMarket
+    as_of: date
+    queried_at: datetime
+    trusted_categories: list[TrustedCategoryView]
+    chunks: list[EvidenceView]
+    policy_version: str | None
+    evidence_sha256: str
+    corpus_revision: str
+    missing_reasons: list[str]
+
+
+TicketVerificationState = Literal["matched_operation", "external_only"]
+
+
+class CaseTicketResponse(BaseModel):
+    """A real remote ticket read; never a local state transition or approval."""
+
+    case_id: int
+    market: AfterSalesMarket
+    ticket: ServiceTicket
+    queried_at: datetime
+    verification_state: TicketVerificationState
+    operation_id: str | None = None
+
+
+class AttachmentFingerprintView(BaseModel):
+    attachment_id: str
+    status: str
+    media_type: str
+    size_bytes: int
+    expires_at: str
+
+
+class ApprovalCaseSnapshotView(BaseModel):
+    case_id: int
+    market: AfterSalesMarket
+    request_id: str
+    order_id: str
+    request_type: RequestType
+
+
+class ApprovalRequestSnapshotView(BaseModel):
+    request_id: str
+    sequence: str
+    status: RequestStatus
+    ticket_id: str | None = None
+    type: RequestType
+    description_sha256: str
+    attachments: list[AttachmentFingerprintView]
+    updated_at: str
+
+
+class ApprovalDraftSnapshotView(BaseModel):
+    draft_id: str
+    version: int
+    action: TicketAction
+    internal_summary: str
+    consumer_reply: str
+    evidence_sha256: str
+
+
+class ApprovalMaterialSnapshotView(BaseModel):
+    material_id: str
+    material_type: str
+    source: str
+    content: str
+    content_sha256: str
+    applies_to_sku: str | None = None
+    delivered_at: str | None = None
+    created_by_staff_id: str
+    created_at: str
+
+
+class ApprovalMaterialsSnapshotView(BaseModel):
+    revision: int
+    items: list[ApprovalMaterialSnapshotView]
+
+
+class ApprovalEvidenceSnapshotView(BaseModel):
+    chunks: list[EvidenceView]
+    policy_version: str | None = None
+    evidence_sha256: str
+    corpus_revision: str
+    as_of: str | None = None
+
+
+class ApprovalRequesterSnapshotView(BaseModel):
+    staff_id: str
+    roles: list[str]
+    allowed_markets: list[str]
+
+
+class ApprovalWindowSnapshotView(BaseModel):
+    requested_at: str
+    expires_at: str
+
+
+class ApprovalDeliveryProofView(BaseModel):
+    kind: Literal["shipment", "manual_verification"]
+    shipment_id: str | None = None
+    event_id: str | None = None
+    delivered_at: str | None = None
+    material_id: str | None = None
+    material_type: str | None = None
+    applies_to_sku: str | None = None
+    source_description: str | None = None
+    content_sha256: str | None = None
+    recorded_by_staff_id: str | None = None
+
+
+class ApprovalSnapshotView(BaseModel):
+    """Read-only whitelist of the immutable approval snapshot.
+
+    Execution keys, idempotency values, credentials and connector internals
+    are intentionally not part of this view. Values come from the stored
+    ``snapshot_json`` only, never from the current case/draft/order rows.
+    """
+
+    schema_version: int = 1
+    case: ApprovalCaseSnapshotView
+    order: ServiceOrder
+    request: ApprovalRequestSnapshotView
+    shipment: ServiceShipment | None = None
+    delivery_proof: ApprovalDeliveryProofView | None = None
+    materials: ApprovalMaterialsSnapshotView
+    draft: ApprovalDraftSnapshotView
+    evidence: ApprovalEvidenceSnapshotView
+    trusted_categories: list[TrustedCategoryView]
+    requester: ApprovalRequesterSnapshotView
+    approval: ApprovalWindowSnapshotView
+
+
 class ApprovalView(BaseModel):
     approval_id: str
     draft_id: str
@@ -171,6 +320,7 @@ class ApprovalView(BaseModel):
     decided_by_staff_id: str | None
     expires_at: datetime
     snapshot_sha256: str
+    snapshot: ApprovalSnapshotView | None = None
     decision_reason: str | None
     created_at: datetime
     decided_at: datetime | None
@@ -285,6 +435,10 @@ class DraftCreateRequest(_ForbidExtra):
     evidence_chunk_ids: list[str] = Field(default_factory=list, max_length=20)
 
 
+class SuggestionRequest(_ForbidExtra):
+    expected_revision: int = Field(ge=1)
+
+
 class SubmitRequest(_ForbidExtra):
     expected_revision: int = Field(ge=1)
 
@@ -299,14 +453,27 @@ class RejectRequest(_ForbidExtra):
 
 
 __all__ = [
+    "ApprovalCaseSnapshotView",
+    "ApprovalDeliveryProofView",
+    "ApprovalDraftSnapshotView",
+    "ApprovalEvidenceSnapshotView",
+    "ApprovalMaterialSnapshotView",
+    "ApprovalMaterialsSnapshotView",
+    "ApprovalRequestSnapshotView",
+    "ApprovalRequesterSnapshotView",
+    "ApprovalSnapshotView",
     "ApprovalStatus",
     "ApprovalView",
+    "ApprovalWindowSnapshotView",
     "ApproveRequest",
+    "AttachmentFingerprintView",
     "AttachmentView",
     "CaseDetail",
+    "CaseEvidenceResponse",
     "CaseListResponse",
     "CaseState",
     "CaseSummary",
+    "CaseTicketResponse",
     "DraftCreateRequest",
     "DraftStatus",
     "DraftView",
@@ -320,5 +487,8 @@ __all__ = [
     "OperationView",
     "RejectRequest",
     "SubmitRequest",
+    "SuggestionRequest",
     "SyncResponse",
+    "TicketVerificationState",
+    "TrustedCategoryView",
 ]

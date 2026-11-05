@@ -64,3 +64,6 @@ DTC-2a增量（2026-11-06，本地验收）：新增`app/connectors/`、staff re
 DTC-2b增量（2026-11-06，本地验收）：`app/services/after_sales/`、after_sales_repository和after_sales_workflow routes提供持久同步、材料/证据、版本草稿、审批及prepared操作；迁移0004新增业务表。`POST /api/v1/after-sales/{market}/cases/sync`为support入口，批准不调用外部create。Worker/租约执行已完成2c核心本地范围验收，员工页面仍待后续章节；实际验收分层见流程记录，不能把prepared称为已建单。
 
 DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sales/execution.py`及`python -m app.worker`提供有界feed轮询、租约/epoch派遣、原键回执核验、有限重试与人工对账；0005补操作恢复字段。`uv run python scripts/run_after_sales_pg.py`在全新专用合成PG16容器执行固定测试并清理，不读取.env/继承目标；真实PG与SQLite迁移分列。`uv run python -m app.worker --help`可查看参数，真正派遣前必须核对专用环境和显式迁移。当前结果不等于Compose、跨仓HTTP、浏览器或生产验收；详见流程设计/记录。
+
+
+员工后端增量（2026-11-06，本地范围验收）：case的`evidence`/`ticket`只读与`suggestion`草稿入口已实现；ApprovalView提供已存冻结snapshot白名单。生成前后与真实保存事务验证员工/源指纹/UTC日期，仅保存editing；OfflineLLM明确不可用。共享`verification.py`供Worker与只读工单核验复用。专用PG入口现包含workflow/execution/workbench，仍不代表员工页面、真实模型质量或整体验收。

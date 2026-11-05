@@ -5,13 +5,14 @@ This plugin is opt-in: it only activates when ``DTC_TEST_PG_URL`` and
 ``scripts/run_after_sales_pg.py``. Plain ``pytest`` keeps its normal SQLite
 behaviour and never starts Docker.
 
-For the workflow/execution modules the adapter replaces the module-level
-``_settings`` factory on ``request.module`` (the function the fixtures actually
-call), rebuilds ``public`` and runs Alembic ``0001`` -> ``head`` before every
-test, and verifies the live application engine through ``ctx.client.portal``
-on the same event loop. A test cannot silently stay on SQLite: the identity
-probe compares the engine dialect, ``current_database()``, ``current_user()``,
-``pg_backend_pid()`` and the Settings URL with this run's random identity.
+For the workflow/execution/workbench modules the adapter replaces the
+module-level ``_settings`` factory on ``request.module`` (the function the
+fixtures actually call), rebuilds ``public`` and runs Alembic ``0001`` ->
+``head`` before every test, and verifies the live application engine through
+``ctx.client.portal`` on the same event loop. A test cannot silently stay on
+SQLite: the identity probe compares the engine dialect, ``current_database()``,
+``current_user()``, ``pg_backend_pid()`` and the Settings URL with this run's
+random identity.
 """
 
 from __future__ import annotations
@@ -38,12 +39,19 @@ from alembic.script import ScriptDirectory
 ROOT = Path(__file__).resolve().parents[2]
 PG_MODULE = "tests/integration/test_after_sales_workflow.py"
 PG_EXECUTION_MODULE = "tests/integration/test_after_sales_execution.py"
+PG_WORKBENCH_MODULE = "tests/integration/test_after_sales_workbench.py"
 PG_CONCURRENCY_MODULE = "tests/integration/test_after_sales_pg_concurrency.py"
 PG_MIGRATION_MODULE = "tests/integration/test_after_sales_migrations.py"
 PG_MIGRATION_TEST = "test_dedicated_postgres_migration_target"
 PG_RUN_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 
-ADAPTED_MODULES = {PG_MODULE, PG_EXECUTION_MODULE, PG_CONCURRENCY_MODULE}
+ADAPTED_MODULES = {
+    PG_MODULE,
+    PG_EXECUTION_MODULE,
+    PG_WORKBENCH_MODULE,
+    PG_CONCURRENCY_MODULE,
+}
+REQUIRED_PG_MODULES = (PG_MODULE, PG_EXECUTION_MODULE, PG_WORKBENCH_MODULE)
 
 
 @dataclass
@@ -332,10 +340,10 @@ def _expected_problems(
     problems: list[str] = []
     adapted = counts.get("pg_adapted", {})
     if adapted.get("passed", 0) < 1:
-        problems.append("no workflow/execution tests ran on PostgreSQL")
+        problems.append("no adapted tests ran on PostgreSQL")
     if adapted.get("failed", 0) or adapted.get("skipped", 0):
-        problems.append("workflow/execution PostgreSQL tests failed or skipped")
-    for module in (PG_MODULE, PG_EXECUTION_MODULE):
+        problems.append("adapted PostgreSQL tests failed or skipped")
+    for module in REQUIRED_PG_MODULES:
         if module_counts.get(module, {}).get("passed", 0) < 1:
             problems.append(f"no passing PostgreSQL tests for {module}")
         if not any(probe.get("module") == module for probe in state.probes):

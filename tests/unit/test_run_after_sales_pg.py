@@ -50,22 +50,26 @@ def _valid_report(runner: Any) -> dict[str, Any]:
     return {
         "pg_configured": True,
         "counts": {
-            "pg_adapted": {"passed": 2, "failed": 0, "skipped": 0},
+            "pg_adapted": {
+                "passed": len(runner.REQUIRED_PG_MODULES),
+                "failed": 0,
+                "skipped": 0,
+            },
             "pg_concurrency": {"passed": 3, "failed": 0, "skipped": 0},
             "pg_migration": {"passed": 1, "failed": 0, "skipped": 0},
             "sqlite_migration": {"passed": 3, "failed": 0, "skipped": 0},
         },
         "module_counts": {
-            runner.REQUIRED_PG_MODULES[0]: {"passed": 1, "failed": 0, "skipped": 0},
-            runner.REQUIRED_PG_MODULES[1]: {"passed": 1, "failed": 0, "skipped": 0},
+            module: {"passed": 1, "failed": 0, "skipped": 0}
+            for module in runner.REQUIRED_PG_MODULES
         },
         "passed_nodeids": [
             *runner.REQUIRED_CONCURRENCY_TESTS,
             runner.REQUIRED_PG_MIGRATION_TEST,
         ],
         "probes": [
-            {"module": runner.REQUIRED_PG_MODULES[0], "ok": True, "dialect": "postgresql"},
-            {"module": runner.REQUIRED_PG_MODULES[1], "ok": True, "dialect": "postgresql"},
+            {"module": module, "ok": True, "dialect": "postgresql"}
+            for module in runner.REQUIRED_PG_MODULES
         ],
         "observations": [],
         "migration": {

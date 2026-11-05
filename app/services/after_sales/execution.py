@@ -68,6 +68,7 @@ from app.services.after_sales.payload import (
     sha256_text,
 )
 from app.services.after_sales.service import AfterSalesWorkflow
+from app.services.after_sales.verification import ticket_problems
 
 logger = logging.getLogger(__name__)
 
@@ -576,7 +577,7 @@ class AfterSalesExecution:
         )
 
     async def _verify_created(self, claim: _Claim, context: _Context, ticket: ServiceTicket) -> str:
-        problems = self._ticket_problems(
+        problems = ticket_problems(
             ticket, context.snapshot, context.payload, context.operation.approval_id
         )
         if problems:
@@ -598,7 +599,7 @@ class AfterSalesExecution:
         if (
             readback.ticket_id != ticket.ticket_id
             or readback.receipt.receipt_id != ticket.receipt.receipt_id
-            or self._ticket_problems(
+            or ticket_problems(
                 readback, context.snapshot, context.payload, context.operation.approval_id
             )
         ):
@@ -680,7 +681,7 @@ class AfterSalesExecution:
                 claim, "LOOKUP_INVALID", "lookup_invalid", increment_lookup=True
             )
         ticket = result.ticket
-        problems = self._ticket_problems(
+        problems = ticket_problems(
             ticket, context.snapshot, context.payload, context.operation.approval_id
         )
         if problems:
@@ -708,7 +709,7 @@ class AfterSalesExecution:
         if (
             readback.ticket_id != ticket.ticket_id
             or readback.receipt.receipt_id != ticket.receipt.receipt_id
-            or self._ticket_problems(
+            or ticket_problems(
                 readback, context.snapshot, context.payload, context.operation.approval_id
             )
         ):
@@ -885,7 +886,7 @@ class AfterSalesExecution:
                     case = await session.get(AfterSalesCaseRow, operation.case_id)
                     if case is None:
                         raise _CorruptOperation("case_context_changed")
-                    receipt_problems = self._ticket_problems(
+                    receipt_problems = ticket_problems(
                         ticket, context.snapshot, context.payload, operation.approval_id
                     )
                     if receipt_problems:
@@ -1547,52 +1548,6 @@ class AfterSalesExecution:
     def _snapshot_market(snapshot: dict[str, Any]) -> str:
         case_snapshot = cast(dict[str, Any], snapshot["case"])
         return str(case_snapshot["market"])
-
-    def _ticket_problems(
-        self,
-        ticket: ServiceTicket,
-        snapshot: dict[str, Any],
-        payload: dict[str, Any],
-        approval_id: str,
-    ) -> list[str]:
-        try:
-            case_snapshot = cast(dict[str, Any], snapshot["case"])
-            order_snapshot = cast(dict[str, Any], snapshot["order"])
-        except (KeyError, TypeError):
-            return ["snapshot_invalid"]
-        problems: list[str] = []
-        # Market and order identity come from the immutable approval snapshot;
-        # all wire fields come from the persisted operation payload. The
-        # mutable case row is never allowed to substitute for either.
-        if case_snapshot.get("order_id") != order_snapshot.get("order_id"):
-            problems.append("snapshot_identity_mismatch")
-        if ticket.market != case_snapshot.get("market"):
-            problems.append("ticket_market_mismatch")
-        if ticket.order_id != order_snapshot.get("order_id"):
-            problems.append("ticket_order_mismatch")
-        if ticket.request_id != payload.get("request_id"):
-            problems.append("ticket_request_mismatch")
-        if ticket.action != payload.get("action"):
-            problems.append("ticket_action_mismatch")
-        if ticket.reply != payload.get("reply"):
-            problems.append("ticket_reply_mismatch")
-        if ticket.draft_version != str(payload.get("draft_version")):
-            problems.append("ticket_draft_version_mismatch")
-        if ticket.approval_id != approval_id or ticket.approval_id != payload.get("approval_id"):
-            problems.append("ticket_approval_mismatch")
-        if ticket.policy_version != payload.get("policy_version"):
-            problems.append("ticket_policy_version_mismatch")
-        if ticket.order_version != payload.get("order_version"):
-            problems.append("ticket_order_version_mismatch")
-        receipt = ticket.receipt
-        if (
-            receipt.ticket_id != ticket.ticket_id
-            or receipt.request_id != ticket.request_id
-            or receipt.action != ticket.action
-            or receipt.request_status != "ticket_created"
-        ):
-            problems.append("ticket_receipt_mismatch")
-        return list(dict.fromkeys(problems))
 
     @staticmethod
     def _owns(operation: AfterSalesOperationRow, claim: _Claim) -> bool:

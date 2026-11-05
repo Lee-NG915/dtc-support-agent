@@ -1,6 +1,6 @@
 # DTC 内部售后流程：实现设计与执行计划
 
-更新日期：2026-11-06。状态：已确认产品范围内的实现方案；2a/2b及2c执行核心已实现并通过各章本地范围验收，跨仓HTTP、页面及其余能力按下文分阶段实施，阶段结果在[实施记录](../../../records/after-sales/dtc-workflow.md)持续记录。产品行为/状态机仍以[产品蓝图](product-blueprint.md)为正本，线上E-pig字段仍以[OpenAPI](../../../../contracts/epig-after-sales/v1/openapi.json)为正本。
+更新日期：2026-11-06。状态：已确认产品范围内的实现方案；2a/2b、2c执行核心及员工证据/建议后端已实现并通过各章本地范围验收，跨仓HTTP、页面及其余能力按下文分阶段实施，阶段结果在[实施记录](../../../records/after-sales/dtc-workflow.md)持续记录。产品行为/状态机仍以[产品蓝图](product-blueprint.md)为正本，线上E-pig字段仍以[OpenAPI](../../../../contracts/epig-after-sales/v1/openapi.json)为正本。
 
 ## 目标与分步落点
 
@@ -116,15 +116,15 @@ operator只能请求继续查询、查看脱敏进度及登记有来源的对账
 阅读后应能回答：为什么只存hash仍要保护原token；为什么市场限制要在路由和Connector两端校验；为什么协议Schema合法还要核对对象ID；为什么PG启动不执行create_all；为什么这些只读能力尚不足以证明审批与恢复已完成。
 
 
-## 后续AI建议与员工工作台（实施前设计）
+## AI建议与员工工作台（后端已范围验收，前端计划）
 
-在2b/2c基础行为验收后实施。员工不应复制数据库ID才能选证据，因此计划增加本case上下文的只读evidence入口：服务器从当前订单SKU映射、市场和政策日期派生scope，返回真实可用chunk/来源/版本与缺资料原因。support/approver/auditor按同一市场授权，不接受客户端policy_version或商品范围覆盖。该内部读取不新增E-pig wire操作。详情结果还需要本case的只读ticket入口：按已关联远端ID经现有Connector读真实工单，核验market/order/request及receipt，有本地operation时继续匹配原payload。仅support/approver/auditor可读；operator不能借此看回复。读取不伪造本地批准或推进完成，返回查询时间；失败时UI只能把此前已核验回执标陈旧，不能当最新履行状态。复用源ServiceTicket，不新增E-pig接口。
+在2b/2c基础行为上补充后端，前端继续按下文实施。员工不应复制数据库ID才能选证据，因此已增加本case上下文的只读evidence入口：服务器从当前订单SKU映射、市场和政策日期派生scope，返回真实可用chunk/来源/版本与缺资料原因。support/approver/auditor按同一市场授权，不接受客户端policy_version或商品范围覆盖。该内部读取不新增E-pig wire操作。详情结果还需要本case的只读ticket入口：按已关联远端ID经现有Connector读真实工单，核验market/order/request及receipt，有本地operation时继续匹配原payload。仅support/approver/auditor可读；operator不能借此看回复。读取不伪造本地批准或推进完成，返回查询时间；失败时UI只能把此前已核验回执标陈旧，不能当最新履行状态。复用源ServiceTicket，不新增E-pig接口。
 
 AI建议入口仅support可用，带expected_revision；复用已有检索与LLMProvider，关闭通用业务工具。网络/模型调用在事务外，固定服务器订单/材料/政策上下文；候选action/reply/summary及引用需白名单校验，引用必须属于本次真实匹配chunk。模型内容不改变身份、材料真伪、审批或操作。成功只保存一个新的editing草稿版本，保存前复用业务校验重读staff角色/市场并比较生成时订单/材料/附件/政策指纹，再次CAS；即使case revision未变，权限变化也403、业务上下文变化409，不保存候选且不覆盖；无证据/冲突/模型故障明确返回未生成。默认OfflineLLM/Fake，真实模型评测未授权前不调用。建议仍经过人工修改、送审、不同人批准与Worker核验，不自动形成工单。
 
-实施时采用三个内部入口，复用现有case路径，不增加E-pig wire操作：
+已实现三个内部入口，复用现有case路径，不增加E-pig wire操作：
 
-| 计划入口 | 输入与结果 | 守卫 |
+| 内部入口 | 输入与结果 | 守卫 |
 |---|---|---|
 | `GET /after-sales/{market}/cases/{case_id}/evidence` | 当前可信范围、真实政策chunk及来源/版本、查询时间、缺资料原因 | support/approver/auditor；市场、SKU类别与日期由服务端派生，禁止客户端扩大范围 |
 | `GET /after-sales/{market}/cases/{case_id}/ticket` | 实际远端工单、查询时间；尚无工单明确未找到 | 同上；核对case身份、receipt及存在的原operation payload，读取不改审批或完成状态 |
@@ -135,6 +135,8 @@ AI建议入口仅support可用，带expected_revision；复用已有检索与LLM
 建议成功必须至少有一条本次有效引用，不能让空集合通过子集检查。审批人需看到送审时冻结的依据：在既有授权case详情的ApprovalView增加白名单化snapshot展示，包含当时的草稿、订单、材料、证据/版本、权限与到期依据；从已存不可变snapshot读取，不以当前case拼装，不返回凭据或执行密钥。operator仍无该业务详情权限。这是当前摘要字段不足的最小补充，不另建审批系统。
 
 前端复用现有React/TypeScript/Vite、CSS变量和lucide，采用独立员工工作台入口，不引入router/状态管理/UI框架。员工凭证只在内存，刷新重新认证；/me提供角色和允许市场。退出、401/403或身份/市场切换时清除详情、附件blob、草稿和聊天内存，并中止旧请求，避免迟到响应跨身份回填。业务文本/回复/凭证不保存localStorage；原上游demo聊天的本地历史不混入员工模式。
+
+员工入口采用`/staff`，由现有main入口按路径选择独立组件，旧demo不共用会话hook。工作台使用队列/详情两列，窄屏按队列→详情顺序展示；顶栏显示当前员工、角色、市场、退出及数据查询时间。结果以服务端重新读取为准；批准后可有界轮询执行状态或手动刷新，不能把按钮成功当成已履行。审批界面展示冻结快照与当前变更提示，operator仅见脱敏运行列表/事件及继续查询。附件使用员工认证下载的blob预览，并在切换/退出撤销URL。
 
 工作台按“队列→详情→审批/执行结果”组织：队列有市场/状态/类型/时间筛选及最后同步时间；详情展示订单快照的查询时间、消费者材料/内部补充的区别、授权附件、真实政策原文、AI/人工草稿版本和事件时间线。support能补资料/保存新版本/送审；approver能查看完整冻结快照及批准/内部驳回原因；自批/越权/旧revision以服务端结果为准。operator只显示脱敏执行/对账面板，不能走业务详情读取PII。无直接“绕过审批建单”按钮，批准成功与工单已核验分开显示。
 
@@ -194,3 +196,14 @@ Worker在发送建单后被杀，数据库可能只知道“已经开始派遣�
 仓库根目录运行`.venv/bin/python -m app.worker --help`可查看实际参数，不会派遣。仅在明确配置的专用合成环境、显式迁移后运行`--once --markets au`；Worker读取运行配置，不能把这条派遣参数直接用于已有业务库的小实验。无需业务凭据的数据库实验使用`.venv/bin/python scripts/run_after_sales_pg.py`：需Docker与项目依赖，会自行新建随机PG容器、运行固定测试并清理所属资源，不接收任意库URL/命令，也不读取.env。
 
 预期观察三组真实进程/backend：竞争只一个owner，过期重领epoch增加且旧提交被拒，进程被杀后租约仍可恢复。报告中的pg_adapted/pg_concurrency/pg_migration与sqlite_migration分别计数；默认pytest的PG skip不是通过。实际版本、结果、失败历史与跨仓/浏览器边界见[实施记录](../../../records/after-sales/dtc-workflow.md)。阅读后应能说明：为什么需要外部幂等、为什么未知时不能换key、为什么后来一次明确拒绝不能抹去更早未知、为什么批准与completed是不同事实。
+
+
+## 从AI建议到人工草稿：员工后端源码与小实验
+
+模型返回一段看似合理的回复，为什么不能直接批准？回复只是一份候选，它可能引用别的市场条款，生成期间员工也可能被撤权或材料已变化。服务端先固定当前诉求和真实政策，再严格检查动作、文本和非空引用；保存时再核对权限、日期和版本。这个边界类似前端表单带revision提交，但完整校验在服务端，模型不决定权限。
+
+先读after_sales_workflow路由的三个case子路径，再读[流程服务](../../../../app/services/after_sales/service.py)的get_case_evidence、get_case_ticket、generate_suggestion/_revalidate_suggestion/_save_suggestion。模型和远端查询不占数据库事务；最后保存事务重读员工权限并CAS，只新增editing。冻结审批展示从已存snapshot白名单读取；[共享核验](../../../../app/services/after_sales/verification.py)比较真实ticket与原批准payload，不推进本地状态，也不复制Worker。
+
+根目录运行`.venv/bin/pytest -q tests/integration/test_after_sales_workbench.py`。预期正常Fake建议仅建草稿，未配置模型明确不可用，伪引用/空引用被拒；在生成后的源查询期间撤权得到403，跨UTC日得到409，原批准/操作不被无效候选破坏。此命令默认临时SQLite，不调用收费模型；真实PG使用前述仓内专用入口，已包含该模块并核验实际engine。实际结果见实施记录，不把测试Fake的输出当模型质量。
+
+阅读后应能解释：为什么模型前认证不足；为什么已有case revision还需读源指纹和政策日期；为什么审批snapshot不能用当前case拼；为什么读取外部ticket不等于替它补造本地批准。员工UI、真实模型质量与完整旅程继续分别验收。
