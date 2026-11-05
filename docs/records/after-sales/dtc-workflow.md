@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已通过本地范围验收、准备提交推送，跨仓HTTP仍独立验证，E-pig5d已完成本地/CI验收并推送，消费者组件已实现但实际浏览器验收受工具阻塞。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
+更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，跨仓HTTP仍独立验证，E-pig5d已完成本地/CI验收并推送，消费者组件已实现但实际浏览器验收受工具阻塞。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
 
 ## 2a首轮与独立核验
 
@@ -87,3 +87,6 @@ Codex独立专用入口随后exit0：94 passed、1 warning（53.86s），拆分�
 最终候选独立结果：Ruff格式215文件、静态检查及mypy147通过；普通pytest **476 passed、4 skipped、1 warning**（32.10s）。skip为3个专用PG多进程与1个需专用URL的迁移，不能算PG成绩。专用入口再次独立exit0，**94 passed**：90实际PG（86适配、3多进程、1PG迁移）与4 SQLite迁移；PG16.15、0001～0005到head、87实际engine身份探针且backend PID互异，三组真实OS/PG进程验证单owner、过期epoch隔离与崩溃重领，container_removed=true。日志`/tmp/dtc-2c-codex-final-pytest.log`、`/tmp/dtc-2c-codex-final-pg.log`；源码候选21文件SHA-256清单`/tmp/dtc-2c-final-candidate-sha256.json`，验证期间无变化。临时产物不承诺长期保留，仓内命令可重跑。
 
 Review关闭：实际pytest模块适配和数据库身份、旧unknown不可误释放、新候选不能覆盖原操作、manual IN_FLIGHT不重开自动执行、service后台轮询、测试后代进程退出与原进程组覆盖。根独立修复后进程清理unit22项先通过；最终普通全套含asyncpg简化后的26项runner回归。手写wire/SCRAM已删除，复用固定asyncpg连接且共享探测预算，无新依赖。源码讲解/专用命令随本批更新；下一步提交推送回读后继续真实跨仓旅程与员工工作台。
+
+
+2c交付回读（2026-11-06）：源码/测试/对应文档已提交推送`b01513bb5ed79d52f08fc046905fa287eb55767c`至`codex/2-epig-after-sales`。根核对远端ref与本地HEAD一致，并逐字节回读execution、PG runner、流程设计与实施记录一致。实际Actions查询该SHA为0个run，未宣称远端CI通过；未合并/部署。后续员工后端实现已恢复，跨仓真实HTTP与浏览器边界仍保持独立。
