@@ -1,6 +1,6 @@
 # 11 · 部署与运维
 
-> 一句话：默认 Compose 使用 SQLite 和内置检索，单个容器即可启动 API 与 Web；Redis、Qdrant、Postgres 仍可按需接入；`.env` 不进镜像。
+> 既有默认Compose仍使用单API与SQLite。本批增加独立售后Compose候选：PostgreSQL、显式迁移、API和Worker；验收状态见[流程记录](records/after-sales/dtc-workflow.md)。它默认Fake，仅验证部署基础，不代表两仓共享业务系统已联调。
 
 ## 本章目录
 
@@ -54,7 +54,7 @@ api:
     APP_ENV: production
 ```
 
-健康检查打 `http://127.0.0.1:8000/api/v1/health`。镜像非 root，先 COPY 再 `pip install .`。
+健康检查打 `http://127.0.0.1:8000/api/v1/health`。镜像非root，按`uv.lock`执行frozen依赖安装，应用通过`/app`的PYTHONPATH运行，包含显式Alembic迁移。
 
 ## 生产检查清单
 
@@ -81,3 +81,55 @@ API 无粘滞：session 在 DB。进程内限流多副本不共享 → 生产配
 ---
 
 上一章 [10](10-evaluation.md) · 下一章 [12 · 限制](12-limitations.md)
+
+
+## 售后隔离部署候选
+
+`docker-compose.after-sales.yml`为本地合成环境入口，不替换旧Compose；API仅绑定127.0.0.1，PG不发布主机端口。migrate先等PG健康，API/Worker再等迁移成功。镜像保留production及禁用本地模型的安全默认，本地Compose显式覆盖development/Fake/离线；bridge允许出站，不能宣称网络层禁止外联。空admin token在development下允许本地管理信息访问，员工业务接口仍要求真实员工身份。
+
+首次操作须选全新且明确归属的项目名，准备外部生成的合成PG密码，并使用`--env-file /dev/null`或本次0600专用文件，避免Compose自动读取仓库.env。不要在已有业务库运行本演示。镜像依uv.lock frozen安装并包含Alembic配置/0005；`NODE_IMAGE`/`PYTHON_IMAGE`构建参数可指定相同官方版本的可达镜像源，不改变Python依赖。IMAGE_REVISION只表示构建基线，有工作区叠加时还需记录候选文件digest和实际image ID。
+
+API与Worker各自Fake不能共享外部工单，因此健康/迁移/Worker单次成功只证明部署基础。真实两仓HTTP、员工初始化、备份恢复另验；当前员工SQLite seed不适用于PG，不能把它用于已有PG库。基础启动与清理示例见下文，真实业务初始化与两仓恢复仍另验。
+
+以下操作仅启动新的本地部署基础环境。在同一终端保留变量用于清理；API自动分配loopback端口，避免占用已有服务。凭据文件不输出到终端、不进入构建上下文：
+
+```bash
+DTC_DEMO_PROJECT="dtc-demo-$(python3 -c 'import secrets; print(secrets.token_hex(6))')"
+DTC_DEMO_ENV="$(mktemp -t dtc-after-sales)"
+chmod 600 "$DTC_DEMO_ENV"
+python3 - "$DTC_DEMO_ENV" "$DTC_DEMO_PROJECT" <<'PY'
+import secrets, sys
+from pathlib import Path
+Path(sys.argv[1]).write_text(
+    'POSTGRES_PASSWORD=' + secrets.token_hex(24) + '\n'
+    + 'POSTGRES_USER=dtc\nPOSTGRES_DB=dtc_after_sales\nAPI_PORT=0\n'
+    + 'APP_IMAGE=' + sys.argv[2] + ':local\n'
+)
+PY
+
+docker compose --env-file "$DTC_DEMO_ENV" -f docker-compose.after-sales.yml \
+  -p "$DTC_DEMO_PROJECT" build
+# 若Docker Hub不可达，可在上述build后追加已实测的相同官方版本构建参数：
+# --build-arg NODE_IMAGE=public.ecr.aws/docker/library/node:24-alpine \
+# --build-arg PYTHON_IMAGE=public.ecr.aws/docker/library/python:3.11-slim
+
+docker compose --env-file "$DTC_DEMO_ENV" -f docker-compose.after-sales.yml \
+  -p "$DTC_DEMO_PROJECT" up -d --no-build
+
+docker compose --env-file "$DTC_DEMO_ENV" -f docker-compose.after-sales.yml \
+  -p "$DTC_DEMO_PROJECT" ps -a
+
+docker compose --env-file "$DTC_DEMO_ENV" -f docker-compose.after-sales.yml \
+  -p "$DTC_DEMO_PROJECT" port api 8000
+```
+
+按输出的`127.0.0.1:端口`访问`/api/v1/health`、`/api/v1/ready`和`/staff`。预期migrate退出0、API健康、Worker运行，数据库版本0005；员工业务无token仍401。此步骤只提供登录shell，尚未初始化PG员工或接真实E-pig，不能据此宣布工作台业务演示完成。不要运行输出全部展开环境变量的`compose config`或全量容器inspect。
+
+只清理本次随机项目，`-v`会删除该项目的合成PG数据，不要替换成既有项目名：
+
+```bash
+docker compose --env-file "$DTC_DEMO_ENV" -f docker-compose.after-sales.yml \
+  -p "$DTC_DEMO_PROJECT" down -v --remove-orphans
+docker image rm "$DTC_DEMO_PROJECT:local"
+rm "$DTC_DEMO_ENV"
+```

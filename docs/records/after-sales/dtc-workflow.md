@@ -148,3 +148,35 @@ Review关闭撤权窗口与跨日证据：五项回归确实到达目标窗口�
 专用PG本批首次启动在pytest前因“published port is not bound to loopback”安全失败，所属容器已清理；原port输出未保留，原因未知，未修改或放宽loopback守卫。三次所属临时容器端口探针均正常；带安全端口观测的一次重试为120 passed（116真实PG+4SQLite）、113 live engine探针、0005，容器清理。记录`/tmp/dtc-eval-codex-final-pg.log`、`/tmp/dtc-pg-port-probe.json`、`/tmp/dtc-eval-codex-pg-retry1.log`；不能声称启动偶发现象已定位修复。默认generation/e2e/epig-policy/all在污染父环境和自有假.env下独立exit0、无canary泄漏、临时库清理；epig-policy34/34仍仅离线政策开发集。资源关闭日志敏感正文泄漏有真实RED/GREEN回归，最终日志只保留资源/异常类型。
 
 新增CI仅配置前端Node24和专用PG门禁，未变权限/部署；本地通过不代表远端Actions执行。完整业务工具轨迹、12条保留集、真实模型质量、真实浏览器、Compose及备份恢复仍分别待验收。Claude修复调用达到max-turns退出未提供最终摘要，Codex以实际diff、原始诊断和独立复验裁决，未将CLI退出写成成功。
+
+评测安全/CI交付回读：已推送`296e7af2f9ed97e68e8216ac22dc6997ec916ce7`至`codex/2-epig-after-sales`，远端ref与5个关键文件逐字节一致；该SHA实际Actions查询仍0条。DTC#2评论6673137643、E-pig#2评论6673148337正文已回读一致，两Issue摘要有限更新，保留历史。未合并或生产部署。下一章Docker/Compose基础与eval工具真实轨迹在独立文件范围实施；浏览器页面控制仍失败，真实质量评测的Provider/model/累计预算与专用凭据配置仍待确认，未执行新增付费调用。
+
+## 工具轨迹与部署基础候选验收进行中（2026-11-06）
+
+工具轨迹独立Review关闭重复parse、截断/脱敏碰撞与“全错被标未测”的问题；最终根聚焦37 passed（2.78s）。默认e2e CLI根运行实际记录7次Tool.run（get_order3、track_shipment3、search_knowledge1），仅既有upstream_demo离线集合，未声明期望所以accuracy=null，真实模型质量未测，Connector未混算。报告`eval/reports/e2e_20261106T003600Z.json`、日志`/tmp/dtc-tool-trace-codex-final.log`，不作为完整售后任务成绩。
+
+部署Review阻断的镜像默认值回归已由Claude恢复production与三本地加载false，补真实Settings/管理认证语义回归。作者最终镜像/Compose实测通过，Codex独立固定296e7af源码加3文件叠加后验证：镜像`sha256:8e18123e3d2dc7d3c3a03bad8048a1091b5f83ed88a0224ec69dec412a81cd1d`；health/ready/staff200，员工业务无token401，0005，migrate退出0才启动API/Worker，PG PortBindings={}，API127.0.0.1，Worker once退出0。报告`/tmp/dtc-accept-d9c503aa0b-report.json`含叠加文件digest，所属容器/卷/网络均0、镜像/专用凭据/控制源码已清理。保留首次构建DNS失败`/tmp/dtc-accept-9fe310701d-report.json`；显式拉取相同官方ECR/ghcr基础镜像后第二次已构建并完成健康/权限/迁移，但验收脚本对compose port文本作非空断言失败（`/tmp/dtc-accept-af1918ce7a-report.json`），未当成功；最终改查真实PortBindings后通过。修验收脚本不改产品守卫。此范围仅DTC离线Fake部署基础，普通bridge允许出站，不是两仓联调或备份恢复。
+
+同候选完整覆盖率门禁曾为581 passed、1 failed、4 skipped、81.39%：跨日政策失效测试返回conflicting_policy，未到预期重验阶段；已交Claude定位，暂不最终验收/提交本批。旧失败保留在`/tmp/dtc-delivery-next-coverage.log`。静态Ruff223/mypy149通过。Codex另准备12条保留样例和冻结清单，明确prepared_not_run，当前无真实模型质量成绩；不得把工程守卫混算模型准确率。
+
+跨日失败根因关闭：先_faults_chunk以真实当天读取缓存，再原位修改corpus而未改变revision，fresh日命中旧缓存使严格SourceContext拒绝失效chunk，返回conflicting_policy；日期区间本身有效，未发现生产缺陷。Claude仅修测试：固定11-05生成/11-06重验，先设置生成时钟再首次取证据，明确模型调用一次且hook跨日；保留missing_policy_evidence/409/零draft及event断言。26项工作台与6项相关回归作者通过，独立Review确认实际覆盖生成后重验；当前根完整覆盖率与专用PG最终复验进行中，旧失败不删除。
+
+## 部署基础与工具轨迹最终工程验收（2026-11-06，Codex）
+
+本批工程范围通过。最终根Ruff格式223文件/静态、mypy149通过；完整覆盖率582 passed、4 skipped、1 warning，81.38%，70%阈值不变（104.06s，`/tmp/dtc-delivery-final-coverage.log`）。专用PG最终120 passed（116真实PG+4SQLite）、113个live engine/backend PID、三组真实进程竞争/重领/崩溃恢复、0005、容器清理（60.21s，`/tmp/dtc-delivery-final-pg.log`）。旧581/1失败和首次部署构建/验收脚本失败保留。工具轨迹37项根聚焦及默认CLI实测与部署根实测见上节，不将作者自测当最终验收。
+
+交付范围包含锁定镜像/迁移gate/独立本地Compose、安全默认与构建上下文，实际工具轨迹/精确期望评分边界、跨日测试夹具修复及12条保留样例准备；没有新业务框架/队列/表/依赖。源码运行讲解和操作指南在原主题维护。真实模型/浏览器、两仓Compose完整联调与恢复、性能/实际用户采用仍未最终验收，不宣布完整MVP完成。
+
+## 六故事服务层独立验收（2026-11-06，Codex）
+
+固定DTC源296e7af归档与E-pig消费者dirty候选22文件摘要，Claude作者run aafcf73898c5d424之后，Codex独立run **1022edfdb9fb782a** exit0。8场景均PASS、290场景检查点；另74条setup/共享检查不合并成“测试数”。12次真实Worker进程运行时周期、零模型调用；不是12次CLI参数解析测试，也不是AI质量。报告`/tmp/dtc_delivery_stories/runs/1022edfdb9fb782a/report.json`与summary，根日志`/tmp/dtc-six-story-codex-acceptance.log`。
+
+- 正常：真实PNG/JPEG上传、授权附件读取匹配digest/private no-store，人工草稿v1→v2、另一审批人批准，唯一回执/编辑后的唯一回复。
+- 缺证据：缺材料或无政策均409/needs_info，零审批/operation/外部ticket；非法入口400且未创建诉求。
+- 越权：第二消费者request/ticket/attachment/代提交404，员工错市场/角色403、缺/坏凭据401，拒绝体无受限内容。
+- 陈旧：仅修改所属合成E-pig订单fixture后，旧批准/草稿失效，外部POST0/ticket0，fixture恢复；未SQL伪造批准或完成。
+- 丢响应：真实上游201提交后杀Worker组，本地dispatching无receipt；自然租约过期、原key/payload查询并核验，仍只有1POST/1ticket/1key。
+- 重启：4次真实API进程组重启，游标/草稿/待审批snapshot/prepared payload保持，继续原批准，重复Worker领取0。
+- 内部驳回：仅内部rejected/processing，无operation/ticket；正式reject：经批准建唯一reject票据和不可变最终回复。
+
+独立Review未发现伪造业务状态；发现临时harness cleanup单try异常可能短路其余清理，已下发逐资源聚合错误/finally删秘密的局部修复。该缺口不抹去本次实际清理：Codex额外ps核对21个所属PID/PGID没有任何剩余成员，两个精确容器和DTC卷已不存在，受控copy/data与config.json/staff.json均删除。历史报告保留。后续验证新清理分支及备份恢复；本次仅API/DB故事范围通过，完整AS-ACC仍含真实页面与AI边界，不勾整体完成。

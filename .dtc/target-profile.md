@@ -72,3 +72,5 @@ DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sa
 员工前端工程增量（2026-11-06，实际浏览器待验）：`frontend/src/staff/`与`/staff`独立员工入口已实现，token/业务输入仅内存；复用现有React/CSS/lucide，仅增jsdom开发测试依赖。构建dist存在时API显式返回/staff shell，不对未知API做SPA回退；无dist仍API-only。工程检查与浏览器/完整旅程分列，见流程记录。
 
 评测安全入口增量（2026-11-06，本地已验证、待交付）：默认`uv run python -m eval.runner --task all`显式离线，all不包含epig-policy；后者单独执行。真实模型需专用DTC_EVAL配置、显式允许及cases/calls上限，当前无新增付费授权。完整门禁`uv run pytest -q --cov=app --cov=eval --cov-report=term:skip-covered --cov-fail-under=70`本地535通过/4跳过/80.89%。CI补前端Node24与独立PG入口，定义存在不等于远端已运行。详见[评测指南](../docs/10-evaluation.md)。
+
+部署/工具轨迹候选（2026-11-06，最终门禁进行中）：`docker-compose.after-sales.yml`新增独立PG/migrate/API/Worker；须显式`--env-file`及随机新项目名，PG无主机端口，API loopback，Fake仅启动验证。Dockerfile按uv.lock frozen安装并包含迁移；镜像保留production与禁本地模型默认，指南见部署文档。eval/e2e新增真实Tool.run记录与可选工具期望；脱敏/截断不可评分，正向与抑制分别计数。`after_sales_holdout_v1`12例已准备未运行，完整业务质量未测。

@@ -662,27 +662,45 @@ def test_cross_day_revalidation_uses_fresh_date_for_expired_policy(
     ctx: Ctx, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     case_id = _case_id(ctx)
-    chunk_id = _faults_chunk(ctx, case_id)
     detail = _detail(ctx, case_id)
     events_before = asyncio.run(_count(ctx.database_url, AfterSalesEventRow))
-    fresh_day = date.today()
-    generation_day = fresh_day - timedelta(days=1)
-    for chunk in ctx.app.state.container.retriever.corpus:
-        if (
-            chunk.brand == "epig"
-            and chunk.market == "au"
-            and "homewares" in chunk.product_categories
-        ):
-            chunk.effective_to = generation_day
+
+    # Fixed, self-consistent boundaries: the managed policy starts on the
+    # generation day and closes at the end of that same day. It is valid while
+    # generating and expired once revalidation uses the next UTC date.
+    generation_day = date(2026, 11, 5)
+    fresh_day = date(2026, 11, 6)
+    scoped = [
+        chunk
+        for chunk in ctx.app.state.container.retriever.corpus
+        if chunk.brand == "epig"
+        and chunk.market == "au"
+        and "homewares" in chunk.product_categories
+    ]
+    assert scoped
+    for chunk in scoped:
+        assert chunk.effective_from == generation_day
+        chunk.effective_to = generation_day
 
     clock = _MutableClock(_noon(generation_day))
     monkeypatch.setattr(after_sales_service, "utcnow", clock)
 
+    # Retrieve on the generation day. This also keeps the retrieval cache on
+    # the generation-day scope; fresh-day revalidation must miss that scope and
+    # observe the now-expired corpus rather than stale cached chunk ids.
+    chunk_id = _faults_chunk(ctx, case_id)
+
+    model_calls = 0
+
     async def cross_midnight() -> None:
+        nonlocal model_calls
+        model_calls += 1
         clock.value = _noon(fresh_day)
 
     _inject_llm(ctx, _MutatingLLM(cross_midnight, _valid_suggestion(chunk_id)))
     response = _post_suggestion(ctx, case_id, detail["revision"])
+    assert model_calls == 1, "the model hook must run before revalidation"
+    assert clock.value == _noon(fresh_day)
     assert response.status_code == 409, response.text
     assert "missing_policy_evidence" in response.json()["message"]
     assert _detail(ctx, case_id)["current_draft"] is None

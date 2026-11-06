@@ -36,6 +36,7 @@ import re
 import subprocess
 import tempfile
 import time
+from collections import Counter
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -54,6 +55,7 @@ from eval.metrics import (
     precision_at_k,
     recall_at_k,
 )
+from eval.tool_trace import ToolTrace, compare_tool_expectation
 
 ROOT = Path(__file__).resolve().parents[1]
 INTENT_PATH = ROOT / "eval/dataset/intent_100.jsonl"
@@ -1441,6 +1443,31 @@ def _chat_service_with_llm(container: Any, llm: Any) -> Any:
     )
 
 
+def _selection_quality_flags(
+    *,
+    real: bool,
+    quality_measured: bool,
+    agent_tool_total: int,
+    positive_scorable_cases_with_calls: int,
+    inhibition_scorable_cases: int,
+) -> tuple[bool, bool]:
+    """Separate positive tool-selection measurement from inhibition.
+
+    Measurement only asks whether a scorable positive expectation was actually
+    evaluated with real calls. It does not require correctness; unmatched
+    expectations still count, with correctness reported as a numerator.
+    Empty-expectation cases evidence inhibition separately.
+    """
+    positive = bool(
+        real
+        and quality_measured
+        and agent_tool_total > 0
+        and positive_scorable_cases_with_calls > 0
+    )
+    inhibition = bool(real and quality_measured and inhibition_scorable_cases > 0)
+    return positive, inhibition
+
+
 async def eval_e2e(
     model_run: ModelRun | Any | None = None,
     *,
@@ -1473,11 +1500,95 @@ async def eval_e2e(
     proxy_ok = 0
     proxy_n = 0
     details: list[dict] = []
+    agent_tool_total = 0
+    agent_tool_cases_with_calls = 0
+    agent_tool_by_name: Counter[str] = Counter()
+    agent_tool_by_status: Counter[str] = Counter()
+    expectation_cases = 0
+    scorable_cases = 0
+    unscorable_cases = 0
+    expectation_matches = 0
+    positive_cases = 0
+    positive_cases_scorable = 0
+    positive_cases_scorable_with_calls = 0
+    positive_cases_matched = 0
+    inhibition_cases = 0
+    inhibition_cases_scorable = 0
+    inhibition_cases_matched = 0
+    expectation_failures: list[str] = []
+    unscorable_case_ids: list[str] = []
+    trace_installed = False
+
+    def _finish_case(
+        row: dict,
+        calls: list[dict],
+        trace: ToolTrace,
+        *,
+        evaluated: bool = True,
+    ) -> dict:
+        nonlocal agent_tool_total, agent_tool_cases_with_calls
+        nonlocal expectation_cases, scorable_cases, unscorable_cases, expectation_matches
+        nonlocal positive_cases, positive_cases_scorable
+        nonlocal positive_cases_scorable_with_calls, positive_cases_matched
+        nonlocal inhibition_cases, inhibition_cases_scorable, inhibition_cases_matched
+        detail: dict = {"id": row["id"], "agent_tool_calls": calls}
+        if calls:
+            agent_tool_cases_with_calls += 1
+            agent_tool_total += len(calls)
+            for call in calls:
+                agent_tool_by_name[call["name"]] += 1
+                agent_tool_by_status[call["status"]] += 1
+        # Only an explicit dataset field is an assertion; other fields are ignored.
+        if "expect_tools" in row:
+            expectation_cases += 1
+            configured = row["expect_tools"]
+            is_inhibition = isinstance(configured, list) and not configured
+            is_positive = isinstance(configured, list) and bool(configured)
+            if is_inhibition:
+                inhibition_cases += 1
+            elif is_positive:
+                positive_cases += 1
+            if not evaluated:
+                comparison: dict = {"matched": False, "error": "case_not_evaluated"}
+                scorable = False
+            else:
+                try:
+                    comparison = compare_tool_expectation(configured, calls, trace)
+                except ValueError:
+                    comparison = {"matched": False, "error": "invalid_expectation"}
+                    scorable = False
+                else:
+                    # Truncated/sanitized arguments are never exact and never
+                    # enter the scoring denominator.
+                    scorable = "error" not in comparison and "reason" not in comparison
+            comparison["scorable"] = scorable
+            if scorable:
+                scorable_cases += 1
+                if is_inhibition:
+                    inhibition_cases_scorable += 1
+                elif is_positive:
+                    positive_cases_scorable += 1
+                    if calls:
+                        positive_cases_scorable_with_calls += 1
+                if comparison["matched"]:
+                    expectation_matches += 1
+                    if is_inhibition:
+                        inhibition_cases_matched += 1
+                    elif is_positive:
+                        positive_cases_matched += 1
+                else:
+                    expectation_failures.append(str(row["id"]))
+            else:
+                unscorable_cases += 1
+                unscorable_case_ids.append(str(row["id"]))
+            detail["agent_tool_expectation"] = comparison
+        return detail
 
     with tempfile.TemporaryDirectory(prefix="dtc-eval-e2e-") as temp_dir:
         database_url = f"sqlite+aiosqlite:///{Path(temp_dir, 'eval.sqlite3').as_posix()}"
         settings = offline_settings(database_url=database_url)
         container = None
+        trace: ToolTrace | None = None
         try:
             try:
                 container = await build_container(settings, seed=True)
@@ -1485,9 +1596,15 @@ async def eval_e2e(
                 raise RuntimeError(f"e2e infrastructure failed: {_redact(exc)}") from None
             if run is not None:
                 container.chat_service = _chat_service_with_llm(container, run.llm)
+            # Install before graph/service execution. The compiled graph closes
+            # over this same eval-only registry object, so it dispatches wrappers.
+            trace = ToolTrace(sanitize=_redact)
+            trace.install(container.chat_service.registry)
+            trace_installed = True
             for row in data_rows:
                 request = ChatRequest(message=row["query"], user_id=row.get("user_id") or "u_demo")
                 started = time.perf_counter()
+                trace.begin_case(str(row["id"]))
                 try:
                     response = await container.chat_service.chat(
                         request, trace_id=f"eval_{row['id']}"
@@ -1497,15 +1614,20 @@ async def eval_e2e(
                     budget_exceeded = True
                     if len(error_samples) < 3:
                         error_samples.append(_redact(exc))
-                    details.append({"id": row["id"], "error": "model_budget_exceeded"})
+                    detail = _finish_case(row, trace.end_case(), trace, evaluated=False)
+                    detail["error"] = "model_budget_exceeded"
+                    details.append(detail)
                     break
                 except Exception as exc:
                     errors += 1
                     redacted = _redact(exc)
                     if len(error_samples) < 3:
                         error_samples.append(redacted)
-                    details.append({"id": row["id"], "error": redacted})
+                    detail = _finish_case(row, trace.end_case(), trace, evaluated=False)
+                    detail["error"] = redacted
+                    details.append(detail)
                     continue
+                case_calls = trace.end_case()
                 total_ms = (time.perf_counter() - started) * 1000
                 latencies.append(response.latency.total_ms or total_ms)
                 intent_ms.append(response.latency.intent_ms)
@@ -1529,18 +1651,23 @@ async def eval_e2e(
                         or "库存" in response.answer
                     ):
                         proxy_ok += 1
-                details.append(
+                detail = _finish_case(row, case_calls, trace)
+                detail.update(
                     {
-                        "id": row["id"],
                         "refused": response.refused,
                         "strategy": response.strategy.value if response.strategy else None,
                         "intent": response.intent.value if response.intent else None,
                         "latency_ms": round(latencies[-1], 1),
                     }
                 )
+                details.append(detail)
         finally:
-            if container is not None:
-                await container.aclose()
+            try:
+                if trace is not None:
+                    trace.uninstall()
+            finally:
+                if container is not None:
+                    await container.aclose()
 
     mode: Mode = "offline" if run is None else run.mode
     real = mode == "real"
@@ -1552,7 +1679,16 @@ async def eval_e2e(
         budget_exceeded=budget_exceeded,
     )
     quality_measured = quality_scope == "full"
-    not_measured = ["real_tool_call_accuracy", "human_quality_review"]
+    selection_quality_measured, inhibition_measured = _selection_quality_flags(
+        real=real,
+        quality_measured=quality_measured,
+        agent_tool_total=agent_tool_total,
+        positive_scorable_cases_with_calls=positive_cases_scorable_with_calls,
+        inhibition_scorable_cases=inhibition_cases_scorable,
+    )
+    not_measured = ["human_quality_review"]
+    if not selection_quality_measured:
+        not_measured.insert(0, "real_tool_call_accuracy")
     if not quality_measured:
         not_measured = ["faithfulness", "llm_output_quality", *not_measured]
     return {
@@ -1584,7 +1720,57 @@ async def eval_e2e(
             "Answer-text keyword/pending-action presence for order/inventory/cancel hints. "
             "This is NOT tool-call name/parameter/count accuracy."
         ),
-        "real_tool_trace_measured": False,
+        "agent_tool_trace_measured": trace_installed,
+        "agent_tool_calls": {
+            "total": agent_tool_total,
+            "by_name": dict(sorted(agent_tool_by_name.items())),
+            "by_status": dict(sorted(agent_tool_by_status.items())),
+            "cases_with_calls": agent_tool_cases_with_calls,
+            "instrumented": trace_installed,
+            "scope": "eval_container_registry",
+            "note": (
+                "Actual agent Tool.run dispatches through this eval container's own registry. "
+                "Zero is reported as zero; business-connector calls and answer keywords are "
+                "not counted as agent tool calls."
+            ),
+        },
+        "agent_tool_expectations": {
+            "cases_with_expectations": expectation_cases,
+            "cases_scorable": scorable_cases,
+            "cases_unscorable": unscorable_cases,
+            "unscorable": unscorable_case_ids,
+            "cases_matched": expectation_matches,
+            "accuracy": (
+                round(expectation_matches / scorable_cases, 4) if scorable_cases else None
+            ),
+            "failures": expectation_failures,
+            "positive_cases": positive_cases,
+            "positive_cases_scorable": positive_cases_scorable,
+            "positive_cases_scorable_with_calls": positive_cases_scorable_with_calls,
+            "positive_cases_matched": positive_cases_matched,
+            "inhibition_cases": inhibition_cases,
+            "inhibition_cases_scorable": inhibition_cases_scorable,
+            "inhibition_cases_matched": inhibition_cases_matched,
+            "selection_quality_measured": selection_quality_measured,
+            "inhibition_measured": inhibition_measured,
+            "note": (
+                "Exact tool name/validated-argument/count match. Truncated or sanitized "
+                "arguments and errors are unscorable and excluded from the denominator. "
+                "Measured positive selection needs a complete real run with actual calls and "
+                "at least one scorable positive expectation, even if wrong; inhibition is "
+                "measured separately from empty expectations."
+            ),
+        },
+        "connector_calls": {
+            "measured": False,
+            "counted_as_agent_tool_calls": False,
+            "note": (
+                "Business connector invocations are not instrumented and are never counted "
+                "as agent tool calls."
+            ),
+        },
+        # True only for a complete real-model run; offline plumbing remains false.
+        "real_tool_trace_measured": bool(real and trace_installed and quality_measured),
         "latency_scope": "real-model-pipeline" if real else "offline-pipeline",
         "latency_ms": {
             "p50": round(percentile(latencies, 50), 1),

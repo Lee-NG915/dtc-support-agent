@@ -47,7 +47,15 @@
 
 检索按实际document/chunk匹配计算Precision@k、Recall@k、MRR；准确率需要同时给分子、分母和集合版本。规则检索成绩可以报告，不能把Hash向量叫真实embedding或把词法重排叫Cross-Encoder；本入口默认不会因装了模型依赖而自动加载CE。
 
-模型质量仅在实际真实输出与评分执行后讨论。零调用、纯规则review门控、预算截断和错误分别列出，报告质量完整度full/partial/none；配置了real不等于质量已测。关键词命中只说明词面覆盖，旧e2e的`legacy_answer_keyword_proxy`不证明实际工具名、参数或调用次数正确，真实工具trace另行验收。生成成功也不等于已获人工批准或工单已核验。
+模型质量仅在实际真实输出与评分执行后讨论。零调用、纯规则review门控、预算截断和错误分别列出，报告质量完整度full/partial/none；配置了real不等于质量已测。关键词命中只说明词面覆盖，旧e2e的`legacy_answer_keyword_proxy`不证明实际工具名、参数或调用次数正确，本批新增实际Tool.run轨迹，范围见下节。生成成功也不等于已获人工批准或工单已核验。
+
+## 实际工具轨迹
+
+当前e2e为本次自有container.registry安装窄代理，在图执行前捕获真实Tool.run。报告的`agent_tool_calls`给出每例工具名、Schema规范化参数、状态与汇总次数；不记录context、完整结果或异常正文，Connector调用另列未测，不混算。旧关键词proxy保留历史含义，不替代这些轨迹。
+
+可选`expect_tools`仅支持工具name/arguments/count的精确多重集合比较；未声明期望则准确率为null。脱敏或截断改变参数的案例明确不可评分，不让两个不同URL或长参数前缀相同误判相等，分母只含可评分且实际执行的案例。正向选择与正确不调用分别计数；真实已测但全错仍为0分，不能改标未测。当前只运行离线数据，不声称真实模型工具选择质量。
+
+代理只解析一次、保持原执行与异常行为，结束恢复原工具对象；自定义覆盖run的工具明确拒绝安装，避免悄悄改变行为。当前内置工具均沿用基类run。源码入口为`eval/tool_trace.py`与`eval/runner.py`的eval_e2e，反例回归在`tests/unit/test_eval_tool_trace.py`。这些计数来自既有upstream_demo集合，仍不是员工售后六故事的质量成绩。
 
 ## 报告与复算
 
@@ -64,3 +72,9 @@
 先选受影响单元/集成检查；权限、事务、模型入口或依赖有实质变化时跑必要全套。政策/知识变更执行epig-policy及相关检索检查，prompt变更冻结候选并运行开发回归；真实模型和保留集需独立配置/记录。CI没有运行不写通过，本地工程测试不替代浏览器或业务验收。
 
 上一章[09 · 安全](09-security.md) · 下一章[11 · 部署](11-deployment.md)
+
+## 首批独立保留样例（已准备，未运行）
+
+[after_sales_holdout_v1.jsonl](../eval/dataset/after_sales_holdout_v1.jsonl)由Codex验收侧在当前业务prompt/知识冻结后准备，共12例：完整政策图6例、员工建议2例、工程守卫4例；[冻结清单](../eval/dataset/after_sales_holdout_v1.manifest.json)保存基线提交及203个app/knowledge文件的SHA-256。这里只准备了输入与人工验收断言，尚未接入本批通用CLI或运行真实模型，不能直接把该文件当旧epig-policy数据格式加载。
+
+评测前须完成专用合成fixture适配、人工0/1/2评分与Provider/model/预算配置。政策图应记录检索、生成及Faithfulness各自结果，员工建议记录引用与仅editing边界，工程守卫记录真实API/进程/写入次数，三组不合并LLM准确率。使用失败调参时必须降级为开发回归集并另建保留集。初次实际运行前回核冻结清单；未运行就不填写通过数。
