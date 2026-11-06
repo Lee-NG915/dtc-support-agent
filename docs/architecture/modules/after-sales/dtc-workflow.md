@@ -249,11 +249,11 @@ Worker在发送建单后被杀，数据库可能只知道“已经开始派遣�
 
 本章验收逐项提供真实构建、迁移、健康、Worker一次轮询、隔离与清理、备份恢复和跨仓故事证据；未完成部分保留计划。继续使用现有框架，不引入队列、Kubernetes、心跳平台或任意命令/数据库目标执行器。
 
-工具评测下一步采用eval内的窄代理：包装本次自有container.registry中的真实Tool.run，保留原工具schema/risk/parse与异常，记录实际工具名、Schema规范化参数、次数与成功/失败；不改生产Graph/Registry，不以回答关键词推断工具执行。只处理合成离线数据，报告不保存context token/完整结果/堆栈。零调用如实为零，明确区分agent_tool_calls与业务Connector调用；staff模式禁写产生的零调用不能冒充正向Function Calling质量。代理在图执行前安装，仅服务本次容器并在结束关闭；开发集期望与实际可比但真实模型质量仍未测。
+工具评测采用eval/tool_trace内已实现的窄代理：包装本次自有container.registry中的真实Tool.run，保留原工具schema/risk/parse与异常，记录实际工具名、Schema规范化参数、次数与成功/失败；不改生产Graph/Registry，不以回答关键词推断工具执行。只处理合成离线数据，报告不保存context token/完整结果/堆栈。零调用如实为零，明确区分agent_tool_calls与业务Connector调用；staff模式禁写产生的零调用不能冒充正向Function Calling质量。代理在图执行前安装，仅服务本次容器并在结束关闭；开发集期望与实际可比；业务真实模型质量由独立保留集测量，不由默认离线e2e推断。
 
 ## 两仓Compose运行时收尾（已实现、空feed已验证）
 
-原生双服务HTTP已通过八故事，但DTC部署基础仍用Fake，因此还需真实Connector在容器拓扑中的验证。比较：继续原生双进程最简单但不能证明Compose；本地引入TLS代理/证书运维增加无关维护；选择仅用于合成演示的共享网络命名空间——DTC API/Worker通过`network_mode: service:epig`共享E-pig网络空间，用`http://127.0.0.1:3000`满足现有非生产loopback限制，不修改Connector或生产HTTPS要求。E-pig服务只将两个应用端口发布到主机127.0.0.1，两套PG各自命名、凭据和卷独立，均不发布数据库端口。该拓扑不作为生产扩容设计。
+原生双服务HTTP已通过八故事；DTC基础Compose使用Fake，另有两仓Compose验证真实Connector的容器拓扑与空feed启动。比较：继续原生双进程最简单但不能证明Compose；本地引入TLS代理/证书运维增加无关维护；选择仅用于合成演示的共享网络命名空间——DTC API/Worker通过`network_mode: service:epig`共享E-pig网络空间，用`http://127.0.0.1:3000`满足现有非生产loopback限制，不修改Connector或生产HTTPS要求。E-pig服务只将两个应用端口发布到主机127.0.0.1，两套PG各自命名、凭据和卷独立，均不发布数据库端口。该拓扑不作为生产扩容设计。
 
 新增专用Compose及窄准备工具：从明确提交归档两仓受控源码，不读工作区.env；生成0700目录/0600合成环境文件、来源digest与随机项目标识；只为本项目固定服务准备上下文，不做任意命令/数据库目标平台。E-pig复用既有Dockerfile的build阶段跑database:migrate:all、runner阶段跑standalone；两边均显式迁移成功才启动。仅在受控Dockerfile副本注入相同官方基础镜像参数并补锁定workspace依赖的复制，不改E-pig业务源码或Cookie/Origin规则，不烘焙密码/token。
 
@@ -267,7 +267,7 @@ Worker在发送建单后被杀，数据库可能只知道“已经开始派遣�
 
 真实模型用户已授权，不设累计费用上限。本轮选择官方deepseek-flash与显式thinking disabled；可复算报告记录实际返回model/usage、时间、源码候选/数据/知识/提示词digest。协议适配只变两个app文件，保留集首次执行前revision2已重冻结并保留旧hash；尚无保留集反馈用于调参。SDK短暂DNS失败和一次合成JSON探针格式观察分别保留，不把网络/接口探针当质量成绩。
 
-## CLI环境的页面验收执行方式（计划）
+## CLI环境的页面验收执行方式（已实现、合成验收通过）
 
 已核实本机Browser/Chrome/Computer Use插件安装启用，但页面接口仍报timeoutMs；官方Browser文档明确内置Browser不支持Codex CLI，扩展说明面向ChatGPT桌面App。此前让用户反复重新连接不能证明问题归因，不再要求用户学习或重复配置Computer Use。
 

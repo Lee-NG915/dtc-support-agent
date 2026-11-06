@@ -65,10 +65,10 @@ api:
 - [ ] `pip install -e ".[rerank]"` 后重跑 retrieval，报告含 `hybrid+cross-encoder`
 - [ ] `pip install -e ".[docs]"` 后用真实 PDF/扫描件验证 ingest；换切分后重跑 `--task retrieval`
 - [x] `u_demo` / `anonymous` 全局读单已关闭
-- [ ] 在可信网关认证用户并绑定 `user_id`；当前请求体仍可伪造身份，不可直接对公网开放
+- [ ] 售后启用员工Bearer并核对角色/市场配置；旧演示模式不能代替生产认证，不可直接对公网开放
 - [ ] liveness / readiness 分开（见 [08](08-reliability.md#探活)）
 - [ ] 密钥不在日志、镜像、README
-- [ ] 长期 Postgres 用 Alembic（现在启动仍 `create_all`）
+- [ ] 生产目标按显式Alembic执行升级并演练恢复；售后PG入口已提供迁移gate，旧SQLite演示的create_all不适用于PG
 
 ## 扩容、知识库、回滚
 
@@ -171,3 +171,42 @@ uv run python scripts/prepare_after_sales_demo.py cleanup --manifest <输出的m
 4. 确认原批准与草稿按核验结果消费、外部票据仍唯一，再恢复Worker；核对无重复外部POST。备份、恢复目标和原始日志按保留策略管理。
 
 上述顺序在专用合成环境实际验证过，不提供生产RPO/RTO保证。现有临时验收工具没有作为通用备份平台交付；生产备份调度、异地存储、加密和恢复演练需要部署环境另行确定。
+
+## 独立浏览器演示与验收
+
+这条入口用合成订单和员工，在真实页面完成一次闭环，保留截图/报告后清理测试环境；不需要ChatGPT扩展或用户Chrome。它固定已验收的两个源码提交，不自动跟随分支HEAD，不是长期生产部署入口。前提是本仓Python开发依赖、Node24、前端锁定依赖，以及E-pig的Node/pnpm依赖已安装；Docker可用，固定提交在本地可读取。
+
+首次使用由环境管理者建立本项目专用缓存，不要把用户Chrome目录当缓存或给其他目录补归属标记：
+
+```bash
+npm ci --prefix frontend
+DTC_QA_ENGINE="$HOME/.cache/dtc-after-sales-browser/engine-playwright-1.65.0"
+mkdir -p "$DTC_QA_ENGINE"
+chmod 700 "$DTC_QA_ENGINE"
+PLAYWRIGHT_BROWSERS_PATH="$DTC_QA_ENGINE" \
+  node frontend/node_modules/playwright/cli.js install chromium
+python3 - "$DTC_QA_ENGINE" <<'PY'
+import os, sys
+from pathlib import Path
+marker = Path(sys.argv[1]) / '.dtc-owned'
+marker.write_text('DTC dedicated synthetic browser acceptance cache\n')
+os.chmod(marker, 0o600)
+PY
+```
+
+浏览器下载失败应先排查环境，不关闭TLS校验、不回退用户浏览器。缓存可复用；若设置`DTC_BROWSER_RUN_ROOT`，安装位置也必须对应到该专用根下。
+
+```bash
+uv run python scripts/run_after_sales_browser.py --epig-repo /path/to/E-pig
+```
+
+预期四组分别验证：消费者申请到人工批准后的唯一工单回复；第二消费者隔离与未知提交原键恢复；员工冲突/角色/退出/AI不可用的手工处理；桌面和320px、关键键盘与错误/加载状态。动作通过DOM完成，之后用所属数据库独立核对唯一计数。正常故事创建的是经人工批准的`other`后续处理工单，不宣称通过退货资格或执行退款。
+
+运行输出报告/截图路径和结果；配置与凭据保存在0700/0600目录并在结束删除。Node与独立Chromium分别记录精确进程归属，超时/取消也检查整组；清理失败保留失败状态，不因父进程退出宣称浏览器关闭。报告与截图仅含合成数据，仍应按本机证据保留策略管理。截图须人工检查，自动测试不是完整可访问性认证。
+
+普通Python单测不需要Node或浏览器。真实浏览器在Node被杀后的清理故障验收必须单独启用；显式运行而缺引擎会失败，默认跳过不算通过：
+
+```bash
+DTC_RUN_BROWSER_FAULT_ACCEPTANCE=1 uv run pytest -q \
+  tests/unit/test_after_sales_browser_runner.py::test_actual_detached_browser_group_is_cleaned_after_node_kill
+```

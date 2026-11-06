@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，真实HTTP恢复片段已通过，员工证据/建议后端已验收推送d9e97ff，远端SHA/关键文件回读一致，完整旅程仍待验收，E-pig5d已完成本地/CI验收并推送，消费者组件已推送72f1621，服务层八场景与备份恢复已独立验证；两仓Compose空feed启动已独立验证，独立Chromium页面与有效真实模型保留集仍待最终验收。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
+更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，真实HTTP恢复片段已通过，员工证据/建议后端已验收推送d9e97ff，远端SHA/关键文件回读一致，完整旅程仍待验收，E-pig5d已完成本地/CI验收并推送，消费者组件已推送72f1621，服务层八场景与备份恢复已独立验证；两仓Compose空feed启动已独立验证，独立Chromium页面已通过合成完整旅程；真实模型保留集已实测并保留金额等质量缺口。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
 
 ## 2a首轮与独立核验
 
@@ -221,3 +221,23 @@ Codex按冻结断言及预定0/1/2锚点人工复核，独立审查再次核对�
 
 
 评测候选工程门禁（Codex）：完整pytest637 passed、4 skipped、1 warning，app+eval覆盖81.95%，70%门槛不变（111.16s，`/tmp/dtc-final-candidate-coverage.log`）；新增eval入口17项根聚焦通过，Ruff格式/静态与mypy150源文件通过。该完整门禁包括当时浏览器测试工具单测，但浏览器进程组清理Review尚未关闭，后续只按受影响范围重验，不以637项代替页面或清理验收。
+
+
+## 独立Chromium页面最终范围验收（2026-11-06，Codex）
+
+应用源固定DTC `2209edd11438d13f734a652efa83cc23f7d6c026`与E-pig `72f162169de9f17e9188b9a95be5ac2c40a8f44d`，受控归档排除工作区/.env；测试工具与锁定依赖为本批候选，报告保存各自摘要。Claude先完成四组通过，Codex独立run `021853Z-6d2c60656747434b`通过后，截图复核发现正常描述为沙发而实际订单为杯子；修正为damaged mug并增加真实页面商品/SKU断言，再独立run **022608Z-6e1d0901ea9fceff**通过。最终有效报告位于`~/.cache/dtc-after-sales-browser/runs/20261106T022608Z-6e1d0901ea9fceff/report.json`，日志`/tmp/dtc-browser-root-valid-final.log`。这是项目新建Chromium，不是用户Chrome或桌面插件验收，付费模型调用0。
+
+四组共75条页面断言（23/21/26/5），另18项DB核对全部通过，不合并成单元测试数：
+
+- 消费者真实PNG上传/申请，客服真实页面补两条合成材料、草稿v1→v2、送审，不同审批人批准，真实Worker建唯一票据，消费者只见唯一v2回复。动作是`other`人工后续处理，不证明退货资格或退款执行。
+- 第二消费者跨request/ticket/附件404；真实提交先在E-pig落库再受控503模拟响应丢失，刷新后原key/body重放200，订单仅1request且0ticket；这不是物理断网测试。
+- 员工AI不可用503但手工草稿可用；陈旧保存409且输入保留、不自动重试，明确重读确认后保存；退出清空业务状态，auditor只读、operator脱敏、非法登录401。
+- 桌面与320px、关键Tab/登录/提交操作及空/错/加载状态；root无横向溢出。原员工详情/审批页354px问题由小范围min-width/min-inline-size与文本换行修复，不隐藏root overflow、不重做布局。Codex查看桌面消费者回复/员工完成状态、移动客服/审批截图；键盘范围非完整WCAG，也未做真机认证。
+
+生命周期Review关闭Node父进程退出不能证明Chromium退出的问题：Playwright实际detached Chromium独立PGID，launchServer记录精确PID/PGID到0600侧车，Python超时/取消整组核验，Node显式close与兜底清理分别记录；无全机Chrome名称清理。最终root routeErrors=[]、显式close成功，独立ps核对5个精确所属PID/PGID无live成员，DTC容器不存在，来源copy/secrets删除、报告保留（`/tmp/dtc-browser-root-valid-cleanup-readback.json`）；E-pig sandbox clean/manifest/Next组及卷清理也由报告确认。
+
+默认单测不含真实浏览器依赖：根在无Node PATH和空专用缓存下13 passed/1明确opt-in skipped（`/tmp/dtc-browser-unit-no-node-root-final.log`）；显式真实Chromium被杀故障验收1 passed（`/tmp/dtc-browser-fault-optin-root.log`）。显式缺引擎返回1为预期fail-closed，未回退或跳过（`/tmp/dtc-browser-explicit-missing-engine-root.log`）。首次根隔离测试误将venv symlink resolve到基础Python而找不到pytest，保留旧日志后用正确venv绝对路径复验，不修改产品绕过。
+
+最终全Ruff静态/格式229文件、mypy150源文件及浏览器helper独立mypy通过，Node语法通过；前端23项及根构建通过。页面有效run后工具仅格式/类型注解与未知路由错误必须显式记录的两处保守收口，后者Node语法/人工Review通过；没有修改应用行为或伪造新页面结果。旧UI选择器、延迟路由unhandled、端口守卫安全失败和无报告运行均保留为失败，不覆盖。新增依赖只有固定Playwright开发库，不引入测试平台/业务框架。
+
+隔离工程演示范围通过；真实模型质量缺口、远端CI无run、两仓Compose仅空feed、真实试用/生产/容量SLA仍分别报告。本节保存验收候选证据；提交/远端回读及最终源锁交接回执在两仓Issue #2的最新交接评论与E-pig source-lock追踪，避免为记录自身提交反复推进源版本。不能称生产认证。

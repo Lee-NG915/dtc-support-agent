@@ -16,15 +16,15 @@
 | Embedding | 生产本地 `BAAI/bge-small-zh-v1.5`；加载失败才 hash | `app/providers/embeddings.py` |
 | Rerank | 本地 Cross-Encoder `BAAI/bge-reranker-base`；未装权重时词面降级 | `app/providers/reranker.py` |
 | Tokenizer | 128k 启发式，非官方 tokenizer | `app/memory/budget.py` |
-| 订单/物流 | 种子 + 仓储，无承运商 | `app/services/seed.py` |
+| 订单/物流 | 售后可接E-pig持久订单/物流API；合成验收不代表接入真实承运商。旧演示仍用种子仓储 | `app/connectors/epig.py` |
 | 知识库更新 | 启动全量 ingest，无删除 API | `app/retrieval/ingest.py` |
 | 文档解析 | 生产 Unstructured（PDF/Office/HTML/图）；缺依赖或 testing 降级 Markdown 标题切分。OCR/复杂表格不保证 | `app/retrieval/unstructured_parser.py` |
 | 文本清洗 | 切块后 NFKC/空白/硬换行；精确去重；近重复只日志。不做 embedding 聚类，不改中文数字。「七天」保持「七天」 | `app/retrieval/cleaning.py` |
 | 知识库 PII | 仅非 `.md` 入库前 `mask_pii`；政策 Markdown 与日志脱敏分开 | `app/core/security.py` |
-| 多租户 | 无；`user_id` 字符串隔离 | `OrderRepository.get_visible_order` |
-| 身份认证 | API 直接接受请求体 `user_id`，尚未验证身份；生产需可信网关绑定用户身份 | `app/api/routes/chat.py` |
+| 多租户 | 售后有员工角色/市场隔离；没有通用企业租户管理。旧演示仍按user_id隔离 | `app/repositories/staff_repository.py` |
+| 身份认证 | 启用售后后由员工Bearer绑定身份并保护chat；旧演示关闭售后时不作为生产认证系统 | `app/api/routes/chat.py` |
 | 演示数据 | 启动不自动写入；显式运行 `python -m scripts.seed_demo`，可重复执行 | `scripts/seed_demo.py` |
-| 启动迁移 | `create_all`，Alembic 有版本但默认不跑 | `alembic/versions/` |
+| 启动迁移 | 售后PG显式Alembic，0005及Compose迁移gate已验证；旧SQLite演示保留create_all | `alembic/versions/` |
 
 ## 已补上、不要再写成缺口
 
@@ -40,7 +40,7 @@
 
 ## 不计划用「简历堆料」补的
 
-- Kafka / Celery：没有出站异步作业
+- Kafka / Celery：当前PG持久操作与独立Worker可覆盖既定规模，尚无引入另一套队列的证据
 - Elasticsearch：政策规模内存 BM25 够
 - 为 Hybrid 强行融合 hash 向量：评测会拉低 Hit@1
 - 用词面 overlap 冒充 Cross-Encoder
@@ -60,3 +60,10 @@
 ---
 
 上一章 [11](11-deployment.md) · [返回目录](README.md)
+
+
+## 当前售后交付的边界
+
+真实模型草稿仍可能误述金额单位或漏材料，不能自动发送或执行。员工应对照原订单和可信政策核对，另一审批人批准的是冻结版本；规则/权限检查通过不等于语言内容全部正确。已测失败与0/1/2人工裁决只在[流程记录](records/after-sales/dtc-workflow.md)维护。当前检索验收使用BM25/hash与词面能力，不代表真实embedding或Cross-Encoder质量。
+
+两仓Compose目前验证空feed启动；独立合成HTTP/页面环境验证业务旅程，二者分别报告。通用生产员工供应、长期备份调度、真实客户试用与容量SLA没有凭测试数量自动获得。项目浏览器测试只使用自有Chromium，桌面插件通道仍未验证；键盘与320px检查不等于完整WCAG或真机认证。
