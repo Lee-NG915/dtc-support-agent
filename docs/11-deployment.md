@@ -133,3 +133,41 @@ docker compose --env-file "$DTC_DEMO_ENV" -f docker-compose.after-sales.yml \
 docker image rm "$DTC_DEMO_PROJECT:local"
 rm "$DTC_DEMO_ENV"
 ```
+
+## 两仓隔离启动
+
+需要验证DTC确实连接E-pig时，使用`docker-compose.after-sales-demo.yml`。准备器只归档两个明确提交，排除工作区与凭据；运行目录0700，专用配置0600，配置在构建上下文之外。E-pig Dockerfile受控副本仅补工作区依赖复制和官方基础镜像参数，摘要写入manifest，原仓库不修改。
+
+在仓库根目录执行，SHA必须替换为计划演示的完整提交：
+
+```bash
+uv run python scripts/prepare_after_sales_demo.py prepare \
+  --dtc-ref <DTC完整40位提交> \
+  --epig-repo <E-pig本地仓库路径> \
+  --epig-ref <E-pig完整40位提交>
+```
+
+按输出的专用`--env-file`、冻结Compose路径和随机项目名运行`up -d --build`，不要另用仓库.env。准备器支持`--dtc-node-image`、`--dtc-python-image`、`--epig-node-image`指定可达的同版本官方镜像。manifest包含版本、摘要、端口及清理归属，不要全文输出或上传。端口预选后仍可能被占用；失败时保留输出，清理本次项目并重新准备，不接管既有服务。
+
+拓扑包含两个独立PG库、各自迁移、E-pig、DTC API与单次Worker。DTC共享E-pig网络命名空间，使既有Connector的开发环境loopback地址确实指向E-pig；不放宽生产HTTPS约束。仅E-pig容器发布两个127.0.0.1应用端口，数据库不发布端口。普通bridge仍允许出站，离线由明确配置保证。Worker此入口运行一次后应退出0；持续处理另需明确运行方式。
+
+预期两个迁移退出0、两个PG健康、DTC ready200、无身份的员工业务401、Worker退出0。空库只验证启动，不含消费者订单、员工身份或完整建单；不要把空feed成功称为业务演示完成。完整业务及恢复证据见[流程记录](records/after-sales/dtc-workflow.md)。
+
+清理只接受该次manifest：
+
+```bash
+uv run python scripts/prepare_after_sales_demo.py cleanup --manifest <输出的manifest路径>
+```
+
+它校验冻结Compose摘要和资源归属标签，确认所属容器、卷、网络消失后才删除配置和目录。遇到超时、标签不符或资源残留会保留配置供排查；不使用全局prune。镜像保留，可按manifest中本次镜像标签单独删除，不删除共享基础镜像。
+
+## 售后数据库恢复的操作顺序
+
+备份不能撤销已在E-pig提交的工单。DTC数据库恢复后，应先查询原幂等键的外部回执，避免重新创建。已验证的窗口是外部提交成功、DTC尚未收到回执；其他故障窗口需要单独验证。
+
+1. 停止Worker并暂停DTC写入；确认数据库目标和备份权限。使用`pg_dump --format=custom`输出0600备份，禁止把连接密码写入命令历史或日志。
+2. 在另一个明确归属的全新数据库恢复，先核对迁移版本0005、草稿、批准、游标及操作原键/payload；不要覆盖来源不明或正在使用的库，也不要同步回滚E-pig。
+3. 保持Worker停止，连接恢复库启动API。对未完成操作等待租约自然到期，由授权操作员使用现有回执查询/对账入口核对原票据；回执关联不符或查不到时保留人工处理，不能伪造完成或换新键重发。
+4. 确认原批准与草稿按核验结果消费、外部票据仍唯一，再恢复Worker；核对无重复外部POST。备份、恢复目标和原始日志按保留策略管理。
+
+上述顺序在专用合成环境实际验证过，不提供生产RPO/RTO保证。现有临时验收工具没有作为通用备份平台交付；生产备份调度、异地存储、加密和恢复演练需要部署环境另行确定。

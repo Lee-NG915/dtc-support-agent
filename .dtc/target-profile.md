@@ -15,7 +15,7 @@
 | `app/tools/` / `app/repositories/` | 工具调用、权限规则、持久数据访问 |
 | `app/skills/` | 应用业务技能配置；不加载本次开发助手技能 |
 | `frontend/package.json` | React/TypeScript/Vite/Vitest 脚本 |
-| `alembic/` / `docker-compose.yml` | 既有环境定义；迁移0005与独立Worker已实现，Compose整合仍待交付 |
+| `alembic/` / `docker-compose.yml` | 既有环境定义；迁移0005与独立Worker已实现，独立DTC Compose已验证，两仓Compose候选另验 |
 | `tests/` / `eval/` | 工程测试与模型评测 |
 | `.agents/skills/` | 本仓开发助手技能正本，随分支版本管理 |
 
@@ -53,9 +53,9 @@ CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前
 
 ## 本机环境恢复证据（2026-11-06）
 
-本轮已安装uv与Python3.12，并用`uv sync --frozen --extra dev --python 3.12`按原锁文件建立环境。锁检查、Ruff格式/静态、mypy125源文件和pytest242项通过；依赖4条警告保留。命令可用是本轮结果，不等于将来环境自动满足。真实模型预算未确认，默认Fake/离线测试。
+本轮已安装uv与Python3.12，并用`uv sync --frozen --extra dev --python 3.12`按原锁文件建立环境。锁检查、Ruff格式/静态、mypy125源文件和pytest242项通过；依赖4条警告保留。命令可用是本轮结果，不等于将来环境自动满足。该历史环境恢复阶段未运行真实模型；当前专用DeepSeek评测授权见协作规范，工程测试仍默认Fake/离线。
 
-Docker已启动，Postgres16官方镜像用于专用隔离测试；尚不代表DTC现有Compose已改为Postgres/Worker。E-pig已通过恢复真实技能源解决agent-doctor失败；本仓技能仍自包含，不依赖该软链。持续授权与审批边界见协作规范。
+Docker已启动，Postgres16官方镜像用于专用隔离测试；既有默认Compose保留，独立售后Compose已验证PG/迁移/API/Worker。E-pig已通过恢复真实技能源解决agent-doctor失败；本仓技能仍自包含，不依赖该软链。持续授权与审批边界见协作规范。
 
 
 DTC-2a增量（2026-11-06，本地验收）：新增`app/connectors/`、staff repository与`/api/v1/after-sales`只读路由，`AFTER_SALES_ENABLED`缺省false；启用后员工Bearer认证也保护旧chat。迁移入口不读取.env，显式设置`ALEMBIC_DATABASE_URL`后运行`uv run alembic upgrade head`；PG启动不create_all。合成员工工具`uv run python -m scripts.seed_after_sales_staff --database-url <新的本地SQLite URL>`只作用新库，凭据默认写忽略目录0600新文件，不打印。命令细节和证据见[流程设计](../docs/architecture/modules/after-sales/dtc-workflow.md)与[实施记录](../docs/records/after-sales/dtc-workflow.md)；该2a范围不含审批/Worker；当前2b状态见下节。
@@ -71,6 +71,8 @@ DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sa
 
 员工前端工程增量（2026-11-06，实际浏览器待验）：`frontend/src/staff/`与`/staff`独立员工入口已实现，token/业务输入仅内存；复用现有React/CSS/lucide，仅增jsdom开发测试依赖。构建dist存在时API显式返回/staff shell，不对未知API做SPA回退；无dist仍API-only。工程检查与浏览器/完整旅程分列，见流程记录。
 
-评测安全入口增量（2026-11-06，本地已验证、待交付）：默认`uv run python -m eval.runner --task all`显式离线，all不包含epig-policy；后者单独执行。真实模型需专用DTC_EVAL配置、显式允许及cases/calls上限，当前无新增付费授权。完整门禁`uv run pytest -q --cov=app --cov=eval --cov-report=term:skip-covered --cov-fail-under=70`本地535通过/4跳过/80.89%。CI补前端Node24与独立PG入口，定义存在不等于远端已运行。详见[评测指南](../docs/10-evaluation.md)。
+评测安全入口增量（2026-11-06，本地已验证、待交付）：默认`uv run python -m eval.runner --task all`显式离线，all不包含epig-policy；后者单独执行。真实模型需专用DTC_EVAL配置、显式允许及cases/calls上限，当前真实DeepSeek评测已有专用授权，工程默认仍离线。完整门禁`uv run pytest -q --cov=app --cov=eval --cov-report=term:skip-covered --cov-fail-under=70`本地535通过/4跳过/80.89%。CI补前端Node24与独立PG入口，定义存在不等于远端已运行。详见[评测指南](../docs/10-evaluation.md)。
 
 部署/工具轨迹候选（2026-11-06，最终门禁进行中）：`docker-compose.after-sales.yml`新增独立PG/migrate/API/Worker；须显式`--env-file`及随机新项目名，PG无主机端口，API loopback，Fake仅启动验证。Dockerfile按uv.lock frozen安装并包含迁移；镜像保留production与禁本地模型默认，指南见部署文档。eval/e2e新增真实Tool.run记录与可选工具期望；脱敏/截断不可评分，正向与抑制分别计数。`after_sales_holdout_v1`12例已准备未运行，完整业务质量未测。
+
+当前验收进度（2026-11-06）：六故事服务层与跨系统丢响应备份恢复已独立验证；真实模型保留集发现夹具不一致，修复协议后再验；独立Chromium页面测试正在实现。两仓Compose空feed作者实测已通过，根复验进行中。最新有效计数与失败保留在[流程记录](../docs/records/after-sales/dtc-workflow.md)，不以本档案历史计数代替当前成绩。

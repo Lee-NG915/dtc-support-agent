@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，真实HTTP恢复片段已通过，员工证据/建议后端已验收推送d9e97ff，远端SHA/关键文件回读一致，完整旅程仍待验收，E-pig5d已完成本地/CI验收并推送，消费者组件已实现但实际浏览器验收受工具阻塞。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
+更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，真实HTTP恢复片段已通过，员工证据/建议后端已验收推送d9e97ff，远端SHA/关键文件回读一致，完整旅程仍待验收，E-pig5d已完成本地/CI验收并推送，消费者组件已推送72f1621，服务层八场景与备份恢复已独立验证；两仓Compose空feed启动已独立验证，独立Chromium页面与有效真实模型保留集仍待最终验收。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
 
 ## 2a首轮与独立核验
 
@@ -180,3 +180,25 @@ Review关闭撤权窗口与跨日证据：五项回归确实到达目标窗口�
 - 内部驳回：仅内部rejected/processing，无operation/ticket；正式reject：经批准建唯一reject票据和不可变最终回复。
 
 独立Review未发现伪造业务状态；发现临时harness cleanup单try异常可能短路其余清理，已下发逐资源聚合错误/finally删秘密的局部修复。该缺口不抹去本次实际清理：Codex额外ps核对21个所属PID/PGID没有任何剩余成员，两个精确容器和DTC卷已不存在，受控copy/data与config.json/staff.json均删除。历史报告保留。后续验证新清理分支及备份恢复；本次仅API/DB故事范围通过，完整AS-ACC仍含真实页面与AI边界，不勾整体完成。
+
+
+## 数据库恢复独立验收（2026-11-06，Codex）
+
+固定DTC源296e7af与受控E-pig候选的独立run `2285c4f3bdf42db6`完成38项恢复检查，失败0；日志`/tmp/dtc-backup-restore-codex-final.log`，报告`/tmp/dtc_delivery_stories/runs/2285c4f3bdf42db6/backup_restore_report.json`。在E-pig已提交票据、DTC仍dispatching且无回执时停止API，使用pg_dump custom备份；恢复到同一所属PG容器中的另一个全新数据库，E-pig源库不回滚。恢复后迁移0005、原批准/草稿/幂等键/payload保持；先停止Worker，租约自然过期后由操作员调用既有查询入口核对原票据，case完成且原批准消耗，外部POST增量0，之后Worker领取0。
+
+这证明特定跨系统丢响应窗口的恢复与对账，不承诺零数据损失、分布式原子事务或生产恢复时限。备份47959字节、权限0600；目标库实际drop退出0且复查不存在，专用备份/配置清除、所属容器/卷/进程组清理无错误；报告的target_dropped空字段不作为证据。临时harness清理修复另有13项故障注入回归经Codex通过，未将约3000行临时验收工具升级为产品框架。
+
+保留作者首次1302fa0266dc30b0因JSON字符串解析的验收器失败；根首次e6262b5bcbff7551虽38恢复检查通过，但E-pig契约元数据在并行同步中变化，整体按源码完整性失败处理。冻结源码后重跑才得到上述有效结果，不覆盖旧失败。
+
+## 真实模型与页面验收进度（2026-11-06，进行中）
+
+用户明确授权专用DeepSeek真实模型评测、不设累计费用上限，并授权凭据只保存本机受忽略的0600文件；运行仍限制case/call/output。实际3条政策开发集生成通过，只是开发集生成，不代表完整图质量。首次12条保留集执行报告`eval/reports/after_sales_acceptance_20261106T013354Z.json`包含35次模型调用、24443 total tokens；8条模型场景仅observed，4条工程守卫通过，不将observed计为语义通过。独立Review发现H08床垫材料完整描述与实际杯子/空材料夹具不一致，同时复查H07；先修夹具与付费前断言、冻结协议再重测，不修改生产prompt/knowledge或用原报告宣称质量通过。
+
+Codex CLI浏览器插件的页面控制不构成已完成的项目页面验收。当前切换为项目自有独立Chromium软件测试，不控制用户现有Chrome/profile，不要求用户继续安装ChatGPT扩展。页面操作、截图和最终浏览器验收仍待独立复核。
+
+
+## 两仓Compose空feed独立验收（2026-11-06，Codex）
+
+固定DTC d25dc00与E-pig 72f1621归档，作者构建镜像及受控Dockerfile overlay摘要与根新归档逐一匹配后复用相同image ID；根以全新项目757b51d3fbaebc44启动。迁移gate、ready200、Worker once退出0、两个PG无主机端口均通过，所属容器/卷/网络清理后0、配置目录删除。报告`/tmp/dtc-compose-root-acceptance-report.json`，日志`/tmp/dtc-compose-root-acceptance.log`。这不是当前未提交DeepSeek代码的镜像验收，也不包含业务种子、页面或AI质量。作者构建曾遇npm/Corepack网络及工作区依赖缺失，失败日志保留于`/tmp/dtc-demo-build*.log`；受控副本修复复制依赖后实测构建通过，不修改E-pig线上接口。
+
+独立Review未发现本候选新阻断。根25项Compose/DeepSeek/Settings聚焦测试通过（`/tmp/dtc-current-scoped-root-escalated.log`）。首次受限沙箱运行6项因绑定loopback端口被拒、19项通过；原日志保留，使用正常可绑定专用端口的授权环境按原代码重跑，没有放宽守卫。
