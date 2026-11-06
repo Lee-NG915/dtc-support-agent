@@ -61,6 +61,20 @@ export interface StaffIdentity {
   allowed_markets: Market[];
 }
 
+export type LoginMode = "demo_password" | "staff_token";
+
+export interface LoginOptionsResponse {
+  mode: LoginMode;
+  accounts: StaffIdentity[];
+}
+
+export interface DemoLoginResponse {
+  token: string;
+  token_type: "Bearer";
+  expires_in: number;
+  identity: StaffIdentity;
+}
+
 export interface ErrorBody {
   error_code?: string;
   message?: string;

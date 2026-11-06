@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { StaffApi } from "./api";
+import { StaffApi, demoLogin, getLoginOptions } from "./api";
 import { detailFixture } from "./testSupport";
 
 function jsonResponse(value: unknown): Response {
@@ -25,6 +25,64 @@ function sseResponse(frames: string): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("staff demo login requests", () => {
+  it("discovers the login mode and exchanges a password only in the demo body", async () => {
+    const identity = {
+      staff_id: "staff_support_au",
+      display_name: "Synthetic Support AU",
+      roles: ["support"],
+      allowed_markets: ["au"],
+    };
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/login-options")) {
+        return jsonResponse({ mode: "demo_password", accounts: [identity] });
+      }
+      if (url.endsWith("/demo-login")) {
+        return jsonResponse({
+          token: "dtc_demo.signed-token",
+          token_type: "Bearer",
+          expires_in: 28800,
+          identity,
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const signal = new AbortController().signal;
+
+    const options = await getLoginOptions(signal);
+    expect(options).toEqual({ mode: "demo_password", accounts: [identity] });
+
+    const session = await demoLogin("staff_support_au", "demo-password-123", signal);
+    expect(session).toEqual({
+      token: "dtc_demo.signed-token",
+      token_type: "Bearer",
+      expires_in: 28800,
+      identity,
+    });
+
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
+    const [optionsUrl, optionsInit] = calls[0]!;
+    expect(optionsUrl).toBe("/api/v1/after-sales/login-options");
+    expect(optionsInit.method).toBeUndefined();
+    expect(
+      (optionsInit.headers as Record<string, string>).Authorization,
+    ).toBeUndefined();
+
+    const [demoUrl, demoInit] = calls[1]!;
+    expect(demoUrl).toBe("/api/v1/after-sales/demo-login");
+    expect(demoInit.method).toBe("POST");
+    const demoHeaders = demoInit.headers as Record<string, string>;
+    expect(demoHeaders["Content-Type"]).toBe("application/json");
+    expect(demoHeaders.Authorization).toBeUndefined();
+    expect(JSON.parse(String(demoInit.body))).toEqual({
+      staff_id: "staff_support_au",
+      password: "demo-password-123",
+    });
+    expect(String(demoInit.body)).not.toContain("Bearer");
+  });
 });
 
 describe("staff API requests", () => {

@@ -27,10 +27,10 @@
     "app/agents/nodes/router.py": "e8f16ae981255cca6f0d8e696adf03e0aa4055d95597601f66de0dc5e2de6376",
     "app/agents/state.py": "177a41bac23c2e9462a7b2e56a702b7ac4edf221b2ba17b7788590f484ff72d1",
     "app/api/__init__.py": "f59293e84f38aa7188dbfd84a14081774c50887c80888b4639edab479a950e43",
-    "app/api/dependencies.py": "b710222a8b1afdf4bc1995125f5963ea482809e17a2f5b7b28d0187664be73ee",
+    "app/api/dependencies.py": "deefba49a3f41d7d40917cd63f231daecf8287d0a8ffc5cad56f20929352f144",
     "app/api/routes/__init__.py": "c6de03311fc8c1b93c98f52aad0782cc0f15b2782a25b5fbe5f57a35e5debf92",
     "app/api/routes/admin.py": "c05d0c9a7175ef7e7e64eba282f5967d8b621317f889f9f4939d39a3c430f314",
-    "app/api/routes/after_sales.py": "db4afd5f2fb198bbaf963ec3b20065aaf7b230ace45cda5f9a648fadee0f9c94",
+    "app/api/routes/after_sales.py": "82473b996db436f4d02539cb91286c2adfc3188f1fd987fdfd01dfe9e7f5db40",
     "app/api/routes/after_sales_workflow.py": "07b80b897daecd694aa1212e1218e1ce9d9afee6ba2c40daa96382e687854953",
     "app/api/routes/chat.py": "75edd7ab05e42d6834e2362ac4790d858de525723e088cdfe26ebd8f330f835a",
     "app/api/routes/health.py": "f1e4f77e4eea6d9f62a4aad5dc812f6e57e09a408295ff48bfd82cf00995d0ca",
@@ -42,7 +42,7 @@
     "app/cli/render.py": "99074271cd4bf7c00397925bad9f6609a91ca780ea18907e3df89ad9acc1ece6",
     "app/config/__init__.py": "f5171bd43c2329de013241071b80ff7b58d8b038a907942fb886da4f4e7c951b",
     "app/config/policy_profiles.py": "09d2888cbffd0f613666be06a9312c89f902f9de5ca8f81743c8dcdc84ec8116",
-    "app/config/settings.py": "c2575d68f5a4b684af189e39a11411e0dd770e6d7708e0cf799017e7cb41f822",
+    "app/config/settings.py": "3ff56181248ec599e7cd631aa384ac4c3d8ee358fa91c850e664403c62d630d7",
     "app/connectors/__init__.py": "b49bf78848611f4dc6c43ccf50efcf4a05b27d1d1ff72c311878f4e4dd6326d9",
     "app/connectors/base.py": "34d89ed3a1753de7f61d886d366d0db5b55b3d23364173518d26181c6745b885",
     "app/connectors/epig.py": "6d33d802618f0dcf33a5540968704495b9c1b17ae19cd865a8d13e18a99ae3ce",
@@ -58,7 +58,7 @@
     "app/core/ids.py": "e66bf46d21c53829cdd1a8d415b9415d29784a4b54609e8013f90ca8dc2e3eba",
     "app/core/request_scope.py": "03f9e3ea4b79ae521ecd993a40d9dc34417cdb3a5042489df3922ee46a31af95",
     "app/core/retry.py": "708aeb63a3b0defbb0265f2dcc5d72a30ddb58a405f2e789dc4633731ae01b34",
-    "app/core/security.py": "1439f66f1efc75e208e1281c2071c4c8487923b99e8db1c00072a8a623f0efbe",
+    "app/core/security.py": "24860c4375ca7507485ebdf0926e3f6913985358d1fd3520874267c3557aeb9d",
     "app/core/time.py": "320b4d930d15030822e866ac8491d116ffe093861f188444f13df2857eca517a",
     "app/guardrails/__init__.py": "b4a28b96aabdb64d138eff792a7d0b65564c6646e6127571911819ae3465df84",
     "app/guardrails/boundary.py": "c2dca8a547aa2b3f9039e2761631c34ba03b3d99ac00b4f79365af4bc5c8f2a1",
@@ -103,7 +103,7 @@
     "app/repositories/models.py": "805d6bec8889f003aae7702ba30efa81bbe59c4ef18074e0faaf5b40eec72c54",
     "app/repositories/order_repository.py": "5834e0ce4b7bf7da71e7caf2e70ce4b3fd41e059570492fb12f9165b1f5c65a2",
     "app/repositories/session_repository.py": "c82df88557a334c11e0c6efc669a354d89e3231fac37c613ce2bd1f1e7846a72",
-    "app/repositories/staff_repository.py": "dcb0d6e52f251a127edbd2e8ad0ae0a93e4fa0e6a15a0178a2dc065f53a1a411",
+    "app/repositories/staff_repository.py": "7b312d77e2409f5a6a2dc46ee53e719e82b77561377026b5156234b9bf36afcf",
     "app/retrieval/__init__.py": "9a0b7daff8c8cc6a3258fdae442e6c0426cd2ecca3c064e23b12c7edb919c4a4",
     "app/retrieval/adaptive.py": "32781329d8735d823443ec9dac10ce4bb7c570cbf70ff9946dabe38e4ac3835b",
     "app/retrieval/bm25.py": "1f51eebaa5aca38997db7d8f163d74987a9ce5ce306dd90277e06eff0a94a87a",
@@ -121,7 +121,7 @@
     "app/retrieval/unstructured_parser.py": "4b6f9875cdeb167fb935aa607f29048303dc92023d57d9a7743380eee1c48285",
     "app/retrieval/vector.py": "f02cead0c0661dc0cb69f9adb04b235f61a8bef00d793af3766a552cee0aa011",
     "app/schemas/__init__.py": "001339acfaaa0a580a259e6e77d886bc735e10ffdaa7fae0eda622a10c0d0471",
-    "app/schemas/after_sales.py": "b17ab2502133c9fe697024a81d0e149286cc9e2c94f3b184a59fae0ad909e991",
+    "app/schemas/after_sales.py": "ca61dea1661a0d2ea5aadb5b30740d0d7f9134b6e82d6fae45d6ee818319ae2b",
     "app/schemas/after_sales_worker.py": "5553dc9f6a634ba796681a83a58120eb04fd0aec6e418a25de9b12a892205500",
     "app/schemas/after_sales_workflow.py": "a73a5026191c321ec9ba6c21961d653b9d88ad5611f08f79133831f0fb2d544a",
     "app/schemas/agent.py": "0b5d2ce4c4ec48bbb2cac2d582440da53f8d23bf5784ab0595e61f32fbe5edf6",
@@ -221,7 +221,7 @@
     "No execution implied by preparation; provider/model/budget and runtime fixture adapter still required.",
     "Actual HTTP/browser/OSrestart evidence must be separate; synthetic_only."
   ],
-  "freeze_revision": 3,
+  "freeze_revision": 4,
   "protocol_refreeze": {
     "reason": "Before first holdout execution: official DeepSeek model alias/thinking toggle compatibility only; no business prompt or knowledge changes and no holdout feedback used.",
     "files": {
@@ -272,5 +272,38 @@
       }
     },
     "model_evaluation_status": "not_run_for_revision_3"
+  },
+  "demo_login_refreeze": {
+    "parent_revision": 3,
+    "parent_source_commit": "c2ba24ed92c68de4d5f53dbc23da12be1144bafb",
+    "parent_manifest_sha256": "fe94dbdc60c9e7e59008b997015dd14458110e1bdbad5d2ec74c3273752f66f9",
+    "reason": "Development/testing-only shared-password demo login: default-off settings, HMAC demo session tokens, public login-options/demo-login endpoints and the staff-mode login UI. Dataset, knowledge, prompts, grading and existing bearer authorization are unchanged; no model evaluation was run and no holdout feedback was used.",
+    "files": {
+      "app/api/dependencies.py": {
+        "old_sha256": "b710222a8b1afdf4bc1995125f5963ea482809e17a2f5b7b28d0187664be73ee",
+        "new_sha256": "deefba49a3f41d7d40917cd63f231daecf8287d0a8ffc5cad56f20929352f144"
+      },
+      "app/api/routes/after_sales.py": {
+        "old_sha256": "db4afd5f2fb198bbaf963ec3b20065aaf7b230ace45cda5f9a648fadee0f9c94",
+        "new_sha256": "82473b996db436f4d02539cb91286c2adfc3188f1fd987fdfd01dfe9e7f5db40"
+      },
+      "app/config/settings.py": {
+        "old_sha256": "c2575d68f5a4b684af189e39a11411e0dd770e6d7708e0cf799017e7cb41f822",
+        "new_sha256": "3ff56181248ec599e7cd631aa384ac4c3d8ee358fa91c850e664403c62d630d7"
+      },
+      "app/core/security.py": {
+        "old_sha256": "1439f66f1efc75e208e1281c2071c4c8487923b99e8db1c00072a8a623f0efbe",
+        "new_sha256": "24860c4375ca7507485ebdf0926e3f6913985358d1fd3520874267c3557aeb9d"
+      },
+      "app/repositories/staff_repository.py": {
+        "old_sha256": "dcb0d6e52f251a127edbd2e8ad0ae0a93e4fa0e6a15a0178a2dc065f53a1a411",
+        "new_sha256": "7b312d77e2409f5a6a2dc46ee53e719e82b77561377026b5156234b9bf36afcf"
+      },
+      "app/schemas/after_sales.py": {
+        "old_sha256": "b17ab2502133c9fe697024a81d0e149286cc9e2c94f3b184a59fae0ad909e991",
+        "new_sha256": "ca61dea1661a0d2ea5aadb5b30740d0d7f9134b6e82d6fae45d6ee818319ae2b"
+      }
+    },
+    "model_evaluation_status": "not_run_for_revision_4"
   }
 }

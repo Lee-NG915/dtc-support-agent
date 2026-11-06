@@ -17,6 +17,7 @@ from app.connectors.errors import (
 )
 from app.connectors.models import ServiceOrder, ServiceShipment
 from app.core.exceptions import (
+    AfterSalesDisabledError,
     AttachmentExpiredError,
     ConnectorContractError,
     ConnectorUnavailableError,
@@ -24,10 +25,16 @@ from app.core.exceptions import (
     ForbiddenRoleError,
     InvalidRequestError,
     NotFoundError,
+    UnauthorizedError,
 )
+from app.core.security import create_demo_session_token, verify_demo_password
+from app.repositories.staff_repository import StaffRepository
 from app.schemas.after_sales import (
     AFTER_SALES_MARKETS,
     READ_ROLES,
+    DemoLoginRequest,
+    DemoLoginResponse,
+    LoginOptionsResponse,
     StaffActor,
     StaffIdentityResponse,
     is_valid_opaque_id,
@@ -42,11 +49,57 @@ _FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 @router.get("/me", response_model=StaffIdentityResponse)
 async def me(actor: StaffActor = Depends(get_required_staff)) -> StaffIdentityResponse:
     """Return only the current staff member's public identity."""
-    return StaffIdentityResponse(
+    return _identity_response(actor)
+
+
+@router.get("/login-options", response_model=LoginOptionsResponse)
+async def login_options(
+    container: AppContainer = Depends(get_container),
+) -> LoginOptionsResponse:
+    """Expose the active login mode without any credential material."""
+    if not container.settings.after_sales_enabled:
+        raise AfterSalesDisabledError()
+    if not container.settings.after_sales_demo_login_active:
+        return LoginOptionsResponse(mode="staff_token", accounts=[])
+    async with container.session_factory() as session:
+        actors = await StaffRepository(session).list_available()
+    return LoginOptionsResponse(
+        mode="demo_password",
+        accounts=[_identity_response(actor) for actor in actors],
+    )
+
+
+@router.post("/demo-login", response_model=DemoLoginResponse)
+async def demo_login(
+    payload: DemoLoginRequest,
+    container: AppContainer = Depends(get_container),
+) -> DemoLoginResponse:
+    """Exchange the shared demo password for one short-lived session token."""
+    settings = container.settings
+    if not settings.after_sales_enabled:
+        raise AfterSalesDisabledError()
+    if not settings.after_sales_demo_login_active:
+        raise NotFoundError()
+    async with container.session_factory() as session:
+        actor = await StaffRepository(session).get_current_actor(payload.staff_id)
+    password_ok = verify_demo_password(
+        payload.password,
+        settings.after_sales_demo_password.get_secret_value(),
+    )
+    # Unknown, disabled, expired and wrong-password identities are one response.
+    # The password comparison runs regardless of whether the row exists.
+    if actor is None or not password_ok:
+        raise UnauthorizedError("invalid demo login")
+    token = create_demo_session_token(
         staff_id=actor.staff_id,
-        display_name=actor.display_name,
-        roles=sorted(actor.roles),
-        allowed_markets=sorted(actor.allowed_markets),
+        secret=settings.after_sales_demo_session_secret.get_secret_value(),
+        ttl_seconds=settings.after_sales_demo_session_ttl_seconds,
+    )
+    return DemoLoginResponse(
+        token=token,
+        token_type="Bearer",
+        expires_in=settings.after_sales_demo_session_ttl_seconds,
+        identity=_identity_response(actor),
     )
 
 
@@ -110,6 +163,15 @@ async def get_attachment_content(
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
         },
+    )
+
+
+def _identity_response(actor: StaffActor) -> StaffIdentityResponse:
+    return StaffIdentityResponse(
+        staff_id=actor.staff_id,
+        display_name=actor.display_name,
+        roles=sorted(actor.roles),
+        allowed_markets=sorted(actor.allowed_markets),
     )
 
 

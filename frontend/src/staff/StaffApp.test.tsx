@@ -53,6 +53,9 @@ afterEach(() => {
 describe("StaffApp session lifecycle", () => {
   it("survives login, workbench, logout and a second login with the same hook order", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/login-options")) {
+        return jsonResponse({ mode: "staff_token", accounts: [] });
+      }
       if (url.endsWith("/me")) {
         return jsonResponse(identity(
           authorizationOf(init) === "Bearer token-two" ? "员工二" : "员工一",
@@ -97,6 +100,9 @@ describe("StaffApp generation-scoped retries", () => {
     let auCalls = 0;
     let sgCalls = 0;
     const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/login-options")) {
+        return jsonResponse({ mode: "staff_token", accounts: [] });
+      }
       if (url.endsWith("/me")) return jsonResponse(identity("员工一"));
       if (url.includes("/au/cases")) {
         auCalls += 1;
@@ -154,6 +160,9 @@ describe("StaffApp generation-scoped retries", () => {
     let resolveAu!: (response: Response) => void;
     const pendingAu = new Promise<Response>((resolve) => { resolveAu = resolve; });
     const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/login-options")) {
+        return jsonResponse({ mode: "staff_token", accounts: [] });
+      }
       if (url.endsWith("/me")) return jsonResponse(identity("员工一"));
       if (url.includes("/au/cases")) return pendingAu;
       if (url.includes("/sg/cases")) return jsonResponse(emptyList("sg"));

@@ -45,6 +45,27 @@ class StaffIdentityResponse(BaseModel):
     allowed_markets: list[AfterSalesMarket]
 
 
+class LoginOptionsResponse(BaseModel):
+    """Public login-mode discovery; demo accounts never carry credentials."""
+
+    mode: Literal["demo_password", "staff_token"]
+    accounts: list[StaffIdentityResponse] = Field(default_factory=list)
+
+
+class DemoLoginRequest(BaseModel):
+    staff_id: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class DemoLoginResponse(BaseModel):
+    """A short-lived signed session, never the shared password itself."""
+
+    token: str
+    token_type: Literal["Bearer"] = "Bearer"
+    expires_in: int
+    identity: StaffIdentityResponse
+
+
 def parse_staff_roles(raw: str) -> frozenset[StaffRole]:
     return frozenset(
         value for value in (part.strip() for part in raw.split(",")) if value in STAFF_ROLES

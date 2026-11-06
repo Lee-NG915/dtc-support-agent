@@ -5,8 +5,10 @@ import type {
   CaseEvidenceResponse,
   CaseListResponse,
   CaseTicketResponse,
+  DemoLoginResponse,
   DraftCreateInput,
   EventListResponse,
+  LoginOptionsResponse,
   MaterialCreateInput,
   Market,
   ServiceOrder,
@@ -124,6 +126,52 @@ async function request<T>(token: string, path: string, options: RequestOptions =
   if (!response.ok) throw await parseError(response);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+export async function getLoginOptions(signal: AbortSignal): Promise<LoginOptionsResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${PREFIX}/login-options`, {
+      headers: { Accept: "application/json" },
+      signal,
+      cache: "no-store",
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new StaffApiError(0, "网络连接失败，请检查网络后重试。", null, null);
+  }
+  if (!response.ok) throw await parseError(response);
+  return (await response.json()) as LoginOptionsResponse;
+}
+
+/**
+ * Exchange the shared demo password for a short-lived signed session. The
+ * password is only sent in this one request body; it never becomes a header,
+ * URL value, or persisted browser state.
+ */
+export async function demoLogin(
+  staffId: string,
+  password: string,
+  signal: AbortSignal,
+): Promise<DemoLoginResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${PREFIX}/demo-login`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ staff_id: staffId, password }),
+      signal,
+      cache: "no-store",
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new StaffApiError(0, "网络连接失败，请检查网络后重试。", null, null);
+  }
+  if (!response.ok) throw await parseError(response);
+  return (await response.json()) as DemoLoginResponse;
 }
 
 export async function loginStaff(

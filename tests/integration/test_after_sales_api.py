@@ -6,28 +6,40 @@ import json
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config.settings import Settings
 from app.connectors.errors import ConnectorUnavailable
-from app.core.security import generate_staff_token
+from app.core.security import create_demo_session_token, generate_staff_token
 from app.core.time import utcnow
 from app.main import create_app
 from app.repositories.db import init_schema
-from app.repositories.models import SessionRow
+from app.repositories.models import AfterSalesStaffRow, SessionRow
 from app.repositories.staff_repository import StaffRepository
 
 ROOT = Path(__file__).resolve().parents[2]
 PNG_SHA256 = "431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460"
+DEMO_PASSWORD = "demo-password-123"
+DEMO_SECRET = "demo-session-secret-" + ("s" * 20)
 
 
-def _settings(tmp_path: Path, *, enabled: bool = True) -> Settings:
+def _settings(
+    tmp_path: Path,
+    *,
+    enabled: bool = True,
+    demo_login: bool = False,
+) -> Settings:
     return Settings(
         _env_file=None,
         app_env="testing",
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'app.db'}",
         after_sales_enabled=enabled,
+        after_sales_demo_login_enabled=demo_login,
+        after_sales_demo_password=DEMO_PASSWORD if demo_login else "",
+        after_sales_demo_session_secret=DEMO_SECRET if demo_login else "",
         business_connector="fake",
         deepseek_api_key="",
         embedding_api_key="",
@@ -72,6 +84,19 @@ async def _seed_staff(database_url: str) -> dict[str, str]:
                     enabled=enabled,
                 )
         return tokens
+    finally:
+        await engine.dispose()
+
+
+async def _update_staff(database_url: str, staff_id: str, **fields: object) -> None:
+    engine = create_async_engine(database_url)
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        async with factory.begin() as session:
+            row = await session.get(AfterSalesStaffRow, staff_id)
+            assert row is not None
+            for name, value in fields.items():
+                setattr(row, name, value)
     finally:
         await engine.dispose()
 
@@ -537,3 +562,245 @@ def test_no_public_after_sales_write_route_is_exposed(tmp_path: Path) -> None:
             json={"request_id": "asr_000000000042"},
         )
         assert response.status_code in {404, 405}
+
+
+def test_demo_login_settings_fail_closed() -> None:
+    common = {"_env_file": None, "after_sales_enabled": True}
+    with pytest.raises(ValidationError, match="forbidden in production"):
+        Settings(
+            **common,
+            app_env="production",
+            after_sales_demo_login_enabled=True,
+            after_sales_demo_password=DEMO_PASSWORD,
+            after_sales_demo_session_secret=DEMO_SECRET,
+        )
+    with pytest.raises(ValidationError, match="at least 8 characters"):
+        Settings(
+            **common,
+            app_env="testing",
+            after_sales_demo_login_enabled=True,
+            after_sales_demo_password="short",
+            after_sales_demo_session_secret=DEMO_SECRET,
+        )
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        Settings(
+            **common,
+            app_env="testing",
+            after_sales_demo_login_enabled=True,
+            after_sales_demo_password=DEMO_PASSWORD,
+            after_sales_demo_session_secret="short",
+        )
+    # Disabled demo login remains valid in production and requires no secrets.
+    Settings(**common, app_env="production")
+
+
+def test_login_options_keep_staff_token_mode_without_demo(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    tokens = asyncio.run(_seed_staff(settings.database_url))
+    app = create_app(settings)
+    with TestClient(app) as client:
+        options = client.get("/api/v1/after-sales/login-options")
+        assert options.status_code == 200
+        assert options.json() == {"mode": "staff_token", "accounts": []}
+
+        demo = client.post(
+            "/api/v1/after-sales/demo-login",
+            json={"staff_id": "staff_support_au", "password": DEMO_PASSWORD},
+        )
+        assert demo.status_code == 404
+        assert demo.json()["error_code"] == "NOT_FOUND"
+
+        # The shared password is not a staff token, and the existing bearer
+        # credential still authenticates unchanged.
+        assert (
+            client.get(
+                "/api/v1/after-sales/me",
+                headers=_auth(DEMO_PASSWORD),
+            ).status_code
+            == 401
+        )
+        assert (
+            client.get(
+                "/api/v1/after-sales/me",
+                headers=_auth(tokens["support_au"]),
+            ).status_code
+            == 200
+        )
+
+
+def test_demo_login_options_and_session_security(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, demo_login=True)
+    tokens = asyncio.run(_seed_staff(settings.database_url))
+    app = create_app(settings)
+    with TestClient(app) as client:
+        options = client.get("/api/v1/after-sales/login-options")
+        assert options.status_code == 200
+        body = options.json()
+        assert body["mode"] == "demo_password"
+        assert [account["staff_id"] for account in body["accounts"]] == [
+            "staff_approver_au",
+            "staff_auditor_all",
+            "staff_operator_au",
+            "staff_support_au",
+            "staff_support_us",
+        ]
+        for account in body["accounts"]:
+            assert set(account) == {
+                "staff_id",
+                "display_name",
+                "roles",
+                "allowed_markets",
+            }
+
+        options_text = options.text
+        for secret in (DEMO_PASSWORD, DEMO_SECRET, *tokens.values()):
+            assert secret not in options_text
+        for marker in ("sha256", "expires", "token"):
+            assert marker not in options_text.lower()
+        assert "staff_disabled" not in options_text
+        assert "staff_expired" not in options_text
+
+        login = client.post(
+            "/api/v1/after-sales/demo-login",
+            json={"staff_id": "staff_support_au", "password": DEMO_PASSWORD},
+        )
+        assert login.status_code == 200
+        session = login.json()
+        assert session["token_type"] == "Bearer"
+        assert session["expires_in"] == 28800
+        assert session["identity"] == {
+            "staff_id": "staff_support_au",
+            "display_name": "Synthetic support_au",
+            "roles": ["support"],
+            "allowed_markets": ["au"],
+        }
+        token = session["token"]
+        assert token.startswith("dtc_demo.")
+        login_text = login.text
+        assert DEMO_PASSWORD not in login_text
+        assert DEMO_SECRET not in login_text
+        assert "token_sha256" not in login_text
+
+        me = client.get("/api/v1/after-sales/me", headers=_auth(token))
+        assert me.status_code == 200
+        assert me.json() == session["identity"]
+        order = client.get(
+            "/api/v1/after-sales/au/orders/ord_au_00000042",
+            headers=_auth(token),
+        )
+        assert order.status_code == 200
+
+        # Wrong password and every unusable identity share one 401 body.
+        failures = []
+        for staff_id, password in (
+            ("staff_support_au", "wrong-password"),
+            ("staff_missing", DEMO_PASSWORD),
+            ("staff_disabled", DEMO_PASSWORD),
+            ("staff_expired", DEMO_PASSWORD),
+        ):
+            response = client.post(
+                "/api/v1/after-sales/demo-login",
+                json={"staff_id": staff_id, "password": password},
+            )
+            assert response.status_code == 401
+            failures.append(response.json())
+        assert {(item["error_code"], item["message"]) for item in failures} == {
+            ("UNAUTHORIZED", "invalid demo login")
+        }
+        for body_item in failures:
+            for marker in ("missing", "disabled", "expired", "wrong"):
+                assert marker not in body_item["message"]
+
+        # A fixed password is never a bearer, while a valid database bearer
+        # token from the same environment keeps working.
+        assert (
+            client.get(
+                "/api/v1/after-sales/me",
+                headers=_auth(DEMO_PASSWORD),
+            ).status_code
+            == 401
+        )
+        assert (
+            client.get(
+                "/api/v1/after-sales/me",
+                headers=_auth(tokens["support_au"]),
+            ).status_code
+            == 200
+        )
+
+        tampered = f"{token[:-1]}{'A' if token[-1] != 'A' else 'B'}"
+        assert client.get("/api/v1/after-sales/me", headers=_auth(tampered)).status_code == 401
+        expired = create_demo_session_token(
+            staff_id="staff_support_au",
+            secret=DEMO_SECRET,
+            ttl_seconds=-1,
+        )
+        assert client.get("/api/v1/after-sales/me", headers=_auth(expired)).status_code == 401
+        foreign_secret = create_demo_session_token(
+            staff_id="staff_support_au",
+            secret="foreign-demo-secret-" + ("f" * 20),
+            ttl_seconds=600,
+        )
+        assert (
+            client.get(
+                "/api/v1/after-sales/me",
+                headers=_auth(foreign_secret),
+            ).status_code
+            == 401
+        )
+
+        # A role/market change is visible on the next request for the same
+        # signed token because the row is re-read, not cached.
+        approver = client.post(
+            "/api/v1/after-sales/demo-login",
+            json={"staff_id": "staff_approver_au", "password": DEMO_PASSWORD},
+        )
+        assert approver.status_code == 200
+        approver_token = approver.json()["token"]
+        asyncio.run(
+            _update_staff(
+                settings.database_url,
+                "staff_approver_au",
+                roles="auditor",
+                allowed_markets="us",
+            )
+        )
+        changed = client.get("/api/v1/after-sales/me", headers=_auth(approver_token))
+        assert changed.status_code == 200
+        assert changed.json()["roles"] == ["auditor"]
+        assert changed.json()["allowed_markets"] == ["us"]
+        assert (
+            client.get(
+                "/api/v1/after-sales/au/orders/ord_au_00000042",
+                headers=_auth(approver_token),
+            ).status_code
+            == 403
+        )
+
+        # Disabling the identity after token issuance fails the next request.
+        asyncio.run(
+            _update_staff(
+                settings.database_url,
+                "staff_support_au",
+                enabled=False,
+            )
+        )
+        assert client.get("/api/v1/after-sales/me", headers=_auth(token)).status_code == 401
+        refreshed = client.get("/api/v1/after-sales/login-options")
+        assert "staff_support_au" not in refreshed.text
+
+
+def test_demo_login_endpoints_stay_closed_without_after_sales(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, enabled=False, demo_login=True)
+    app = create_app(settings)
+    with TestClient(app) as client:
+        options = client.get("/api/v1/after-sales/login-options")
+        assert options.status_code == 404
+        assert options.json()["error_code"] == "AFTER_SALES_DISABLED"
+
+        login = client.post(
+            "/api/v1/after-sales/demo-login",
+            json={"staff_id": "staff_support_au", "password": DEMO_PASSWORD},
+        )
+        assert login.status_code == 404
+        assert login.json()["error_code"] == "AFTER_SALES_DISABLED"

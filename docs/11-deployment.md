@@ -125,6 +125,12 @@ docker compose --env-file "$DTC_DEMO_ENV" -f docker-compose.after-sales.yml \
 
 按输出的`127.0.0.1:端口`访问`/api/v1/health`、`/api/v1/ready`和`/staff`。预期migrate退出0、API健康、Worker运行，数据库版本0005；员工业务无token仍401。此步骤只提供登录shell，尚未初始化PG员工或接真实E-pig，不能据此宣布工作台业务演示完成。不要运行输出全部展开环境变量的`compose config`或全量容器inspect。
 
+### 本地 SQLite 合成工作台登录
+
+隔离开发/测试环境可显式启用固定演示密码，页面`/staff`会自动显示合成员工选择和密码输入框。该模式必须同时配置`AFTER_SALES_DEMO_LOGIN_ENABLED=true`、至少8字符的`AFTER_SALES_DEMO_PASSWORD`和至少32字符的`AFTER_SALES_DEMO_SESSION_SECRET`；密码通过`POST /api/v1/after-sales/demo-login`换取短时签名会话，不会直接作为Bearer发送业务请求。生产环境启用会拒绝Settings加载。
+
+固定密码只用于本地合成演示。员工身份仍来自`after_sales_staff`，每次业务请求重新检查启用状态、到期时间、角色和市场；不要把同一个密码用于真实账号、共享部署或公网入口。登录选项、错误密码、篡改/过期会话、固定密码直连及禁权后的即时失效由认证测试覆盖，操作结果见[流程记录](records/after-sales/dtc-workflow.md)。
+
 只清理本次随机项目，`-v`会删除该项目的合成PG数据，不要替换成既有项目名：
 
 ```bash

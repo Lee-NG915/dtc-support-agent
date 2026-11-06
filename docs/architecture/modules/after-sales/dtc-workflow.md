@@ -1,6 +1,6 @@
 # DTC 内部售后流程：实现设计与执行计划
 
-更新日期：2026-11-06。状态：已确认产品范围内的实现方案；2a/2b、2c执行核心及员工证据/建议后端已实现并通过各章本地范围验收，跨仓HTTP、页面及其余能力按下文分阶段实施，阶段结果在[实施记录](../../../records/after-sales/dtc-workflow.md)持续记录。产品行为/状态机仍以[产品蓝图](product-blueprint.md)为正本，线上E-pig字段仍以[OpenAPI](../../../../contracts/epig-after-sales/v1/openapi.json)为正本。
+更新日期：2026-11-06。状态：已确认产品范围内的实现方案；2a/2b、2c执行核心、员工证据/建议后端及隔离演示固定密码登录已实现并通过各章本地范围验收，跨仓HTTP、页面信息架构及其余能力按下文分阶段实施，阶段结果在[实施记录](../../../records/after-sales/dtc-workflow.md)持续记录。产品行为/状态机仍以[产品蓝图](product-blueprint.md)为正本，线上E-pig字段仍以[OpenAPI](../../../../contracts/epig-after-sales/v1/openapi.json)为正本。
 
 ## 目标与分步落点
 
@@ -23,6 +23,8 @@
 `after_sales_enabled=false`缺省保持现有demo兼容；关闭时新售后接口明确503/404关闭，不能匿名开放；开启后必须认证。现有chat也必须员工认证、使用服务器Actor覆盖客户端user_id、强制epig政策品牌并校验允许市场；提供已有session_id时验证归属，禁止跨员工读取会话。旧confirm_action_id在该模式拒绝，不让旧内存确认流程绕过持久审批。原上游demo只在feature关闭时保留，不能向启用后的员工流程开放通用退款/取消工具。
 
 员工演示配置只在development/testing显式启用：独立seed脚本生成support/approver/auditor/operator和受限市场员工，随机token只写新建0600忽略文件，不打印；禁止覆盖已有凭据文件、禁止生产seed或隐式操作已有数据库。测试使用临时SQLite/专用PG和Settings(_env_file=None)，不读真实.env。上线前真实身份集成与凭据运维仍需独立验收。
+
+为降低隔离演示的登录成本，development/testing可显式启用固定演示密码。用户先选择数据库中的合成员工身份，再由`POST /after-sales/demo-login`把共享密码换取短时HMAC签名会话；固定密码本身不能作为Bearer直接访问业务接口。会话只绑定staff_id和到期时间，每次请求仍从数据库重读enabled、到期、角色和市场，因此撤权立即生效。`GET /after-sales/login-options`只返回登录模式及公开身份选项，不返回密码、token摘要或签名密钥。生产环境启用该模式会拒绝Settings加载；现有高熵Bearer凭证继续保留，固定密码不是企业SSO或生产认证替代品。
 
 ## Connector契约与配置
 
@@ -107,11 +109,11 @@ operator只能请求继续查询、查看脱敏进度及登记有来源的对账
 
 ## 2a源码阅读与小实验
 
-当前未提交候选的读取链是`after_sales.py`路由 → `get_required_staff` → `StaffRepository.authenticate` → `BusinessConnector`。Bearer是每个HTTP请求携带的员工凭证；数据库只保存摘要，类似前端拿到会话凭证后每次请求带上，但“谁能读取哪个市场”始终由服务器判断。浏览器传user_id或隐藏按钮都不能替代该判断。
+当前读取链是`after_sales.py`路由 → `get_required_staff` → 数据库staff token或短时演示会话校验 → `StaffRepository.get_current_actor` → `BusinessConnector`。Bearer是每个HTTP请求携带的员工凭证；数据库只保存长期token摘要，类似前端拿到会话凭证后每次请求带上。演示会话只证明“由固定密码换取过某个staff_id”，实际可达市场仍由当前数据库角色决定。浏览器传user_id、选择账号或隐藏按钮都不能替代该判断。
 
 先读[认证依赖](../../../../app/api/dependencies.py)与[员工仓储](../../../../app/repositories/staff_repository.py)，再读[只读路由](../../../../app/api/routes/after_sales.py)与[Connector接口](../../../../app/connectors/base.py)。Fake实现用于合成试验；Epig实现通过HTTP访问固定契约，MockTransport测试只证明请求/解析逻辑，不证明真实服务可用。
 
-小实验在仓库根目录执行`.venv/bin/pytest -q tests/unit/test_staff_repository.py tests/integration/test_after_sales_api.py`。预期：不存在/过期/禁用凭证被拒绝，support不能访问未授权市场，operator不能下载业务附件；将员工禁用后下一次请求立即拒绝。实际结果须看本章验收记录，不能把这里的预期当通过计数。迁移实验使用临时库，见`tests/integration/test_after_sales_migrations.py`；PG测试缺专用URL会skip，这表示未测。
+小实验在仓库根目录执行`.venv/bin/pytest -q tests/unit/test_staff_repository.py tests/integration/test_after_sales_api.py`。预期：不存在/过期/禁用凭证被拒绝，support不能访问未授权市场，operator不能下载业务附件；错误密码与未知身份返回同一401；篡改/过期演示会话和固定密码直连均失败；将员工禁用后下一次请求立即拒绝。实际结果须看本章验收记录，不能把这里的预期当通过计数。迁移实验使用临时库，见`tests/integration/test_after_sales_migrations.py`；PG测试缺专用URL会skip，这表示未测。
 
 阅读后应能回答：为什么只存hash仍要保护原token；为什么市场限制要在路由和Connector两端校验；为什么协议Schema合法还要核对对象ID；为什么PG启动不执行create_all；为什么这些只读能力尚不足以证明审批与恢复已完成。
 

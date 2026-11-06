@@ -5,7 +5,7 @@ import os
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -113,6 +113,16 @@ class Settings(BaseSettings):
     after_sales_approval_ttl_seconds: int = Field(default=14400, ge=60, le=86400)
     after_sales_sync_batch_limit: int = Field(default=50, ge=1, le=200)
 
+    # Development/testing-only demonstration login. The shared password is
+    # exchanged for a short-lived signed token; it is never itself a bearer
+    # credential. Production startup is refused when this is enabled.
+    after_sales_demo_login_enabled: bool = False
+    after_sales_demo_password: SecretStr = SecretStr("")
+    after_sales_demo_session_secret: SecretStr = SecretStr("")
+    # Demo sessions are short-lived by design: at least one second (so tests
+    # can exercise expiry) and never longer than one day.
+    after_sales_demo_session_ttl_seconds: int = Field(default=28800, ge=1, le=86400)
+
     # DTC-2c worker limits. The worker is a separate process over the same
     # database; these values bound one cycle and one external attempt.
     after_sales_worker_markets: str = ""
@@ -148,6 +158,32 @@ class Settings(BaseSettings):
             ):
                 raise ValueError("SKU category map entries must be non-empty short strings")
         return value
+
+    @model_validator(mode="after")
+    def validate_demo_login(self) -> "Settings":
+        """Demo login may only start with a usable, non-production secret set."""
+        if not self.after_sales_demo_login_enabled:
+            return self
+        if self.app_env == "production":
+            raise ValueError("after-sales demo login is forbidden in production")
+        password = self.after_sales_demo_password.get_secret_value()
+        session_secret = self.after_sales_demo_session_secret.get_secret_value()
+        if len(password.strip()) < 8:
+            raise ValueError("after-sales demo password must be at least 8 characters")
+        if len(session_secret.strip()) < 32:
+            raise ValueError("after-sales demo session secret must be at least 32 characters")
+        return self
+
+    @property
+    def after_sales_demo_login_active(self) -> bool:
+        """True only when demo login is enabled, configured and non-production."""
+        return bool(
+            self.after_sales_enabled
+            and self.after_sales_demo_login_enabled
+            and self.app_env != "production"
+            and self.after_sales_demo_password.get_secret_value().strip()
+            and len(self.after_sales_demo_session_secret.get_secret_value().strip()) >= 32
+        )
 
     @property
     def sku_category_map(self) -> dict[str, str]:

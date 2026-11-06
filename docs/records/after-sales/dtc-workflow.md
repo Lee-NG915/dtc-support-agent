@@ -2,6 +2,16 @@
 
 更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；真实模型revision2保留集仍有金额单位等质量缺口。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，裁决及最新结果见下一节，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
 
+## 员工工作台演示密码登录（2026-11-06，Codex本地验收）
+
+用户反馈本地预览每次复制长Bearer不便。实现把固定密码限定在development/testing合成演示：`GET /api/v1/after-sales/login-options`暴露登录模式和可用公开身份，`POST /api/v1/after-sales/demo-login`校验固定密码后签发8小时HMAC演示会话；会话只绑定staff_id/到期，每次请求仍从数据库读取当前角色、市场、启用状态和员工到期。生产环境启用共享密码会配置失败，原Bearer流程保持不变，没有新增数据库迁移、JWT或认证框架。
+
+Claude以auto模式实现后端、前端和必要测试；两次调用均达到turn上限，未提供最终文字报告，Codex未把turn上限写成通过，而是按实际diff、测试和运行结果裁决。Codex独立检查结果：认证/API聚焦**24 passed**；前端**10文件27 passed**并构建通过；全量Python **674 passed、5 skipped、1 warning**，CI等价覆盖率**82.16%**且70%门槛通过；mypy **150源文件通过**；Ruff 229文件格式/静态通过。评测冻结清单仅推进到revision4并登记6个认证/配置源码摘要，状态为`not_run_for_revision_4`，没有运行真实模型或使用保留集反馈。
+
+真实本地HTTP验证`ready=200`、正确密码登录`200`、错误密码`401`、换取会话后`/me=200`；项目专用无头Chromium在`/staff`选择默认`staff_support_au`、输入固定密码后进入诉求队列并通过真实`/demo-login`请求。验证密码为仅本次进程环境使用的合成值，不进入Git；测试确认页面不写localStorage/sessionStorage/URL，篡改、过期、错误签名、禁用员工和固定密码直连均被拒绝。
+
+结论：固定密码登录的本地合成演示范围通过，尚未提交/推送。页面信息密度问题未在本批修改：当前员工页仍是工程验收和审计视图，订单/政策/事件/审批证据默认同时展开，测试ID与安全字段也会放大噪音；下一 UI 迭代应先展示状态、诉求摘要、建议动作和待人工决定，再把政策版本、审计事件与技术字段渐进展开。不能把“测试数据较多”作为唯一原因，也不能据此宣称真实客服效率已改善。
+
 ## 2026-11-06 Kimi CR 裁决与最小修复计划
 
 用户要求采纳必要审查建议。原始审查固定 DTC `19f1d455`、E-pig `0a84e5ba`，结论及覆盖范围已发布于 [DTC CR](https://github.com/Lee-NG915/dtc-support-agent/issues/2#issuecomment-6676472791) 和 [E-pig CR](https://github.com/Lee-NG915/E-pig/issues/2#issuecomment-6676532361)。本节是后续修复记录，不能将原始有条件验收改写为无问题。
