@@ -3,7 +3,6 @@ import { RefreshCw } from "lucide-react";
 import { useStaff } from "./context";
 import {
   CASE_STATE_LABELS,
-  REQUEST_STATUS_LABELS,
   REQUEST_TYPE_LABELS,
   errorMessage,
   formatRelative,
@@ -19,6 +18,7 @@ import {
   caseTone,
 } from "./StaffBits";
 import { ApprovalSection } from "./ApprovalSection";
+import { CaseOverview } from "./CaseOverview";
 import {
   AttachmentsSection,
   EvidenceSection,
@@ -248,6 +248,17 @@ export function CasePanel({ caseId }: { caseId: number }) {
       operation.status === "reconciliation_required" ||
       (operation.status === "prepared" && operation.dispatched_at !== null),
     );
+  const pendingApprovals = detail.approvals.filter((approval) => approval.status === "pending");
+  const draftDefaultOpen = staff.canSupport &&
+    pendingApprovals.length === 0 &&
+    (detail.state === "pending" || detail.state === "processing");
+  const approvalDefaultOpen = staff.canApprove &&
+    detail.state === "waiting_approval" &&
+    pendingApprovals.some((approval) =>
+      approval.requester_staff_id !== staff.identity.staff_id &&
+      approval.snapshot !== null &&
+      new Date(approval.expires_at).getTime() > Date.now(),
+    );
 
   return (
     <div className="staff-detail">
@@ -260,9 +271,6 @@ export function CasePanel({ caseId }: { caseId: number }) {
             {detail.remote_ticket_id ? <Badge tone="success">已有远端工单</Badge> : null}
           </div>
           <p className="staff-detail-meta">
-            <span>诉求 {detail.request_id}</span>
-            <span>订单 {detail.order_id}</span>
-            <span>版本 {detail.revision}</span>
             <TimeValue value={detail.updated_at} prefix="更新" />
           </p>
         </div>
@@ -293,24 +301,37 @@ export function CasePanel({ caseId }: { caseId: number }) {
         </Notice>
       ) : null}
 
-      <Panel title="诉求与消费者材料" subtitle={<TimeValue value={detail.request_created_at} prefix="消费者提交" />}>
-        <p className="staff-description">{detail.description}</p>
-        <dl className="staff-kv">
-          <div><dt>问题类型</dt><dd>{REQUEST_TYPE_LABELS[detail.request_type]}</dd></div>
-          <div><dt>E-pig 状态</dt><dd>{REQUEST_STATUS_LABELS[detail.remote_status]}</dd></div>
-          <div><dt>远端更新时间</dt><dd><TimeValue value={detail.request_updated_at} /></dd></div>
-        </dl>
+      <CaseOverview
+        detail={detail}
+        evidence={evidence}
+        evidenceLoading={evidenceLoading}
+        evidenceError={evidenceError}
+        identity={staff.identity}
+        canSupport={staff.canSupport}
+        canApprove={staff.canApprove}
+        canAudit={staff.canAudit}
+        readAt={readAt}
+      />
+
+      <Panel
+        title="附件与内部材料"
+        subtitle={`消费者附件 ${detail.attachments.length} 个 · 内部材料 ${detail.materials.length} 条`}
+        collapsible
+        defaultOpen={false}
+      >
         <AttachmentsSection detail={detail} />
         <MaterialsSection detail={detail} onUpdated={handleUpdated} onReload={() => void loadDetail(false)} />
       </Panel>
 
-      <OrderSection detail={detail} />
+      <OrderSection detail={detail} collapsible defaultOpen={false} />
 
       <EvidenceSection
         evidence={evidence}
         loading={evidenceLoading}
         error={evidenceError}
         onReload={() => void loadEvidence()}
+        collapsible
+        defaultOpen={false}
       />
 
       <DraftSection
@@ -321,26 +342,38 @@ export function CasePanel({ caseId }: { caseId: number }) {
         blocking={blocking}
         onUpdated={handleUpdated}
         onReload={() => void loadDetail(false)}
+        collapsible
+        defaultOpen={draftDefaultOpen}
       />
 
-      <ApprovalSection detail={detail} onUpdated={handleUpdated} onReload={() => void loadDetail(false)} />
+      <ApprovalSection
+        detail={detail}
+        onUpdated={handleUpdated}
+        onReload={() => void loadDetail(false)}
+        collapsible
+        defaultOpen={approvalDefaultOpen}
+      />
 
-      <OperationsSection detail={detail} />
+      <OperationsSection detail={detail} collapsible defaultOpen={false} />
 
-      <TicketSection caseId={detail.case_id} remoteTicketId={detail.remote_ticket_id} />
+      <TicketSection
+        caseId={detail.case_id}
+        remoteTicketId={detail.remote_ticket_id}
+        collapsible
+        defaultOpen={false}
+      />
 
-      <section className="staff-panel" aria-label="事件时间线">
-        <header className="staff-panel-head">
-          <div>
-            <h3>事件时间线</h3>
-            <div className="staff-panel-sub">关键结果可在时间线再次读取；这里只展示业务事件，不展示内部载荷或租约。</div>
-          </div>
-          <div className="staff-panel-actions">
-            <button className="staff-button staff-button-quiet" type="button" onClick={() => void loadEvents(0, true)} disabled={eventsBusy}>
-              <RefreshCw size={14} aria-hidden="true" />刷新
-            </button>
-          </div>
-        </header>
+      <Panel
+        title="事件时间线"
+        subtitle="关键结果可在时间线再次读取；这里只展示业务事件，不展示内部载荷或租约。"
+        actions={(
+          <button className="staff-button staff-button-quiet" type="button" onClick={() => void loadEvents(0, true)} disabled={eventsBusy}>
+            <RefreshCw size={14} aria-hidden="true" />刷新
+          </button>
+        )}
+        collapsible
+        defaultOpen={false}
+      >
         {eventsError ? (
           <Notice tone="warning" title="事件时间线读取失败" action={<button className="staff-button" type="button" onClick={() => void loadEvents(0, true)}>重试</button>}>
             {eventsError}
@@ -359,7 +392,7 @@ export function CasePanel({ caseId }: { caseId: number }) {
             {eventsBusy ? "读取中…" : "加载更多事件"}
           </button>
         ) : null}
-      </section>
+      </Panel>
     </div>
   );
 }

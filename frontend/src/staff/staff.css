@@ -123,6 +123,12 @@
   background: var(--staff-surface); color: var(--staff-text); font-size: 12px;
 }
 .staff-app textarea { line-height: 1.55; }
+.staff-app button:focus-visible, .staff-app a:focus-visible, .staff-app input:focus-visible,
+.staff-app select:focus-visible, .staff-app textarea:focus-visible,
+.staff-app summary:focus-visible {
+  outline: 2px solid var(--staff-accent);
+  outline-offset: 2px;
+}
 .staff-app input:disabled, .staff-app select:disabled, .staff-app textarea:disabled { opacity: .65; background: var(--staff-surface-soft); }
 .staff-form { display: grid; gap: 10px; margin-top: 10px; }
 .staff-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -189,6 +195,56 @@
 .staff-panel-head h3 { margin: 0 0 3px; }
 .staff-panel-sub { color: var(--staff-muted); font-size: 11px; line-height: 1.45; }
 .staff-panel-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.staff-panel-body[hidden] { display: none; }
+.staff-disclosure-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 34px; max-width: 100%; padding: 2px 0;
+  border: 0; background: transparent; color: inherit;
+  font: inherit; font-weight: inherit; text-align: left; cursor: pointer;
+}
+.staff-disclosure-toggle span { overflow-wrap: anywhere; }
+.staff-disclosure-toggle:hover { color: var(--staff-accent); }
+
+/* ---------------------------------------------------------------- summary */
+.staff-overview { border-color: var(--staff-accent); box-shadow: inset 3px 0 0 var(--staff-accent); }
+.staff-overview-next {
+  display: grid; gap: 5px; min-width: 0; padding: 11px 12px;
+  border: 1px solid var(--staff-border); border-left: 4px solid var(--staff-muted);
+  border-radius: 10px; background: var(--staff-surface-soft);
+}
+.staff-overview-next-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.staff-overview-next-head > svg { color: var(--staff-muted); }
+.staff-overview-next h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.staff-overview-next p { margin: 0; color: var(--staff-muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.staff-overview-next-info { border-left-color: #255e8a; background: #f2f7fb; }
+.staff-overview-next-success { border-left-color: var(--staff-success); background: #eef8f2; }
+.staff-overview-next-warning { border-left-color: var(--staff-warning); background: #fff9ec; }
+.staff-overview-next-danger { border-left-color: var(--staff-danger); background: #fdf1f1; }
+.staff-overview-words { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--staff-soft-border); }
+.staff-overview-words h4 { margin: 0; }
+.staff-overview-kv { margin: 6px 0 0; }
+.staff-overview-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px; margin: 12px 0 0;
+}
+.staff-fact {
+  min-width: 0; padding: 9px 10px;
+  border: 1px solid var(--staff-border); border-radius: 9px;
+  background: var(--staff-surface);
+}
+.staff-fact dt { color: var(--staff-muted); font-size: 10px; }
+.staff-fact dd {
+  display: grid; gap: 2px; margin: 3px 0 0;
+  font-size: 14px; font-weight: 650; overflow-wrap: anywhere;
+}
+.staff-fact dd small { color: var(--staff-muted); font-size: 10px; font-weight: 400; line-height: 1.4; }
+.staff-id-details { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--staff-soft-border); }
+.staff-id-details summary {
+  display: inline-flex; align-items: center; min-height: 34px;
+  color: var(--staff-accent); cursor: pointer; font-size: 12px; font-weight: 650;
+}
+.staff-id-details[open] summary { margin-bottom: 6px; }
+.staff-id-details .staff-kv { margin: 0; }
 .staff-subsection { margin-top: 14px; border-top: 1px dashed var(--staff-soft-border); padding-top: 12px; }
 .staff-subhead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
 .staff-subhead h4 { margin: 0; display: inline-flex; align-items: center; gap: 5px; }
@@ -477,6 +533,8 @@
   .staff-approval-tabs button { min-width: 160px; }
   .staff-panel-head { flex-direction: column; align-items: stretch; }
   .staff-panel-actions { justify-content: flex-start; }
+  .staff-overview-facts { grid-template-columns: 1fr; }
+  .staff-overview-next h3 { font-size: 15px; }
   .staff-queue-actions { width: 100%; }
   .staff-queue-actions .staff-button { flex: 1; }
   .staff-form-actions .staff-button { flex: 1 1 100%; }

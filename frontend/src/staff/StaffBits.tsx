@@ -1,5 +1,15 @@
+import { useId, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, CheckCircle2, Clock3, Info, LoaderCircle, ShieldAlert } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Clock3,
+  Info,
+  LoaderCircle,
+  ShieldAlert,
+} from "lucide-react";
 import { formatDateTime } from "./format";
 import type {
   ApprovalStatus,
@@ -124,22 +134,49 @@ export function Panel({
   subtitle,
   children,
   actions,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   title: string;
   subtitle?: ReactNode;
   children: ReactNode;
   actions?: ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const contentId = useId();
   return (
     <section className="staff-panel" aria-label={title}>
       <header className="staff-panel-head">
         <div>
-          <h3>{title}</h3>
+          <h3>
+            {collapsible ? (
+              <button
+                className="staff-disclosure-toggle"
+                type="button"
+                aria-expanded={open}
+                aria-controls={contentId}
+                onClick={() => setOpen((value) => !value)}
+              >
+                {open
+                  ? <ChevronDown size={16} aria-hidden="true" />
+                  : <ChevronRight size={16} aria-hidden="true" />}
+                <span>{title}</span>
+              </button>
+            ) : title}
+          </h3>
           {subtitle ? <div className="staff-panel-sub">{subtitle}</div> : null}
         </div>
-        {actions ? <div className="staff-panel-actions">{actions}</div> : null}
+        {actions && (!collapsible || open)
+          ? <div className="staff-panel-actions">{actions}</div>
+          : null}
       </header>
-      {children}
+      {collapsible ? (
+        <div id={contentId} className="staff-panel-body" hidden={!open}>
+          {children}
+        </div>
+      ) : children}
     </section>
   );
 }

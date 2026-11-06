@@ -7,10 +7,14 @@ import type { StaffContextValue } from "./context";
 import type {
   ApprovalSnapshotView,
   ApprovalView,
+  AttachmentView,
   CaseDetail,
+  CaseEvidenceResponse,
   CaseTicketResponse,
   DraftView,
   EvidenceView,
+  MaterialView,
+  OperationView,
   ServiceOrder,
   WorkerOperationDetail,
   WorkerOperationListResponse,
@@ -189,6 +193,78 @@ export function evidenceFixture(chunkId = "chunk-1"): EvidenceView {
     effective_from: "2026-01-01",
     effective_to: null,
     content_sha256: "not-rendered-hash",
+  };
+}
+
+export function caseEvidenceFixture(
+  overrides: Partial<CaseEvidenceResponse> = {},
+): CaseEvidenceResponse {
+  return {
+    case_id: 1,
+    market: "au",
+    as_of: "2026-11-06",
+    queried_at: "2026-11-06T00:00:00Z",
+    trusted_categories: [{ sku: "SKU-1", category: "apparel", source: "config" }],
+    chunks: [evidenceFixture()],
+    policy_version: "epig-demo-v1",
+    evidence_sha256: "not-rendered",
+    corpus_revision: "corpus-1",
+    missing_reasons: [],
+    ...overrides,
+  };
+}
+
+export function attachmentFixture(overrides: Partial<AttachmentView> = {}): AttachmentView {
+  return {
+    attachment_id: "att-1",
+    file_name: "damage.png",
+    media_type: "image/png",
+    size_bytes: 1024,
+    status: "available",
+    created_at: "2026-11-06T00:00:00Z",
+    expires_at: "2099-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+export function materialFixture(overrides: Partial<MaterialView> = {}): MaterialView {
+  return {
+    material_id: "mat-1",
+    material_type: "internal_note",
+    source: "承运商电话",
+    content: "已电话确认外包装破损。",
+    applies_to_sku: null,
+    delivered_at: null,
+    created_by_staff_id: "me",
+    created_at: "2026-11-06T01:00:00Z",
+    ...overrides,
+  };
+}
+
+export function operationFixture(overrides: Partial<OperationView> = {}): OperationView {
+  return {
+    operation_id: "op-1",
+    approval_id: "approval-1",
+    draft_id: "draft-2",
+    idempotency_key: "not-rendered",
+    status: "prepared",
+    attempt: 0,
+    payload: {},
+    payload_sha256: "not-rendered",
+    dispatched_at: null,
+    lease_owner: null,
+    lease_epoch: 0,
+    lease_until: null,
+    next_attempt_at: null,
+    receipt: null,
+    last_error_code: null,
+    failure_reason: null,
+    lookup_count: 0,
+    reconciliation_state: null,
+    reconcile_started_at: null,
+    created_at: "2026-11-06T01:00:00Z",
+    updated_at: "2026-11-06T01:00:00Z",
+    ...overrides,
   };
 }
 

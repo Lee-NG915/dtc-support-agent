@@ -13,9 +13,13 @@ import type { CaseTicketResponse } from "./types";
 export function TicketSection({
   caseId,
   remoteTicketId,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   caseId: number;
   remoteTicketId: string | null;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
   const staff = useStaff();
   const [ticket, setTicket] = useState<CaseTicketResponse | null>(null);
@@ -72,6 +76,8 @@ export function TicketSection({
           <RefreshCw size={14} aria-hidden="true" />{loading ? "查询中…" : "查询真实工单"}
         </button>
       }
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
     >
       <p className="staff-readonly-note">
         原操作执行进度与本次工单读取是两个事实。按钮成功只代表本次读取成功；不会乐观把本地状态改成已完成。

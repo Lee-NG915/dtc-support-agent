@@ -56,6 +56,8 @@ export function DraftSection({
   blocking,
   onUpdated,
   onReload,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   detail: CaseDetail;
   evidenceChunks: EvidenceView[];
@@ -64,6 +66,8 @@ export function DraftSection({
   blocking: boolean;
   onUpdated: (detail: CaseDetail) => void;
   onReload: () => void;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
   const staff = useStaff();
   const current = detail.current_draft;
@@ -330,9 +334,11 @@ export function DraftSection({
 
   return (
     <Panel
-      title="AI 建议与草稿"
+      title="草稿与送审"
       subtitle={`当前版本：${current ? `v${current.version} · ${DRAFT_STATUS_LABELS[current.status]}` : "尚无草稿"}；生成和保存都不会自动送审`}
       actions={current ? <Badge tone={draftTone(current.status)}>{DRAFT_STATUS_LABELS[current.status]}</Badge> : null}
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
     >
       {!staff.canSupport ? (
         <DraftReadOnly detail={detail} />

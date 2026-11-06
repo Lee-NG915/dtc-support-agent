@@ -348,7 +348,15 @@ export function MaterialsSection({
   );
 }
 
-export function OrderSection({ detail }: { detail: CaseDetail }) {
+export function OrderSection({
+  detail,
+  collapsible = false,
+  defaultOpen = true,
+}: {
+  detail: CaseDetail;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
+}) {
   const staff = useStaff();
   const [order, setOrder] = useState<ServiceOrder | null>(detail.order);
   const [queriedAt, setQueriedAt] = useState<string | null>(detail.order_queried_at);
@@ -412,12 +420,23 @@ export function OrderSection({ detail }: { detail: CaseDetail }) {
   return (
     <Panel
       title="订单与物流"
-      subtitle={order ? <TimeValue value={queriedAt} prefix="订单查询时间" /> : "服务视图；缺失时明确标记未提供"}
+      subtitle={(
+        <>
+          {order
+            ? `订单 ${order.order_id} · ${formatMoney(order.total_minor, order.currency)}`
+            : "订单快照未提供"}
+          {orderError ? ` · 订单刷新失败${orderStale ? "（旧快照）" : ""}` : ""}
+          {" · 物流读取：展开后查询"}
+          {order ? <> · <TimeValue value={queriedAt} prefix="订单查询" /></> : null}
+        </>
+      )}
       actions={
         <button className="staff-button" type="button" onClick={() => void refreshOrder()} disabled={orderBusy}>
           <RefreshCw size={14} aria-hidden="true" />{orderBusy ? "读取中…" : "重新读取订单"}
         </button>
       }
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
     >
       {orderError ? (
         <Notice tone={orderStale ? "warning" : "danger"} title={orderStale ? "订单刷新失败，以下为旧快照" : "订单读取失败"}>
@@ -531,21 +550,39 @@ export function EvidenceSection({
   loading,
   error,
   onReload,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   evidence: CaseEvidenceResponse | null;
   loading: boolean;
   error: string | null;
   onReload: () => void;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
+  const summary = loading
+    ? "正在读取政策证据…"
+    : error
+      ? "政策证据读取失败"
+      : evidence
+        ? `可用 ${evidence.chunks.length} 条 · 版本 ${evidence.policy_version ?? "未提供"} · ${evidence.missing_reasons.length > 0 ? `缺资料 ${evidence.missing_reasons.length} 项` : "无缺资料"}`
+        : "服务端尚未返回证据";
   return (
     <Panel
       title="政策证据"
-      subtitle={evidence ? <TimeValue value={evidence.queried_at} prefix="查询时间" /> : "由服务端按订单 SKU、市场与日期派生范围"}
+      subtitle={(
+        <>
+          {summary}
+          {evidence ? <> · <TimeValue value={evidence.queried_at} prefix="查询" /></> : null}
+        </>
+      )}
       actions={
         <button className="staff-button staff-button-quiet" type="button" onClick={onReload} disabled={loading}>
           <RefreshCw size={14} aria-hidden="true" />重新检索
         </button>
       }
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
     >
       {loading ? <LoadingBlock label="正在读取该诉求的真实政策证据…" /> : null}
       {error ? (
@@ -607,11 +644,21 @@ export function EvidenceSection({
   );
 }
 
-export function OperationsSection({ detail }: { detail: CaseDetail }) {
+export function OperationsSection({
+  detail,
+  collapsible = false,
+  defaultOpen = true,
+}: {
+  detail: CaseDetail;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
+}) {
   return (
     <Panel
       title="执行与操作状态"
       subtitle="批准不等于工单完成；只有真实回执核验后，服务端才会显示回执成功。"
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
     >
       {detail.operations.length === 0 ? (
         <EmptyBlock title="尚无执行操作">

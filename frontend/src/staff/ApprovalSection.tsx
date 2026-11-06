@@ -29,10 +29,14 @@ export function ApprovalSection({
   detail,
   onUpdated,
   onReload,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   detail: CaseDetail;
   onUpdated: (detail: CaseDetail) => void;
   onReload: () => void;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
   const staff = useStaffContext();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -123,7 +127,9 @@ export function ApprovalSection({
     <Panel
       title="审批与冻结依据"
       subtitle="审批人决策使用送审时冻结的 snapshot，不从当前 case 拼装。"
-      actions={<Badge tone="neutral">共 {detail.approvals.length} 次审批</Badge>}
+      actions={<Badge tone="neutral">共 {detail.approvals.length} 次审批 · 待审批 {pending.length} 项</Badge>}
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
     >
       {detail.approvals.length === 0 ? (
         <EmptyBlock title="尚无审批">客服提交草稿后，此处会出现待审批项。</EmptyBlock>
