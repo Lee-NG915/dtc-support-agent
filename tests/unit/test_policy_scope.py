@@ -27,6 +27,7 @@ from app.retrieval.policy import (
     chunk_matches_scope,
     corpus_fingerprint,
     policy_review_required,
+    policy_review_topics,
 )
 from app.retrieval.vector import QdrantVectorStore
 from app.schemas.agent import ComplexityResult, IntentResult
@@ -312,6 +313,23 @@ def test_review_uses_compound_topic_match_across_documents() -> None:
     assert policy_review_required("破损家具退货后多久能退款", [ordinary, other_document])
 
 
+def test_policy_review_topics_lists_only_matching_structured_rules() -> None:
+    fee = ReviewQueryRule(topic="service_fee_refund", all_of=[["配送费", "运费"], ["退"]])
+    payment = ReviewQueryRule(topic="payment_refund_exception", all_of=[["原卡注销"], ["退款"]])
+    chunk = _chunk(review=True).model_copy(update={"review_query_rules": [fee, payment]})
+    legacy_review = _chunk(review=True)
+
+    assert policy_review_topics("配送费能退吗", [chunk]) == ("service_fee_refund",)
+    assert policy_review_topics("原卡注销后退款怎么办", [chunk]) == ("payment_refund_exception",)
+    assert policy_review_topics("配送费和原卡注销的退款", [chunk]) == (
+        "service_fee_refund",
+        "payment_refund_exception",
+    )
+    assert policy_review_topics("普通退货运费", [_chunk(), chunk]) == ("service_fee_refund",)
+    # A rule-free review chunk still fails closed, but it cannot invent a topic.
+    assert policy_review_topics("任何问题", [legacy_review]) == ()
+
+
 def test_review_rules_reject_blank_terms_and_require_all_topic_groups() -> None:
     with pytest.raises(ValidationError, match="cannot be empty or blank"):
         ReviewQueryRule(topic="bad", all_of=[["   "]])
@@ -386,6 +404,7 @@ async def test_matching_demo_exception_requires_human_review() -> None:
     )
     assert result["refused"] is True
     assert "人工" in result["final_answer"]
+    assert "转人工前请先核对" not in result["final_answer"]
     assert DEMO_DISCLOSURE in result["final_answer"]
     citation = result["citations"][0]
     assert citation.source_type == "internal_demo"
@@ -393,6 +412,116 @@ async def test_matching_demo_exception_requires_human_review() -> None:
     assert citation.source_path == chunk.source_path
     assert citation.source_urls == []
     assert citation.requires_human_review is True
+
+
+class _NeverCalledLLM:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate(self, *args, **kwargs):
+        self.calls += 1
+        raise AssertionError("review branch must not call the model provider")
+
+
+@pytest.mark.asyncio
+async def test_review_guidance_is_deduplicated_bounded_and_model_free() -> None:
+    rules = [
+        ReviewQueryRule(topic=topic, all_of=[[term]])
+        for topic, term in (
+            ("service_fee_refund", "配送费"),
+            ("payment_refund_exception", "原卡注销"),
+            ("regional_delivery", "偏远"),
+            ("special_delivery_access", "无电梯"),
+            ("shipped_cancellation_or_change", "已发货"),
+            ("accidental_damage", "意外损坏"),
+            ("accidental_damage_warranty", "意外损坏"),
+            ("injury_property_or_legal_liability", "受伤"),
+            ("custom_or_final_sale_return", "定制"),
+            ("partial_return_allocation", "部分退货"),
+        )
+    ]
+    chunk = _chunk(review=True).model_copy(update={"review_query_rules": rules})
+    provider = _NeverCalledLLM()
+
+    result = await generate_node(
+        {
+            "user_query": "配送费 原卡注销 偏远 无电梯 已发货 意外损坏 受伤 定制 部分退货",
+            "policy_scope": PolicyScope(
+                brand="epig", market="au", as_of=SNAPSHOT_DATE, product_category="furniture"
+            ),
+            "strategy": RetrievalStrategy.SINGLE,
+            "retrieved_chunks": [chunk],
+            "tool_results": [],
+        },
+        provider,  # type: ignore[arg-type]
+    )
+
+    answer = result["final_answer"]
+    check_lines = [line for line in answer.splitlines() if line.partition(". ")[0].isdigit()]
+    boundary_lines = [line for line in answer.splitlines() if line.startswith("- ")]
+    assert provider.calls == 0
+    assert result["refused"] is True
+    assert answer.count("转人工前请先核对") == 1
+    assert len(check_lines) == 4
+    assert len(boundary_lines) == 3
+    assert len(check_lines) == len(set(check_lines))
+    assert len(boundary_lines) == len(set(boundary_lines))
+    assert all(citation.requires_human_review for citation in result["citations"])
+    assert all(
+        citation.brand == "epig" and citation.market == "au" for citation in result["citations"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_rule_free_review_chunk_keeps_generic_conservative_answer() -> None:
+    provider = _NeverCalledLLM()
+    result = await generate_node(
+        {
+            "user_query": "配送费能退吗",
+            "policy_scope": PolicyScope(
+                brand="epig", market="au", as_of=SNAPSHOT_DATE, product_category="furniture"
+            ),
+            "strategy": RetrievalStrategy.SINGLE,
+            "retrieved_chunks": [_chunk(review=True)],
+            "tool_results": [],
+        },
+        provider,  # type: ignore[arg-type]
+    )
+
+    assert provider.calls == 0
+    assert result["refused"] is True
+    assert "需人工核实，不能直接形成真实订单处理承诺" in result["final_answer"]
+    assert "转人工前请先核对" not in result["final_answer"]
+    assert DEMO_DISCLOSURE in result["final_answer"]
+    assert len(result["citations"]) == 1
+    assert result["citations"][0].requires_human_review is True
+
+
+@pytest.mark.asyncio
+async def test_koala_review_branch_keeps_generic_answer_without_guidance() -> None:
+    chunk = _chunk(review=True, review_terms=["配送费"]).model_copy(
+        update={"brand": "koala", "market": "au"}
+    )
+    provider = _NeverCalledLLM()
+    result = await generate_node(
+        {
+            "user_query": "配送费能退吗",
+            "policy_scope": PolicyScope(
+                brand="koala", market="au", as_of=SNAPSHOT_DATE, product_category="furniture"
+            ),
+            "strategy": RetrievalStrategy.SINGLE,
+            "retrieved_chunks": [chunk],
+            "tool_results": [],
+        },
+        provider,  # type: ignore[arg-type]
+    )
+
+    assert provider.calls == 0
+    assert result["refused"] is True
+    assert "来源冲突或适用条件需要人工解释" in result["final_answer"]
+    assert "转人工前请先核对" not in result["final_answer"]
+    assert result["citations"][0].brand == "koala"
+    assert result["citations"][0].market == "au"
 
 
 @pytest.mark.asyncio

@@ -40,6 +40,11 @@ QUALITY_REFREEZE_FILES = {
     "app/services/after_sales/service.py",
 }
 
+REVIEW_GUIDANCE_FILES = {
+    "app/agents/nodes/generate.py",
+    "app/retrieval/policy.py",
+}
+
 
 def _verify_frozen_paths(
     *,
@@ -138,7 +143,7 @@ class _ValidSuggestionProvider:
 def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
     artifacts = acceptance.verify_frozen()
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 5
+    assert artifacts.freeze_revision == 6
     assert len(artifacts.rows) == 12
 
     dataset_copy = tmp_path / "after_sales_holdout_v1.jsonl"
@@ -162,8 +167,8 @@ def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
 
 
 def test_holdout_registry_is_controlled_and_cli_defaults_to_v1() -> None:
-    assert set(acceptance.HOLDOUT_REGISTRY) == {"v1", "v2"}
-    assert acceptance.HOLDOUT_VERSIONS == ("v1", "v2")
+    assert set(acceptance.HOLDOUT_REGISTRY) == {"v1", "v2", "v3"}
+    assert acceptance.HOLDOUT_VERSIONS == ("v1", "v2", "v3")
     assert acceptance.DEFAULT_HOLDOUT_VERSION == "v1"
     assert acceptance.holdout_spec("v1").dataset_path.name == "after_sales_holdout_v1.jsonl"
     assert acceptance.holdout_spec("v1").manifest_path.name == (
@@ -173,14 +178,38 @@ def test_holdout_registry_is_controlled_and_cli_defaults_to_v1() -> None:
     assert acceptance.holdout_spec("v2").manifest_path.name == (
         "after_sales_holdout_v2.manifest.json"
     )
+    assert acceptance.holdout_spec("v3").dataset_path.name == "after_sales_holdout_v3.jsonl"
+    assert acceptance.holdout_spec("v3").manifest_path.name == (
+        "after_sales_holdout_v3.manifest.json"
+    )
 
     parser = acceptance.build_parser()
     assert parser.parse_args([]).holdout == "v1"
     assert parser.parse_args(["--holdout", "v2"]).holdout == "v2"
+    assert parser.parse_args(["--holdout", "v3"]).holdout == "v3"
     with pytest.raises(SystemExit):
-        parser.parse_args(["--holdout", "v3"])
+        parser.parse_args(["--holdout", "v4"])
     with pytest.raises(acceptance.FreezeVerificationError, match="unsupported holdout version"):
-        acceptance.holdout_spec("v3")
+        acceptance.holdout_spec("v4")
+
+
+def test_v3_selection_uses_registered_paths_and_rejects_arbitrary_paths(tmp_path: Path) -> None:
+    spec = acceptance.holdout_spec("v3")
+    assert spec.version == "v3"
+    assert spec.dataset_path == acceptance.ROOT / "eval/dataset/after_sales_holdout_v3.jsonl"
+    assert spec.manifest_path == acceptance.ROOT / (
+        "eval/dataset/after_sales_holdout_v3.manifest.json"
+    )
+
+    arbitrary_paths = (
+        str(spec.dataset_path),
+        str(spec.manifest_path),
+        str(tmp_path / "after_sales_holdout_v3.jsonl"),
+        "../eval/dataset/after_sales_holdout_v3.jsonl",
+    )
+    for value in arbitrary_paths:
+        with pytest.raises(acceptance.FreezeVerificationError, match="unsupported holdout version"):
+            acceptance.holdout_spec(value)
 
 
 def test_manifest_holdout_version_must_match_and_be_present(tmp_path: Path) -> None:
@@ -210,6 +239,8 @@ def test_v2_selection_verifies_current_protected_manifest() -> None:
     assert len(artifacts.rows) == 12
     assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
     assert artifacts.freeze_count == 203
+    assert artifacts.freeze_revision == 6
+    assert artifacts.manifest["freeze_revision"] == 6
     assert len(artifacts.manifest["freeze_hashes"]) == 203
     assert artifacts.data_meta()["source"] == "after_sales_holdout_v2.jsonl"
     assert artifacts.data_meta()["holdout_version"] == "v2"
@@ -262,6 +293,26 @@ def test_v2_dataset_keeps_stable_case_ids_and_fixture_ids() -> None:
         assert fixture.category_known is not None
 
 
+def test_v3_dataset_keeps_stable_case_ids_and_fixture_ids() -> None:
+    spec = acceptance.holdout_spec("v3")
+    rows = acceptance._load_dataset(spec.dataset_path)
+    assert [row["id"] for row in rows] == acceptance.EXPECTED_CASE_IDS
+    assert len(rows) == acceptance.MAX_DATASET_CASES
+
+    partitions: dict[str, int] = {}
+    for row in rows:
+        partition = str(row["partition"])
+        partitions[partition] = partitions.get(partition, 0) + 1
+    assert partitions == acceptance.EXPECTED_PARTITIONS
+
+    guard_rows = [row for row in rows if row["partition"] == "engineering_guard"]
+    assert {row["id"] for row in guard_rows} <= set(acceptance._FIXTURE_IDENTITIES)
+    for row in guard_rows:
+        fixture = acceptance._build_fixture(row)
+        assert fixture.market == row["market"]
+        assert fixture.category_known is not None
+
+
 def test_cli_summary_reports_holdout_version(
     capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
@@ -274,7 +325,7 @@ def test_cli_summary_reports_holdout_version(
             "status": "verified",
             "holdout_version": "v2",
             "freeze_count": 203,
-            "freeze_revision": 5,
+            "freeze_revision": 6,
             "dataset_sha256": "a" * 64,
         },
         "cleanup": {},
@@ -291,8 +342,8 @@ def test_revision_3_engineering_refreeze_metadata_is_exact(tmp_path: Path) -> No
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 5
-    assert manifest["freeze_revision"] == 5
+    assert artifacts.freeze_revision == 6
+    assert manifest["freeze_revision"] == 6
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -364,8 +415,8 @@ def test_revision_4_demo_login_refreeze_metadata_is_exact(tmp_path: Path) -> Non
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 5
-    assert manifest["freeze_revision"] == 5
+    assert artifacts.freeze_revision == 6
+    assert manifest["freeze_revision"] == 6
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -451,8 +502,8 @@ def test_revision_5_h05_h08_quality_refreeze_metadata_is_exact(tmp_path: Path) -
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 5
-    assert manifest["freeze_revision"] == 5
+    assert artifacts.freeze_revision == 6
+    assert manifest["freeze_revision"] == 6
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -501,7 +552,10 @@ def test_revision_5_h05_h08_quality_refreeze_metadata_is_exact(tmp_path: Path) -
             "old_sha256": old_sha256,
             "new_sha256": new_sha256,
         }
-        assert manifest["freeze_hashes"][relative] == new_sha256
+        # Revision 6 supersedes the live hashes for these two files while
+        # preserving this entry's revision-5 history.
+        if relative not in REVIEW_GUIDANCE_FILES:
+            assert manifest["freeze_hashes"][relative] == new_sha256
 
     # Every other entry stays byte-identical to revision 4.
     unchanged = sorted(
@@ -533,6 +587,79 @@ def test_revision_5_h05_h08_quality_refreeze_metadata_is_exact(tmp_path: Path) -
             dataset_path=acceptance.DATASET_PATH,
             manifest_path=stale_manifest,
         )
+
+
+def test_revision_6_review_guidance_refreeze_metadata_is_exact(tmp_path: Path) -> None:
+    parent_manifests = {
+        "v1": (
+            "703487d8cd9e66576304cea9a7dc59edd499a0639bb3555c74ff93b1f0d8c057",
+            "ae13159484b31dde3bc6c63db9060169b2b6971b002d8b03e569c62707c256da",
+        ),
+        "v2": (
+            "99146ac19ad16a811e21ac392950c70a8cd34cbb7bee5603537c356d4261b91f",
+            "d89a7ed8548602108f6bc5b5b41eebf0123789bbe5fa1ca9b29a94e4d894418e",
+        ),
+    }
+    expected_files = {
+        "app/agents/nodes/generate.py": (
+            "7a782bbc292b59b93c869eafaada30058e7f60d353546e3d149e312f7b959fc6",
+            "01187a456d2c9cd95ee04ba30d30e6aaa9b84181e23014cd68808b1a76ba1b22",
+        ),
+        "app/retrieval/policy.py": (
+            "7c2a202dc53cd71726623e151f12d9a0f9a0ef4db3177c10aba1e789efe58f39",
+            "139e0ae39005dd63031d850678094e53dfc9897c2ca4478b08302f45a4ed2d97",
+        ),
+    }
+
+    for version, (parent_manifest_sha256, dataset_sha256) in parent_manifests.items():
+        artifacts = acceptance.verify_frozen(version)
+        manifest = artifacts.manifest
+
+        assert artifacts.freeze_revision == 6
+        assert manifest["freeze_revision"] == 6
+        assert manifest["state"] == "frozen_prepared_not_run"
+        assert artifacts.freeze_count == 203
+        assert len(manifest["freeze_hashes"]) == 203
+        assert manifest["dataset_sha256"] == dataset_sha256
+        assert artifacts.dataset_sha256 == dataset_sha256
+
+        refreeze = manifest["review_guidance_refreeze"]
+        assert refreeze["parent_revision"] == 5
+        assert refreeze["parent_source_commit"] == ("1c9831aa7b0662ece8465faf85cf9eb98fdfb576")
+        assert refreeze["parent_manifest_sha256"] == parent_manifest_sha256
+        assert "Deterministic review-topic handoff guidance" in refreeze["reason"]
+        assert refreeze["model_evaluation_status"] == "not_run_for_revision_6"
+        assert set(refreeze["files"]) == REVIEW_GUIDANCE_FILES
+
+        for relative, (old_sha256, new_sha256) in expected_files.items():
+            assert refreeze["files"][relative] == {
+                "old_sha256": old_sha256,
+                "new_sha256": new_sha256,
+            }
+            assert manifest["freeze_hashes"][relative] == new_sha256
+
+        # Restoring only the revision marker, the two prior hashes and removing
+        # this history entry must reproduce the parent manifest byte-for-byte.
+        # That proves the dataset, questions, expectations, rubrics, prior
+        # history and every other frozen source hash stayed unchanged.
+        restored = json.loads(json.dumps(manifest))
+        restored["freeze_revision"] = 5
+        del restored["review_guidance_refreeze"]
+        for relative, (old_sha256, _) in expected_files.items():
+            restored["freeze_hashes"][relative] = old_sha256
+        restored_raw = json.dumps(restored, indent=2, ensure_ascii=False) + "\n"
+        assert hashlib.sha256(restored_raw.encode("utf-8")).hexdigest() == parent_manifest_sha256
+
+        # Revision 5 is now rejected as stale.
+        stale = json.loads(json.dumps(manifest))
+        stale["freeze_revision"] = 5
+        stale_manifest = tmp_path / f"stale_revision_5_{version}_manifest.json"
+        stale_manifest.write_text(json.dumps(stale), encoding="utf-8")
+        with pytest.raises(acceptance.FreezeVerificationError, match="freeze revision"):
+            _verify_frozen_paths(
+                holdout_version=version,
+                manifest_path=stale_manifest,
+            )
 
 
 def test_verify_frozen_rejects_unsafe_path(tmp_path: Path) -> None:

@@ -18,7 +18,7 @@
     "app/agents/nodes/__init__.py": "81cd4075ea4f2d0faaafef102d4eddec7ac0595acf848a4a17ef2ba7831789b9",
     "app/agents/nodes/executor.py": "382525e94ae5f7bca52cace9b65802db23488d87fddeabd3706179911a221efc",
     "app/agents/nodes/faithfulness.py": "cf6f2a292459feec368f0c42072e92aeebbc643001da825712479d557e41eb8c",
-    "app/agents/nodes/generate.py": "7a782bbc292b59b93c869eafaada30058e7f60d353546e3d149e312f7b959fc6",
+    "app/agents/nodes/generate.py": "01187a456d2c9cd95ee04ba30d30e6aaa9b84181e23014cd68808b1a76ba1b22",
     "app/agents/nodes/guardrail.py": "6b38f22ed7c67a3f7a95a2be1d95bff37de57149fc93b013827e71bde8b4a5c6",
     "app/agents/nodes/intent.py": "8e8e4494f68a55d9a55350bae6cefeaa5534c5b93a7d580672872fca015c6236",
     "app/agents/nodes/intent_overlay.py": "733369abc11805f1c6e441a1bf7f8be5920d079867757f975ac36c70982ac97d",
@@ -114,7 +114,7 @@
     "app/retrieval/fusion.py": "ec7ab7c32a7cd8faf130a93269476357fdf3f42637adb80ff9b61f74aec9197f",
     "app/retrieval/hybrid.py": "29633a41ab16555e391bebf53933d6bb68a2402b32b1014ca53cbe4636d340d2",
     "app/retrieval/ingest.py": "243f79f13458ba8941cf4bd5268651a1285fcb0b23e44ab2dda98739411e731d",
-    "app/retrieval/policy.py": "7c2a202dc53cd71726623e151f12d9a0f9a0ef4db3177c10aba1e789efe58f39",
+    "app/retrieval/policy.py": "139e0ae39005dd63031d850678094e53dfc9897c2ca4478b08302f45a4ed2d97",
     "app/retrieval/query_rewrite.py": "d7c16a267e6a965bcdd7d7d740caa8049aea8c2776b5f1121dd82ad295f3b5c8",
     "app/retrieval/reranker.py": "a68ee907e1dce0e56af094279e208508e04ae939d5c62604b1d38c04615d99c8",
     "app/retrieval/self_rag.py": "8dbb1d4a83fa722f4d59773ee7fa3aada00cf80df84d8384b15a93b331ac7915",
@@ -222,7 +222,7 @@
     "No execution implied by preparation; provider/model/budget and runtime fixture adapter still required.",
     "Actual HTTP/browser/OSrestart evidence must be separate; synthetic_only."
   ],
-  "freeze_revision": 5,
+  "freeze_revision": 6,
   "protocol_refreeze": {
     "reason": "Before first holdout execution: official DeepSeek model alias/thinking toggle compatibility only; no business prompt or knowledge changes and no holdout feedback used.",
     "files": {
@@ -339,5 +339,22 @@
       }
     },
     "model_evaluation_status": "not_run_for_revision_5"
+  },
+  "review_guidance_refreeze": {
+    "parent_revision": 5,
+    "parent_source_commit": "1c9831aa7b0662ece8465faf85cf9eb98fdfb576",
+    "parent_manifest_sha256": "703487d8cd9e66576304cea9a7dc59edd499a0639bb3555c74ff93b1f0d8c057",
+    "reason": "Deterministic review-topic handoff guidance for the E-pig review branch: reuse structured review_query_rules to list bounded materials/facts and outcomes that cannot be promised, without model calls or review-gate changes. Dataset questions, expectations, rubrics, knowledge and prompts are unchanged; no model evaluation was run and no holdout feedback was used.",
+    "files": {
+      "app/agents/nodes/generate.py": {
+        "old_sha256": "7a782bbc292b59b93c869eafaada30058e7f60d353546e3d149e312f7b959fc6",
+        "new_sha256": "01187a456d2c9cd95ee04ba30d30e6aaa9b84181e23014cd68808b1a76ba1b22"
+      },
+      "app/retrieval/policy.py": {
+        "old_sha256": "7c2a202dc53cd71726623e151f12d9a0f9a0ef4db3177c10aba1e789efe58f39",
+        "new_sha256": "139e0ae39005dd63031d850678094e53dfc9897c2ca4478b08302f45a4ed2d97"
+      }
+    },
+    "model_evaluation_status": "not_run_for_revision_6"
   }
 }

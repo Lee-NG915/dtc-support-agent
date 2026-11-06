@@ -94,7 +94,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class HoldoutSpec:
     """One registered sealed holdout and its protected manifest."""
 
-    version: Literal["v1", "v2"]
+    version: Literal["v1", "v2", "v3"]
     dataset_path: Path
     manifest_path: Path
 
@@ -110,6 +110,11 @@ HOLDOUT_REGISTRY: dict[str, HoldoutSpec] = {
         dataset_path=ROOT / "eval/dataset/after_sales_holdout_v2.jsonl",
         manifest_path=ROOT / "eval/dataset/after_sales_holdout_v2.manifest.json",
     ),
+    "v3": HoldoutSpec(
+        version="v3",
+        dataset_path=ROOT / "eval/dataset/after_sales_holdout_v3.jsonl",
+        manifest_path=ROOT / "eval/dataset/after_sales_holdout_v3.manifest.json",
+    ),
 }
 HOLDOUT_VERSIONS = tuple(HOLDOUT_REGISTRY)
 DEFAULT_HOLDOUT_VERSION = "v1"
@@ -123,7 +128,7 @@ OFFICIAL_BASE_URL = "https://api.deepseek.com"
 MAX_DATASET_CASES = 12
 MAX_MODEL_CALLS = 64
 MAX_OUTPUT_TOKENS = 1200
-FREEZE_REVISION = 5
+FREEZE_REVISION = 6
 EXPECTED_CASE_IDS = [f"H{index:02d}" for index in range(1, 13)]
 EXPECTED_PARTITIONS = {"policy_graph": 6, "staff_suggestion": 2, "engineering_guard": 4}
 MODEL_PARTITIONS = frozenset({"policy_graph", "staff_suggestion"})
@@ -451,7 +456,7 @@ def _load_dataset(path: Path) -> list[dict[str, Any]]:
 
 
 def holdout_spec(holdout_version: str) -> HoldoutSpec:
-    """Resolve only the registered v1/v2 holdouts; never an arbitrary path."""
+    """Resolve only the registered v1/v2/v3 holdouts; never an arbitrary path."""
     spec = HOLDOUT_REGISTRY.get(holdout_version)
     if spec is None:
         supported = ", ".join(HOLDOUT_VERSIONS)

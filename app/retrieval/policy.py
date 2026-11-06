@@ -334,6 +334,25 @@ def policy_review_required(query: str, chunks: list[RetrievedChunk]) -> bool:
     return bool(policy_review_chunks(query, chunks))
 
 
+def policy_review_topics(query: str, chunks: list[RetrievedChunk]) -> tuple[str, ...]:
+    """Return the structured review topics the query actually matches.
+
+    Topics are de-duplicated and kept in first-match order so callers can
+    produce deterministic, bounded handoff guidance. Chunks without structured
+    rules still fail closed in :func:`review_chunk_matches_query`, but they do
+    not invent a topic.
+    """
+    normalized_query = _normalize_review_text(query)
+    matched: dict[str, None] = {}
+    for chunk in chunks:
+        if not chunk.requires_human_review:
+            continue
+        for rule in chunk.review_query_rules:
+            if _review_rule_matches_query(normalized_query, rule):
+                matched.setdefault(rule.topic, None)
+    return tuple(matched)
+
+
 def corpus_fingerprint(chunks: list[RetrievedChunk]) -> str:
     payload = [
         {

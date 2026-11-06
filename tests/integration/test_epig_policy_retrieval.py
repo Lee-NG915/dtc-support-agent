@@ -18,7 +18,9 @@ from app.retrieval.policy import (
     chunk_matches_scope,
     corpus_fingerprint,
     merge_policy_review_chunks,
+    policy_review_chunks,
     policy_review_required,
+    policy_review_topics,
 )
 from app.retrieval.query_rewrite import QueryRewriter
 from app.retrieval.reranker import DocumentReranker
@@ -528,3 +530,197 @@ async def test_review_gate_covers_cross_document_paraphrases_without_false_posit
         assert DEMO_DISCLOSURE in result["final_answer"]
         assert result["citations"]
         assert all(not citation.requires_human_review for citation in result["citations"])
+
+
+V2_DATE = date(2026, 11, 6)
+H04_V1_QUERY = "货已经出库了，能否直接替我撤掉订单并保证把配送费全部退回来？"
+H06_V1_QUERY = "偏远邮编暂时查不到，普通床品时效是不是也能当作我的保证送达日期？"
+H05_V2_QUERY = "新加坡床垫角落被狗咬坏了，能直接按保修换新吗？这种情况是否还要看意外损坏规则？"
+H06_V2_QUERY = (
+    "美国偏远山区地址只能提供无法确认的邮编，沙发能保证四到八天送到吗？运费是不是固定的？"
+)
+
+
+class _NeverCalledLLM:
+    """Fail the test if the review branch reaches the generation provider."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate(self, *args, **kwargs):
+        self.calls += 1
+        raise AssertionError("review branch must not call the model provider")
+
+
+@pytest.mark.asyncio
+async def test_review_handoff_guidance_is_topic_specific_bounded_and_model_free() -> None:
+    retriever, reranker = await _components()
+    cases = (
+        (
+            "au",
+            "furniture",
+            SNAPSHOT_DATE,
+            H04_V1_QUERY,
+            {"service_fee_refund"},
+            ("原订单的实际支付构成", "不能预先承诺配送费、装配费或附加费一定全部返还"),
+        ),
+        (
+            "au",
+            "furniture",
+            SNAPSHOT_DATE,
+            "原支付账户失效了，还能退款到礼品卡吗？",
+            {"payment_refund_exception"},
+            ("原支付方式当前是否可用", "不能承诺按固定支付渠道、固定金额或固定日期退回"),
+        ),
+        (
+            "us",
+            "bedding",
+            SNAPSHOT_DATE,
+            H06_V1_QUERY,
+            {"regional_delivery"},
+            ("收货地址与邮编", "不能承诺特殊或偏远地址一定可送、运费固定或按常规时效送达"),
+        ),
+        (
+            "sg",
+            "mattress",
+            V2_DATE,
+            H05_V2_QUERY,
+            {"accidental_damage", "accidental_damage_warranty"},
+            ("意外发生经过、时间和问题部位照片", "不能预先承诺按保修处理、换新或赔偿"),
+        ),
+        (
+            "us",
+            "furniture",
+            V2_DATE,
+            H06_V2_QUERY,
+            {"regional_delivery"},
+            ("收货地址与邮编", "不能承诺特殊或偏远地址一定可送、运费固定或按常规时效送达"),
+        ),
+        (
+            "us",
+            "furniture",
+            SNAPSHOT_DATE,
+            "定制家具可以退货吗",
+            {"custom_or_final_sale_return", "custom_or_final_sale_cancellation"},
+            ("定制/定做/按尺寸制作", "不能预先拒绝退货，也不排除商品质量问题和法定权利"),
+        ),
+        (
+            "au",
+            "furniture",
+            SNAPSHOT_DATE,
+            "使用过且有污渍的沙发还能退吗",
+            {"used_or_damaged_return", "acceptance_or_amount_dispute"},
+            ("使用痕迹或污渍照片", "不能预先拒绝退货，也不排除商品质量问题和法定权利"),
+        ),
+        (
+            "au",
+            "furniture",
+            SNAPSHOT_DATE,
+            "部分退货时赠品和优惠怎么分摊",
+            {"partial_return_allocation", "partial_refund_allocation"},
+            ("部分退回的具体商品、赠品和组合优惠明细", "不能预先承诺优惠保留或退款金额"),
+        ),
+        (
+            "au",
+            "furniture",
+            SNAPSHOT_DATE,
+            "只想取消其中一件，优惠会怎么分摊",
+            {"partial_cancellation", "partial_refund_allocation", "partial_return_allocation"},
+            ("需取消的具体商品、订单当前状态", "不能预先承诺部分取消成功、优惠保留或退款金额"),
+        ),
+        (
+            "us",
+            "furniture",
+            SNAPSHOT_DATE,
+            "已发货订单可以取消吗",
+            {"shipped_cancellation_or_change", "shipped_delivery_change"},
+            ("当前物流节点和原订单商品", "不能预先承诺拦截成功、全额退款或保留原优惠"),
+        ),
+        (
+            "us",
+            "furniture",
+            SNAPSHOT_DATE,
+            "已发货可以改地址吗",
+            {"shipped_cancellation_or_change", "shipped_delivery_change"},
+            ("改地址、改收货人或改约请求", "不能保证地址变更或配送改约一定成功"),
+        ),
+        (
+            "au",
+            "furniture",
+            SNAPSHOT_DATE,
+            "无电梯六楼能送货入户吗",
+            {"special_delivery_access"},
+            ("电梯、楼梯、门禁和停车条件", "不能预先承诺特殊入户、吊装安排或由此产生的费用"),
+        ),
+        (
+            "au",
+            "mattress",
+            SNAPSHOT_DATE,
+            "酒店使用过的床垫还有保修吗",
+            {"nonstandard_use_or_repair"},
+            ("商业或酒店使用", "不能预先判断保修资格或承诺赔付"),
+        ),
+        (
+            "au",
+            "furniture",
+            SNAPSHOT_DATE,
+            "配送事故导致人身伤害，谁负责赔偿？",
+            {"injury_property_or_legal_liability"},
+            ("受伤或财产损失记录", "不能预先认定责任、赔偿金额或法律结果"),
+        ),
+        (
+            "au",
+            "furniture",
+            SNAPSHOT_DATE,
+            "破损家具退货退款金额有争议",
+            {"acceptance_or_amount_dispute", "used_or_damaged_return"},
+            ("验收记录、商品状态照片", "不能预先确定验收结果或退款金额"),
+        ),
+        (
+            "sg",
+            "furniture",
+            SNAPSHOT_DATE,
+            "最终销售家具能否取消订单",
+            {"custom_or_final_sale_cancellation", "custom_or_final_sale_return"},
+            ("当前生产和出库状态", "不能预先确认取消资格、退款结果或保留优惠"),
+        ),
+    )
+
+    for market, category, as_of, query, expected_topics, fragments in cases:
+        scope = _scope(market, category=category, as_of=as_of)
+        chunks = await _retrieve(retriever, reranker, query, scope)
+        assert policy_review_required(query, chunks) is True, query
+
+        provider = _NeverCalledLLM()
+        result = await generate_node(
+            {
+                "user_query": query,
+                "policy_scope": scope,
+                "strategy": RetrievalStrategy.SINGLE,
+                "retrieved_chunks": chunks,
+                "tool_results": [],
+            },
+            provider,  # type: ignore[arg-type]
+        )
+
+        answer = result["final_answer"]
+        assert provider.calls == 0, query
+        assert result["refused"] is True, query
+        assert "需人工核实，不能直接形成真实订单处理承诺" in answer, query
+        assert answer.count("转人工前请先核对") == 1, query
+        for fragment in fragments:
+            assert fragment in answer, (query, fragment)
+        assert set(policy_review_topics(query, policy_review_chunks(query, chunks))) == (
+            expected_topics
+        ), query
+        assert result["citations"], query
+        assert all(citation.requires_human_review for citation in result["citations"]), query
+        assert all(
+            citation.brand == "epig" and citation.market == market
+            for citation in result["citations"]
+        ), query
+
+        # Both accidental-damage topics share one checklist; it must not repeat.
+        if expected_topics == {"accidental_damage", "accidental_damage_warranty"}:
+            assert answer.count("意外发生经过") == 1
+            assert answer.count("不能预先承诺按保修处理") == 1
