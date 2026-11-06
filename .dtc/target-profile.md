@@ -73,7 +73,7 @@ DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sa
 
 员工演示登录增量（2026-11-06，本地验收并推送`c0ea606`）：development/testing可显式用固定密码选择已有合成员工身份；`login-options`发现模式，`demo-login`换取短时HMAC会话，业务请求仍逐次读取数据库角色/市场/启用状态。固定密码生产禁用，原Bearer保留；实际页面和全量门禁已复验。
 
-员工摘要优先UI增量（2026-11-06，本地候选）：`CaseOverview`首屏显示下一步、客户原话、订单/金额/附件/证据关键事实和风险；技术标识及证据、订单、执行、工单、时间线渐进口径。客服草稿或审批人待办按角色默认展开，折叠保持编辑状态。前端47项、构建及Chromium桌面/320px已验收，尚未提交。
+员工摘要优先UI增量（2026-11-06，本地验收并推送`1baaf78`）：`CaseOverview`首屏显示下一步、客户原话、订单/金额/附件/证据关键事实和风险；技术标识及证据、订单、执行、工单、时间线渐进口径。客服草稿或审批人待办按角色默认展开，折叠保持编辑状态。前端48项、构建及Chromium桌面/320px已验收。
 
 评测安全入口增量（2026-11-06，已交付开发分支）：默认`uv run python -m eval.runner --task all`显式离线，all不包含epig-policy；后者单独执行。真实模型需专用DTC_EVAL配置、显式允许及cases/calls上限，当前真实DeepSeek评测已有专用授权，工程默认仍离线。完整门禁`uv run pytest -q --cov=app --cov=eval --cov-report=term:skip-covered --cov-fail-under=70`本地535通过/4跳过/80.89%。CI补前端Node24与独立PG入口，定义存在不等于远端已运行。详见[评测指南](../docs/10-evaluation.md)。
 
