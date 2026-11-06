@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -32,6 +33,7 @@ from app.tools.knowledge_tools import SearchKnowledgeTool
 
 SNAPSHOT_DATE = date(2026, 11, 5)
 DEMO_DISCLOSURE = "内部自编演示政策，非官方或生产批准"
+V4_DATASET_PATH = Path(__file__).resolve().parents[2] / "eval/dataset/after_sales_holdout_v4.jsonl"
 
 
 async def _components():
@@ -156,6 +158,54 @@ async def test_only_manifest_exception_topics_require_review_with_demo_sources()
         )
         for citation in result["citations"]:
             _assert_demo_citation(citation, market)
+
+
+@pytest.mark.asyncio
+async def test_v4_policy_rows_match_frozen_review_and_normal_boundaries() -> None:
+    rows = {
+        row["id"]: row
+        for row in (
+            json.loads(line) for line in V4_DATASET_PATH.read_text(encoding="utf-8").splitlines()
+        )
+    }
+    expected_topics = {
+        "H01": {"service_fee_refund", "payment_refund_exception"},
+        "H02": {"regional_delivery", "special_delivery_access"},
+        "H03": {"accidental_damage", "accidental_damage_warranty"},
+        "H04": {
+            "custom_or_final_sale_return",
+            "partial_return_allocation",
+            "partial_cancellation",
+            "custom_or_final_sale_cancellation",
+            "partial_refund_allocation",
+        },
+    }
+    retriever, reranker = await _components()
+
+    for case_id, topics in expected_topics.items():
+        row = rows[case_id]
+        scope = _scope(
+            row["market"],
+            as_of=date.fromisoformat(row["as_of"]),
+            category=row["product_category"],
+        )
+        chunks = await _retrieve(retriever, reranker, row["query"], scope)
+        review_chunks = policy_review_chunks(row["query"], chunks)
+        assert topics <= set(policy_review_topics(row["query"], review_chunks)), case_id
+        review_documents = {chunk.document_id.rsplit("_", 1)[0] for chunk in review_chunks}
+        assert set(row["expected_documents"]) <= review_documents, case_id
+
+    for case_id in ("H05", "H06"):
+        row = rows[case_id]
+        scope = _scope(
+            row["market"],
+            as_of=date.fromisoformat(row["as_of"]),
+            category=row["product_category"],
+        )
+        chunks = await _retrieve(retriever, reranker, row["query"], scope)
+        assert policy_review_required(row["query"], chunks) is False, case_id
+        documents = {chunk.document_id.rsplit("_", 1)[0] for chunk in chunks}
+        assert set(row["expected_documents"]) <= documents, case_id
 
 
 @pytest.mark.asyncio

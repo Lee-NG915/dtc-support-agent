@@ -169,8 +169,8 @@ def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
 
 
 def test_holdout_registry_is_controlled_and_cli_defaults_to_v1() -> None:
-    assert set(acceptance.HOLDOUT_REGISTRY) == {"v1", "v2", "v3"}
-    assert acceptance.HOLDOUT_VERSIONS == ("v1", "v2", "v3")
+    assert set(acceptance.HOLDOUT_REGISTRY) == {"v1", "v2", "v3", "v4"}
+    assert acceptance.HOLDOUT_VERSIONS == ("v1", "v2", "v3", "v4")
     assert acceptance.DEFAULT_HOLDOUT_VERSION == "v1"
     assert acceptance.holdout_spec("v1").dataset_path.name == "after_sales_holdout_v1.jsonl"
     assert acceptance.holdout_spec("v1").manifest_path.name == (
@@ -184,15 +184,20 @@ def test_holdout_registry_is_controlled_and_cli_defaults_to_v1() -> None:
     assert acceptance.holdout_spec("v3").manifest_path.name == (
         "after_sales_holdout_v3.manifest.json"
     )
+    assert acceptance.holdout_spec("v4").dataset_path.name == "after_sales_holdout_v4.jsonl"
+    assert acceptance.holdout_spec("v4").manifest_path.name == (
+        "after_sales_holdout_v4.manifest.json"
+    )
 
     parser = acceptance.build_parser()
     assert parser.parse_args([]).holdout == "v1"
     assert parser.parse_args(["--holdout", "v2"]).holdout == "v2"
     assert parser.parse_args(["--holdout", "v3"]).holdout == "v3"
+    assert parser.parse_args(["--holdout", "v4"]).holdout == "v4"
     with pytest.raises(SystemExit):
-        parser.parse_args(["--holdout", "v4"])
+        parser.parse_args(["--holdout", "v5"])
     with pytest.raises(acceptance.FreezeVerificationError, match="unsupported holdout version"):
-        acceptance.holdout_spec("v4")
+        acceptance.holdout_spec("v5")
 
 
 def test_v3_selection_uses_registered_paths_and_rejects_arbitrary_paths(tmp_path: Path) -> None:
@@ -208,6 +213,25 @@ def test_v3_selection_uses_registered_paths_and_rejects_arbitrary_paths(tmp_path
         str(spec.manifest_path),
         str(tmp_path / "after_sales_holdout_v3.jsonl"),
         "../eval/dataset/after_sales_holdout_v3.jsonl",
+    )
+    for value in arbitrary_paths:
+        with pytest.raises(acceptance.FreezeVerificationError, match="unsupported holdout version"):
+            acceptance.holdout_spec(value)
+
+
+def test_v4_selection_uses_registered_paths_and_rejects_arbitrary_paths(tmp_path: Path) -> None:
+    spec = acceptance.holdout_spec("v4")
+    assert spec.version == "v4"
+    assert spec.dataset_path == acceptance.ROOT / "eval/dataset/after_sales_holdout_v4.jsonl"
+    assert spec.manifest_path == acceptance.ROOT / (
+        "eval/dataset/after_sales_holdout_v4.manifest.json"
+    )
+
+    arbitrary_paths = (
+        str(spec.dataset_path),
+        str(spec.manifest_path),
+        str(tmp_path / "after_sales_holdout_v4.jsonl"),
+        "../eval/dataset/after_sales_holdout_v4.jsonl",
     )
     for value in arbitrary_paths:
         with pytest.raises(acceptance.FreezeVerificationError, match="unsupported holdout version"):
@@ -276,6 +300,32 @@ def test_v3_selection_verifies_current_protected_manifest() -> None:
     assert provenance["freeze_revision"] == 7
 
 
+def test_v4_selection_verifies_current_protected_manifest() -> None:
+    artifacts = acceptance.verify_frozen("v4")
+    assert artifacts.holdout_version == "v4"
+    assert artifacts.dataset_name == "after_sales_holdout_v4.jsonl"
+    assert artifacts.manifest["holdout_version"] == "v4"
+    assert artifacts.manifest["holdout_role"] == ("independent_after_v3_seen_with_h01_regression")
+    assert artifacts.dataset_sha256 == (
+        "59301e92282513d6ed48c48f4a0dadedd74a05611f881aa0d9c1313cdab92a0c"
+    )
+    assert artifacts.manifest["dataset_sha256"] == artifacts.dataset_sha256
+    assert len(artifacts.rows) == 12
+    assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
+    assert artifacts.freeze_count == 203
+    assert artifacts.freeze_revision == 7
+    assert artifacts.manifest["freeze_revision"] == 7
+    assert len(artifacts.manifest["freeze_hashes"]) == 203
+    assert artifacts.data_meta()["source"] == "after_sales_holdout_v4.jsonl"
+    assert artifacts.data_meta()["holdout_version"] == "v4"
+    assert artifacts.verification()["holdout_version"] == "v4"
+    provenance = artifacts.provenance()["source_candidate"]
+    assert provenance["holdout_version"] == "v4"
+    assert provenance["dataset"] == "after_sales_holdout_v4.jsonl"
+    assert provenance["freeze_revision"] == 7
+    assert artifacts.rows[0]["holdout_role"] == "regression_from_v3_h04"
+
+
 def test_v2_selection_uses_v2_dataset_and_manifest_version(tmp_path: Path) -> None:
     spec = acceptance.holdout_spec("v2")
     manifest = json.loads(acceptance.MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -321,6 +371,26 @@ def test_v2_dataset_keeps_stable_case_ids_and_fixture_ids() -> None:
 
 def test_v3_dataset_keeps_stable_case_ids_and_fixture_ids() -> None:
     spec = acceptance.holdout_spec("v3")
+    rows = acceptance._load_dataset(spec.dataset_path)
+    assert [row["id"] for row in rows] == acceptance.EXPECTED_CASE_IDS
+    assert len(rows) == acceptance.MAX_DATASET_CASES
+
+    partitions: dict[str, int] = {}
+    for row in rows:
+        partition = str(row["partition"])
+        partitions[partition] = partitions.get(partition, 0) + 1
+    assert partitions == acceptance.EXPECTED_PARTITIONS
+
+    guard_rows = [row for row in rows if row["partition"] == "engineering_guard"]
+    assert {row["id"] for row in guard_rows} <= set(acceptance._FIXTURE_IDENTITIES)
+    for row in guard_rows:
+        fixture = acceptance._build_fixture(row)
+        assert fixture.market == row["market"]
+        assert fixture.category_known is not None
+
+
+def test_v4_dataset_keeps_stable_case_ids_and_fixture_ids() -> None:
+    spec = acceptance.holdout_spec("v4")
     rows = acceptance._load_dataset(spec.dataset_path)
     assert [row["id"] for row in rows] == acceptance.EXPECTED_CASE_IDS
     assert len(rows) == acceptance.MAX_DATASET_CASES
@@ -724,9 +794,7 @@ def test_revision_7_review_term_normalization_refreeze_metadata_is_exact(
 
         refreeze = manifest["review_term_normalization_refreeze"]
         assert refreeze["parent_revision"] == 6
-        assert refreeze["parent_source_commit"] == (
-            "feb9130a66e595c67a5e9616e576e100af6c5c6b"
-        )
+        assert refreeze["parent_source_commit"] == ("feb9130a66e595c67a5e9616e576e100af6c5c6b")
         assert refreeze["parent_manifest_sha256"] == parent_manifest_sha256
         assert "Bounded Chinese filler normalization" in refreeze["reason"]
         assert refreeze["model_evaluation_status"] == "not_run_for_revision_7"

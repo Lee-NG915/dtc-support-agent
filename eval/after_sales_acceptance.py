@@ -94,7 +94,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class HoldoutSpec:
     """One registered sealed holdout and its protected manifest."""
 
-    version: Literal["v1", "v2", "v3"]
+    version: Literal["v1", "v2", "v3", "v4"]
     dataset_path: Path
     manifest_path: Path
 
@@ -114,6 +114,11 @@ HOLDOUT_REGISTRY: dict[str, HoldoutSpec] = {
         version="v3",
         dataset_path=ROOT / "eval/dataset/after_sales_holdout_v3.jsonl",
         manifest_path=ROOT / "eval/dataset/after_sales_holdout_v3.manifest.json",
+    ),
+    "v4": HoldoutSpec(
+        version="v4",
+        dataset_path=ROOT / "eval/dataset/after_sales_holdout_v4.jsonl",
+        manifest_path=ROOT / "eval/dataset/after_sales_holdout_v4.manifest.json",
     ),
 }
 HOLDOUT_VERSIONS = tuple(HOLDOUT_REGISTRY)
@@ -456,7 +461,7 @@ def _load_dataset(path: Path) -> list[dict[str, Any]]:
 
 
 def holdout_spec(holdout_version: str) -> HoldoutSpec:
-    """Resolve only the registered v1/v2/v3 holdouts; never an arbitrary path."""
+    """Resolve only the registered v1-v4 holdouts; never an arbitrary path."""
     spec = HOLDOUT_REGISTRY.get(holdout_version)
     if spec is None:
         supported = ", ".join(HOLDOUT_VERSIONS)
