@@ -112,3 +112,11 @@ revision5把已发现的H05/H08转为确定性回归后重新执行。H05增加�
 v2 dataset SHA-256为`d89a7ed8548602108f6bc5b5b41eebf0123789bbe5fa1ca9b29a94e4d894418e`，manifest复用revision5的203个app/knowledge源摘要，并在运行前记录`not_run_for_holdout_v2`。离线工程守卫4/4通过后才执行真实模型。
 
 唯一一次v2真实运行报告为`eval/reports/after_sales_acceptance_20261106T082544Z.json`（SHA-256 `6a8157c8b88aeb4985e849d975ddfdf09c29f08f0bc8c06bcc1e264e05f57c92`）：38/64次DeepSeek调用，22380 prompt + 4187 completion = 26567 tokens；8个模型场景全部observed，0 failed/not-run，4个工程守卫通过。人工复核H01/H02/H03/H04/H07/H08生成6例全部满足；H05/H06仍是安全但不够具体的确定性转人工，各1/2/1。v2失败或部分结果未用于修改v2本身；未来优化需要新建v3，不能继续称v2为未见数据。
+
+## 独立 holdout v3：转人工可操作性
+
+v3继续在运行前独立编写并冻结，新增4条确定性review场景（定制商品、偏远+特殊入户、宠物损坏保修、配送费+支付路径）和2条普通政策、2条员工建议、4条工程守卫。`--holdout v3`仍只接受注册版本。
+
+v3 dataset SHA-256为`4025006dcfcd481be52423fd1c727154b245d87232358933ddf2f5c1bede12cd`，源冻结revision6。报告`eval/reports/after_sales_acceptance_20261106T095847Z.json`（SHA-256 `ff80f653ae6bcfff22ea6efdfedfdbb2fa3db2816869f73f50e27c0057ea6d53`）：34/64次调用、23419 tokens，工程守卫4/4。
+
+人工复核4条实际模型生成案例H05-H08全部2/2/2；确定性review H01-H03通过，H04为1/2/1。H04查询写“原卡又注销”，现有规则要求连续文本“原卡注销”，因此只命中配送费，遗漏支付方式失效和替代退款路径。该失败保留，不回改v3；下一步需要把规则归一化扩展到常见插入语气词/虚词后，另建v4验证。

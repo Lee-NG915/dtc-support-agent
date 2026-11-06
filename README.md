@@ -2,7 +2,7 @@
 
 基于 [Adaptive-rag](https://github.com/JEen-wang/Adaptive-rag) 扩展的 DTC 电商售后 Agent。首期计划围绕订单查询、政策检索、工单草稿、人工审批与工单创建，完善身份权限、持久任务、幂等执行和效果评测。
 
-**当前状态（2026-11-06）：E-pig持久运行时、DTC员工身份/证据/草稿/持久审批、Worker与真实HTTP提交后崩溃恢复已阶段验收；员工前端摘要、登录与控件已通过合成Chromium，revision5与独立holdout v2的生成案例均6/6满足冻结子集，80/40全集、生产与真实试用仍未验收。**
+**当前状态（2026-11-06）：E-pig持久运行时、DTC员工身份/证据/草稿/持久审批、Worker与真实HTTP提交后崩溃恢复已阶段验收；员工前端摘要、登录与控件已通过合成Chromium。v2生成6/6、v3生成4/4满足冻结子集，但v3确定性退款规则仍有一个中文插入虚词漏匹配，80/40全集、生产与真实试用未验收。**
 
 - 当前政策为AU/US/SG内部自编演示条款，非官方或生产批准；历史生成节点与本轮规则/检索、Fake、真实PG/HTTP分别报告，不外推完整Agent质量或业务收益。现状见[流程记录](docs/records/after-sales/dtc-workflow.md)，历史政策验证见[政策记录](docs/records/after-sales/epig-policy-v1.md)。
 - v1线路契约含13个操作、49个共享fixtures；E-pig持久HTTP运行时已有阶段验收。不可变vendor源锁与跨仓最新交付状态见[对接规范](docs/architecture/modules/after-sales/epig-contract.md)及对应Issue，不以本仓包存在代替freshness。

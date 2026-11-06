@@ -250,6 +250,30 @@ def test_v2_selection_verifies_current_protected_manifest() -> None:
     assert provenance["dataset"] == "after_sales_holdout_v2.jsonl"
 
 
+def test_v3_selection_verifies_current_protected_manifest() -> None:
+    artifacts = acceptance.verify_frozen("v3")
+    assert artifacts.holdout_version == "v3"
+    assert artifacts.dataset_name == "after_sales_holdout_v3.jsonl"
+    assert artifacts.manifest["holdout_version"] == "v3"
+    assert artifacts.dataset_sha256 == (
+        "4025006dcfcd481be52423fd1c727154b245d87232358933ddf2f5c1bede12cd"
+    )
+    assert artifacts.manifest["dataset_sha256"] == artifacts.dataset_sha256
+    assert len(artifacts.rows) == 12
+    assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
+    assert artifacts.freeze_count == 203
+    assert artifacts.freeze_revision == 6
+    assert artifacts.manifest["freeze_revision"] == 6
+    assert len(artifacts.manifest["freeze_hashes"]) == 203
+    assert artifacts.data_meta()["source"] == "after_sales_holdout_v3.jsonl"
+    assert artifacts.data_meta()["holdout_version"] == "v3"
+    assert artifacts.verification()["holdout_version"] == "v3"
+    provenance = artifacts.provenance()["source_candidate"]
+    assert provenance["holdout_version"] == "v3"
+    assert provenance["dataset"] == "after_sales_holdout_v3.jsonl"
+    assert provenance["freeze_revision"] == 6
+
+
 def test_v2_selection_uses_v2_dataset_and_manifest_version(tmp_path: Path) -> None:
     spec = acceptance.holdout_spec("v2")
     manifest = json.loads(acceptance.MANIFEST_PATH.read_text(encoding="utf-8"))

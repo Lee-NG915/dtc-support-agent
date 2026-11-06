@@ -8,7 +8,7 @@
 - 上游：[JEen-wang/Adaptive-rag](https://github.com/JEen-wang/Adaptive-rag)
 - 起始基线：[`2a12a62382a8c3ec033fa9a5b19b9b23b8780ab8`](https://github.com/JEen-wang/Adaptive-rag/tree/2a12a62382a8c3ec033fa9a5b19b9b23b8780ab8)
 
-本文是本 fork 的权威规划入口，持续在同一文件维护。截至 2026-11-06，E-pig AU/US/SG 的18篇内部 demo 政策、持久审批/Worker、员工与消费者页面均已实现，真实 HTTP 八场景、特定丢响应备份恢复和独立合成浏览器四组已有范围验收。revision5回归与运行前新写的独立holdout v2均执行真实模型，v2生成6/6满足冻结子集；v2的H05/H06确定性转人工仍不够具体。计划80个业务任务/40个工程场景全集及独立Faithfulness固定集尚未建成，真实试用与生产未验收。Kimi全分支审查后处于**有条件验收、v2子集已验证**，不是项目无条件完成；最新证据和逐项裁决见[流程记录](records/after-sales/dtc-workflow.md)。较早的政策节点测试与上游数字保留在[政策记录](records/after-sales/epig-policy-v1.md)，不作为当前全项目成绩。
+本文是本 fork 的权威规划入口，持续在同一文件维护。截至 2026-11-06，E-pig AU/US/SG 的18篇内部 demo 政策、持久审批/Worker、员工与消费者页面均已实现，真实 HTTP 八场景、特定丢响应备份恢复和独立合成浏览器四组已有范围验收。revision5回归、独立v2及review-handoff-focused v3均已执行真实模型；v3实际生成4/4满足，但确定性review H04仍因中文插入虚词导致支付路径规则漏匹配。计划80个业务任务/40个工程场景全集及独立Faithfulness固定集尚未建成，真实试用与生产未验收。Kimi全分支审查后处于**有条件验收、v3残余失败已保留**，不是项目无条件完成；最新证据和逐项裁决见[流程记录](records/after-sales/dtc-workflow.md)。较早的政策节点测试与上游数字保留在[政策记录](records/after-sales/epig-policy-v1.md)，不作为当前全项目成绩。
 
 员工工作台另已增加 development/testing 专用的固定密码演示登录：密码只换取短时签名会话，角色和市场仍由服务端逐请求判定，生产环境禁止启用。页面本地候选已改为摘要优先：首屏显示下一步、客户原话和订单/金额/附件/证据关键事实，政策原文、技术标识、执行与事件按需展开；客服草稿和审批人待办按角色决定默认可见。员工端原生select/date/datetime-local也由统一的自定义可访问控件替代，checkbox和已有form controls共享设计token。工程与合成浏览器已验收，真实客服试用和效率改善仍未验证。
 
