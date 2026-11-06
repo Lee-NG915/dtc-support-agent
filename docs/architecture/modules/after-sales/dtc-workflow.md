@@ -122,7 +122,7 @@ operator只能请求继续查询、查看脱敏进度及登记有来源的对账
 
 在2b/2c基础行为上补充后端，前端已按下文实现并通过工程检查，实际浏览器和全旅程继续验收。员工不应复制数据库ID才能选证据，因此已增加本case上下文的只读evidence入口：服务器从当前订单SKU映射、市场和政策日期派生scope，返回真实可用chunk/来源/版本与缺资料原因。support/approver/auditor按同一市场授权，不接受客户端policy_version或商品范围覆盖。该内部读取不新增E-pig wire操作。详情结果还需要本case的只读ticket入口：按已关联远端ID经现有Connector读真实工单，核验market/order/request及receipt，有本地operation时继续匹配原payload。仅support/approver/auditor可读；operator不能借此看回复。读取不伪造本地批准或推进完成，返回查询时间；失败时UI只能把此前已核验回执标陈旧，不能当最新履行状态。复用源ServiceTicket，不新增E-pig接口。
 
-AI建议入口仅support可用，带expected_revision；复用已有检索与LLMProvider，关闭通用业务工具。网络/模型调用在事务外，固定服务器订单/材料/政策上下文；候选action/reply/summary及引用需白名单校验，引用必须属于本次真实匹配chunk。模型内容不改变身份、材料真伪、审批或操作。成功只保存一个新的editing草稿版本，保存前复用业务校验重读staff角色/市场并比较生成时订单/材料/附件/政策指纹，再次CAS；即使case revision未变，权限变化也403、业务上下文变化409，不保存候选且不覆盖；无证据/冲突/模型故障明确返回未生成。默认OfflineLLM/Fake，真实模型评测未授权前不调用。建议仍经过人工修改、送审、不同人批准与Worker核验，不自动形成工单。
+AI建议入口仅support可用，带expected_revision；复用已有检索与LLMProvider，关闭通用业务工具。网络/模型调用在事务外，固定服务器订单/材料/政策上下文；候选action/reply/summary及引用需白名单校验，引用必须属于本次真实匹配chunk。模型内容不改变身份、材料真伪、审批或操作。建议 payload 不向模型暴露原始`*_minor`整数，货币事实只以服务端整数运算生成的展示字符串提供；内部摘要必须包含服务端订单总额，输出若把币种与已知 minor 整数组合则 fail closed。成功只保存一个新的editing草稿版本，保存前复用业务校验重读staff角色/市场并比较生成时订单/材料/附件/政策指纹，再次CAS；即使case revision未变，权限变化也403、业务上下文变化409，不保存候选且不覆盖；无证据/冲突/模型故障明确返回未生成。默认OfflineLLM/Fake。建议仍经过人工修改、送审、不同人批准与Worker核验，不自动形成工单。
 
 已实现三个内部入口，复用现有case路径，不增加E-pig wire操作：
 

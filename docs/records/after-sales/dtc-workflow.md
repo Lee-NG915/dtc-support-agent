@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录已推送`c0ea606`，摘要优先UI已推送`1baaf78`，表单控件统一已推送`3c8f549`；真实模型revision2保留集仍有金额单位等质量缺口。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
+更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录已推送`c0ea606`，摘要优先UI已推送`1baaf78`，表单控件统一已推送`3c8f549`；真实模型revision5回归已人工复核生成6/6满足冻结断言，H05/H08缺口已定向关闭。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
 
 ## 员工工作台演示密码登录（2026-11-06，Codex本地验收）
 
@@ -33,6 +33,18 @@ Claude以auto模式新增`frontend/src/staff/FormControls.tsx`：`SelectControl`
 最终独立验证：前端**15文件59项通过**，构建通过；Vite保留既有`>500 kB` chunk提示。生产TSX对`<select`、date/datetime-local/time/radio/range/file的静态审计无命中。项目专用Chromium实测身份与状态select选择后关闭、Escape关闭、日期中文标题与星期、方向键移动、Escape回焦；320px弹层底部不超出viewport、无横向溢出，原生控件查询数0。未做完整WCAG、Firefox/Safari、真实客服试用或效率测量。
 
 结论：控件一致性的本地工程与合成Chromium范围通过，功能提交已推送`3c8f5498dbb38fb5a63823fe131b825351709a94`至`codex/2-epig-after-sales`；远端ref、`FormControls`、`staff.css`与本文关键blob回读一致，草稿PR #4 head已推进。GitHub在该SHA实际Actions run仍为0，不能写成远端CI通过；也不能据此宣称全浏览器兼容或生产验收。
+
+## H05/H08 草稿事实质量与 CI 修复（2026-11-06，Codex本地验收）
+
+用户要求继续处理 AI 草稿质量。H05真实失败来自缺件问题只召回 delivery，遗漏 SG faults-missing 材料清单；H08来自模型把`total_minor=13795`写成`SGD 13795`。
+
+Claude以auto模式实现两类最小修复：缺件/错发/运输损坏增加确定性、scope限定、有界去重的 faults-missing 主题补召回；只有实际召回含“包装清单/全部包材/缺少部件”的材料chunk时，代码才补齐缺件材料句和引用，无证据不编造。员工建议payload移除所有原始`*_minor`，增加服务端精确展示金额`order_amounts`；内部摘要必须包含服务端总额，币种与已知minor整数组合、或缺失总额均返回`LLM_OUTPUT_INVALID`，零草稿/审批/操作/外部写。
+
+冻结推进到 revision5，只更新6个生产源码摘要；12个问题、expectation、rubric、知识、dataset SHA和旧冻结历史不变，父提交`4c218ac`、父manifest摘要`281bcb…`，模型状态先登记为`not_run_for_revision_5`后再执行。全量门禁：**696 passed / 5 skipped / 1 warning**，覆盖率**82.29%**，Ruff231、mypy150、文档/契约/政策与diff检查通过。
+
+真实模型首次运行在H01意图/复杂度阶段遇到两次Provider错误后提前停止，报告保留；重跑报告`eval/reports/after_sales_acceptance_20261106T075849Z.json`（SHA-256 `0fafc8cd…`）使用35/64次调用、25619 tokens，8模型场景全部observed、工程守卫4/4。人工复核H01/H02/H03/H05/H07/H08生成6例均完全满足；H05含配件合照、包装清单、全部包材、缺少部件及SG faults-missing引用；H08内部摘要准确写`SGD 137.95`，伪引用/写权限/approval/operation/create均为零。H04/H06仍是安全但不够具体的确定性转人工（各1/2/1）。该6/6仅限已看过的v1回归集，不是未见holdout或生产准确率。
+
+CI也已真正注册并运行：原始运行`42182576529`的前端、Python3.11/3.12、专用PG主步骤全部通过；job最终失败仅因`setup-python`尝试缓存不存在的pip目录。工作流已移除无效pip缓存，下一次推送必须回读新run，不能把旧运行写成CI通过。
 
 ## 2026-11-06 Kimi CR 裁决与最小修复计划
 

@@ -16,7 +16,7 @@ from app.prompts.answer import ANSWER_SYSTEM, ANSWER_USER
 from app.providers.base import LLMProvider
 from app.providers.fake import OfflineLLMProvider
 from app.providers.json_parser import parse_model
-from app.retrieval.policy import policy_review_chunks
+from app.retrieval.policy import chunk_document_topic, policy_review_chunks, policy_topic_hints
 from app.schemas.common import LatencyBreakdown, TokenUsage
 from app.schemas.retrieval import PolicyScope, RetrievedChunk, citation_from_chunk
 
@@ -25,6 +25,48 @@ class AnswerPayload(BaseModel):
     answer: str
     citation_chunk_ids: list[str] = Field(default_factory=list)
     refused: bool = False
+
+
+# Server-owned text taken from the faults-missing materials section. It is
+# appended only when that real chunk is present; model or user text is never
+# treated as authority for these requirements.
+_MISSING_MATERIAL_CHECKLIST = (
+    "缺件材料还需提供已收到的商品与配件合照、包装清单、全部包材照片，并列明缺少部件。"
+)
+
+
+def _faults_materials_chunk(chunks: list[RetrievedChunk]) -> RetrievedChunk | None:
+    for chunk in chunks:
+        if chunk.requires_human_review:
+            continue
+        if chunk_document_topic(chunk) != "faults-missing":
+            continue
+        content = chunk.content
+        if "包装清单" in content and "全部包材" in content and "缺少部件" in content:
+            return chunk
+    return None
+
+
+def _apply_policy_checklist(
+    query: str,
+    chunks: list[RetrievedChunk],
+    answer: str,
+    citation_ids: list[str],
+    *,
+    refused: bool,
+) -> tuple[str, list[str]]:
+    """Add the server-held missing-parts checklist from real evidence only."""
+    hints = policy_topic_hints(query)
+    if refused or not hints:
+        return answer, list(citation_ids)
+    chunk = _faults_materials_chunk(chunks)
+    if chunk is None:
+        return answer, list(citation_ids)
+    ids = list(dict.fromkeys([*citation_ids, chunk.chunk_id]))
+    missing_parts = any(hint.topic == "missing_parts" for hint in hints)
+    if missing_parts and ("包装清单" not in answer or "全部包材" not in answer):
+        answer = f"{answer}\n\n{_MISSING_MATERIAL_CHECKLIST}"
+    return answer, ids
 
 
 def _with_demo_disclosure(answer: str, brand: str) -> str:
@@ -134,7 +176,14 @@ async def generate_node(state: AgentState, llm: LLMProvider) -> dict:
     )
     tool_text = json.dumps([t.model_dump() for t in tools], ensure_ascii=False) if tools else "(无)"
     if isinstance(llm, OfflineLLMProvider):
-        answer, citation_ids = _offline_answer(state, chunks)
+        answer, offline_ids = _offline_answer(state, chunks)
+        answer, citation_ids = _apply_policy_checklist(
+            state["user_query"],
+            chunks,
+            answer,
+            list(offline_ids),
+            refused=False,
+        )
         citations = [
             citation_from_chunk(chunk) for chunk in chunks if chunk.chunk_id in citation_ids
         ]
@@ -172,6 +221,13 @@ async def generate_node(state: AgentState, llm: LLMProvider) -> dict:
             citation_chunk_ids=[chunks[0].chunk_id] if chunks else [],
         )
         usage = TokenUsage()
+    payload.answer, payload.citation_chunk_ids = _apply_policy_checklist(
+        state["user_query"],
+        chunks,
+        payload.answer,
+        payload.citation_chunk_ids,
+        refused=payload.refused,
+    )
     citations = [
         citation_from_chunk(chunk)
         for chunk in chunks

@@ -6,7 +6,11 @@ from collections import defaultdict
 
 from rank_bm25 import BM25Okapi
 
-from app.retrieval.policy import chunk_matches_scope, review_chunk_matches_query
+from app.retrieval.policy import (
+    chunk_document_topic,
+    chunk_matches_scope,
+    review_chunk_matches_query,
+)
 from app.retrieval.tokenizer import tokenize
 from app.schemas.retrieval import PolicyScope, RetrievedChunk
 
@@ -65,6 +69,45 @@ class BM25Retriever:
             if chunk_matches_scope(chunk, resolved_scope)
             and review_chunk_matches_query(query, chunk)
         ]
+
+    def matching_topic_chunks(
+        self,
+        query: str,
+        *,
+        document_topic: str,
+        scope: PolicyScope | None = None,
+        limit: int = 2,
+    ) -> list[RetrievedChunk]:
+        """Rank only the requested policy document within the trusted scope.
+
+        This is the deterministic fallback for anomaly questions; it does not
+        depend on dense ranking or model rewrites. Output is bounded and
+        deduplicated by construction.
+        """
+        if self._bm25 is None or not self._chunks or limit <= 0:
+            return []
+        resolved_scope = scope or PolicyScope()
+        scores = self._bm25.get_scores(tokenize(query))
+        ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+        results: list[RetrievedChunk] = []
+        seen: set[str] = set()
+        for index in ranked:
+            chunk = self._chunks[index]
+            if not chunk_matches_scope(chunk, resolved_scope):
+                continue
+            if chunk_document_topic(chunk) != document_topic:
+                continue
+            if chunk.chunk_id in seen:
+                continue
+            seen.add(chunk.chunk_id)
+            result = chunk.model_copy(deep=True)
+            result.score = float(scores[index])
+            result.rank = len(results) + 1
+            result.source = "policy-topic"
+            results.append(result)
+            if len(results) >= limit:
+                break
+        return results
 
 
 class InvertedIndex:

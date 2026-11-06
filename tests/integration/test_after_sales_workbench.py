@@ -21,9 +21,11 @@ from app.main import create_app
 from app.providers.fake import FakeLLMProvider
 from app.repositories.db import init_schema
 from app.repositories.models import (
+    AfterSalesApprovalRow,
     AfterSalesCaseRow,
     AfterSalesDraftRow,
     AfterSalesEventRow,
+    AfterSalesOperationRow,
     AfterSalesStaffRow,
 )
 from app.repositories.staff_repository import StaffRepository
@@ -71,6 +73,7 @@ async def _seed_staff(database_url: str) -> dict[str, str]:
         factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
         specs = [
             ("staff_support_au", ("support",), ("au",)),
+            ("staff_support_sg", ("support",), ("sg",)),
             ("staff_support_us", ("support",), ("us",)),
             ("staff_approver_au", ("approver",), ("au", "sg")),
             ("staff_auditor", ("auditor",), ("au", "sg", "us")),
@@ -161,7 +164,7 @@ def _valid_suggestion(chunk_id: str) -> str:
     return json.dumps(
         {
             "action": "reship",
-            "internal_summary": "Synthetic AI suggestion for a damaged item.",
+            "internal_summary": "Synthetic AI suggestion for a damaged item; order total AUD 137.95.",
             "consumer_reply": "We will reship the damaged item and share tracking.",
             "evidence_chunk_ids": [chunk_id],
         }
@@ -172,6 +175,49 @@ def _post_suggestion(ctx: Ctx, case_id: int, revision: int, *, staff: str = "sta
     return ctx.client.post(
         f"/api/v1/after-sales/au/cases/{case_id}/suggestion",
         headers=_auth(ctx.tokens[staff]),
+        json={"expected_revision": revision},
+    )
+
+
+def _sg_case_id(ctx: Ctx) -> int:
+    response = ctx.client.post(
+        "/api/v1/after-sales/sg/cases/sync",
+        headers=_auth(ctx.tokens["staff_support_sg"]),
+    )
+    assert response.status_code == 200, response.text
+    listing = ctx.client.get(
+        "/api/v1/after-sales/sg/cases", headers=_auth(ctx.tokens["staff_support_sg"])
+    )
+    assert listing.status_code == 200, listing.text
+    return int(listing.json()["items"][0]["case_id"])
+
+
+def _sg_detail(ctx: Ctx, case_id: int) -> dict[str, Any]:
+    response = ctx.client.get(
+        f"/api/v1/after-sales/sg/cases/{case_id}",
+        headers=_auth(ctx.tokens["staff_support_sg"]),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _sg_faults_chunk(ctx: Ctx, case_id: int) -> str:
+    response = ctx.client.get(
+        f"/api/v1/after-sales/sg/cases/{case_id}/evidence",
+        headers=_auth(ctx.tokens["staff_support_sg"]),
+    )
+    assert response.status_code == 200, response.text
+    chunks = response.json()["chunks"]
+    return next(
+        (str(chunk["chunk_id"]) for chunk in chunks if "faults-missing" in chunk["source_path"]),
+        str(chunks[0]["chunk_id"]),
+    )
+
+
+def _post_sg_suggestion(ctx: Ctx, case_id: int, revision: int):
+    return ctx.client.post(
+        f"/api/v1/after-sales/sg/cases/{case_id}/suggestion",
+        headers=_auth(ctx.tokens["staff_support_sg"]),
         json={"expected_revision": revision},
     )
 
@@ -421,6 +467,61 @@ def test_fake_suggestion_saves_only_an_editing_draft(ctx: Ctx) -> None:
     for staff in ("staff_approver_au", "staff_auditor", "staff_operator"):
         forbidden = _post_suggestion(ctx, case_id, detail["revision"], staff=staff)
         assert forbidden.status_code == 403
+
+
+def test_sg_suggestion_uses_display_amounts_and_rejects_raw_minor_units(ctx: Ctx) -> None:
+    case_id = _sg_case_id(ctx)
+    chunk_id = _sg_faults_chunk(ctx, case_id)
+    detail = _sg_detail(ctx, case_id)
+
+    wrong = json.dumps(
+        {
+            "action": "reship",
+            "internal_summary": "SG damaged-item request; order total SGD 13795.",
+            "consumer_reply": "We will review the damage and follow up.",
+            "evidence_chunk_ids": [chunk_id],
+        }
+    )
+    provider = FakeLLMProvider(canned={"": wrong})
+    _inject_llm(ctx, provider)
+    response = _post_sg_suggestion(ctx, case_id, detail["revision"])
+
+    assert response.status_code == 502, response.text
+    assert response.json()["error_code"] == "LLM_OUTPUT_INVALID"
+    assert _sg_detail(ctx, case_id)["current_draft"] is None
+    assert asyncio.run(_count(ctx.database_url, AfterSalesDraftRow)) == 0
+    assert asyncio.run(_count(ctx.database_url, AfterSalesApprovalRow)) == 0
+    assert asyncio.run(_count(ctx.database_url, AfterSalesOperationRow)) == 0
+    assert ctx.app.state.container.business_connector.create_ticket_calls == 0
+
+    system_prompt, user_payload = provider.calls[0]
+    assert "order_amounts" in system_prompt["content"]
+    assert "never convert minor units" in system_prompt["content"]
+    payload = json.loads(user_payload["content"])
+    assert not {key for key in _all_keys(payload) if key.endswith("_minor")}
+    assert payload["order_amounts"]["total_display"] == "SGD 137.95"
+    assert "SGD 137.95" in user_payload["content"]
+
+    correct = json.dumps(
+        {
+            "action": "reship",
+            "internal_summary": "SG damaged-item request; order total SGD 137.95.",
+            "consumer_reply": "We will review the damage and follow up.",
+            "evidence_chunk_ids": [chunk_id],
+        }
+    )
+    _inject_llm(ctx, FakeLLMProvider(canned={"": correct}))
+    saved = _post_sg_suggestion(ctx, case_id, detail["revision"])
+
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["current_draft"]["status"] == "editing"
+    assert body["current_draft"]["action"] == "reship"
+    assert body["operations"] == []
+    assert asyncio.run(_count(ctx.database_url, AfterSalesDraftRow)) == 1
+    assert asyncio.run(_count(ctx.database_url, AfterSalesApprovalRow)) == 0
+    assert asyncio.run(_count(ctx.database_url, AfterSalesOperationRow)) == 0
+    assert ctx.app.state.container.business_connector.create_ticket_calls == 0
 
 
 @pytest.mark.parametrize(

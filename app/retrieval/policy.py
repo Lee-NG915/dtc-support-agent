@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Literal
@@ -184,6 +186,106 @@ def chunk_matches_scope(chunk: RetrievedChunk, scope: PolicyScope) -> bool:
 def applicable_from(chunk: RetrievedChunk) -> str:
     value = chunk.effective_from or chunk.retrieved_at
     return value.isoformat() if value else ""
+
+
+def chunk_document_topic(chunk: RetrievedChunk) -> str:
+    """Return the manifest file stem a chunk belongs to.
+
+    ``source_path`` is server-derived for managed policies; legacy corpus
+    chunks fall back to the stable ``document_id`` prefix.
+    """
+    if chunk.source_path:
+        name = chunk.source_path.rsplit("/", 1)[-1]
+        if name.endswith(".md"):
+            name = name[:-3]
+        return name
+    document_id = chunk.document_id
+    return document_id.rsplit("_", 1)[0] if "_" in document_id else document_id
+
+
+@dataclass(frozen=True)
+class PolicyTopicHint:
+    """Deterministic query topic that justifies one bounded policy recall."""
+
+    topic: str
+    query: str
+    document_topic: str
+
+
+@dataclass(frozen=True)
+class _PolicyTopicRule:
+    hint: PolicyTopicHint
+    pattern: re.Pattern[str]
+
+
+_POLICY_TOPIC_RULES: tuple[_PolicyTopicRule, ...] = (
+    _PolicyTopicRule(
+        hint=PolicyTopicHint(
+            topic="missing_parts",
+            # Exact Chinese retrieval hints. The policy chunk that answers this
+            # topic is the missing/wrong/damaged materials list, not delivery.
+            query="缺件 少件 漏发 漏寄 材料清单 包装清单 全部包材 缺少部件",
+            document_topic="faults-missing",
+        ),
+        # Exclude 减少一... so "少等一会儿" and ordinary reduction wording stay quiet.
+        pattern=re.compile(
+            r"(?<!减)(?:缺件|少件|漏发|漏寄|缺少(?:部件|零件|配件|螺丝|包|件)"
+            r"|少(?:了)?[一二两三四五六七八九十几\d]|missing\s+(?:part|item))",
+            re.IGNORECASE,
+        ),
+    ),
+    _PolicyTopicRule(
+        hint=PolicyTopicHint(
+            topic="wrong_item",
+            query="错发 发错 实收商品 原订商品 材料清单 包装清单 全部包材",
+            document_topic="faults-missing",
+        ),
+        pattern=re.compile(r"错发|发错|wrong\s+(?:item|product)", re.IGNORECASE),
+    ),
+    _PolicyTopicRule(
+        hint=PolicyTopicHint(
+            topic="transport_damage",
+            query="运输损坏 破损 压坏 受损部位近照 包装标签照片 材料清单",
+            document_topic="faults-missing",
+        ),
+        pattern=re.compile(r"破损|损坏|压坏|裂|damaged|crushed", re.IGNORECASE),
+    ),
+)
+
+_MAX_POLICY_TOPIC_SUPPLEMENTS = 2
+
+
+def policy_topic_hints(query: str) -> tuple[PolicyTopicHint, ...]:
+    """Return deterministic recall hints for logistics anomaly topics.
+
+    The hints do not depend on model intent classification or rewriting, so a
+    query like "椅子拆箱少了一包螺丝" reliably reaches the faults-missing
+    materials list even when hybrid ranking prefers the delivery document.
+    """
+    return tuple(rule.hint for rule in _POLICY_TOPIC_RULES if rule.pattern.search(query))
+
+
+def merge_policy_topic_chunks(
+    chunks: list[RetrievedChunk],
+    topic_chunks: list[RetrievedChunk],
+    *,
+    limit: int = _MAX_POLICY_TOPIC_SUPPLEMENTS,
+) -> list[RetrievedChunk]:
+    """Append missing topic evidence without dropping or duplicating results."""
+    if limit <= 0:
+        return list(chunks)
+    merged = list(chunks)
+    existing = {chunk.chunk_id for chunk in chunks}
+    appended = 0
+    for chunk in topic_chunks:
+        if appended >= limit:
+            break
+        if chunk.chunk_id in existing:
+            continue
+        merged.append(chunk)
+        existing.add(chunk.chunk_id)
+        appended += 1
+    return merged
 
 
 def _normalize_review_text(value: str) -> str:

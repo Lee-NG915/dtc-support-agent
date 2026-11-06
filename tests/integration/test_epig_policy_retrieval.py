@@ -1,21 +1,28 @@
+import json
 from datetime import date
 
 import pytest
 
 from app.agents.nodes.generate import generate_node
+from app.agents.nodes.retrieval import retrieval_node
+from app.config.settings import Settings
 from app.core.enums import RetrievalStrategy
 from app.providers.embeddings import HashEmbeddingProvider
-from app.providers.fake import OfflineLLMProvider
+from app.providers.fake import FakeLLMProvider, OfflineLLMProvider
 from app.providers.reranker import LexicalRerankProvider
 from app.retrieval.cache import MemoryRetrievalCache
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.ingest import ingest_to_memory
 from app.retrieval.policy import (
+    chunk_document_topic,
+    chunk_matches_scope,
     corpus_fingerprint,
     merge_policy_review_chunks,
     policy_review_required,
 )
+from app.retrieval.query_rewrite import QueryRewriter
 from app.retrieval.reranker import DocumentReranker
+from app.retrieval.self_rag import SelfRAGLoop
 from app.retrieval.vector import VectorRetriever
 from app.schemas.retrieval import PolicyScope
 from app.tools.base import ToolContext
@@ -290,6 +297,195 @@ async def test_structured_review_match_is_not_lost_to_top_k_truncation() -> None
     result = await _generate(query, scope, [*review_chunks, *ordinary])
     assert result["refused"] is True
     assert result["citations"][0].document_id.startswith("returns_")
+
+
+H05_QUERY = "椅子拆箱少了一包螺丝，纸箱还在。先拍哪些东西给客服核对，是否现在就能保证免费寄一包？"
+MISSING_CHECKLIST = (
+    "缺件材料还需提供已收到的商品与配件合照、包装清单、全部包材照片，并列明缺少部件。"
+)
+
+
+def _retrieval_settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        app_env="testing",
+        retrieval_top_k_simple=4,
+        retrieval_top_k_complex=8,
+        rerank_top_n=5,
+        max_retrieval_hops=1,
+    )
+
+
+async def _run_retrieval_node(
+    retriever: HybridRetriever,
+    reranker: DocumentReranker,
+    scope: PolicyScope,
+    strategy: RetrievalStrategy,
+    query: str,
+) -> dict:
+    settings = _retrieval_settings()
+    offline = OfflineLLMProvider()
+    rewriter = QueryRewriter(offline)
+    self_rag = SelfRAGLoop(retriever, reranker, rewriter, offline, settings)
+    return await retrieval_node(
+        {
+            "user_query": query,
+            "policy_scope": scope,
+            "strategy": strategy,
+            "tool_results": [],
+        },
+        retriever=retriever,
+        reranker=reranker,
+        rewriter=rewriter,
+        self_rag=self_rag,
+        settings=settings,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strategy", [RetrievalStrategy.SINGLE, RetrievalStrategy.MULTI])
+async def test_retrieval_node_adds_bounded_faults_missing_evidence(
+    strategy: RetrievalStrategy,
+) -> None:
+    retriever, reranker = await _components()
+    scope = _scope("sg", category="furniture")
+
+    result = await _run_retrieval_node(retriever, reranker, scope, strategy, H05_QUERY)
+
+    chunks = result["retrieved_chunks"]
+    ids = [chunk.chunk_id for chunk in chunks]
+    assert len(ids) == len(set(ids))
+    faults = [chunk for chunk in chunks if chunk_document_topic(chunk) == "faults-missing"]
+    assert faults
+    assert len(faults) <= 2
+    assert any("包装清单" in chunk.content and "全部包材" in chunk.content for chunk in faults)
+    assert all(chunk_matches_scope(chunk, scope) for chunk in chunks)
+
+
+@pytest.mark.asyncio
+async def test_generate_appends_server_checklist_and_cites_real_faults_chunk() -> None:
+    retriever, reranker = await _components()
+    scope = _scope("sg", category="furniture")
+    retrieval = await _run_retrieval_node(
+        retriever, reranker, scope, RetrievalStrategy.MULTI, H05_QUERY
+    )
+    chunks = retrieval["retrieved_chunks"]
+    faults = next(
+        chunk
+        for chunk in chunks
+        if chunk_document_topic(chunk) == "faults-missing"
+        and "包装清单" in chunk.content
+        and "全部包材" in chunk.content
+    )
+    delivery = next(
+        (chunk for chunk in chunks if chunk_document_topic(chunk) == "delivery"), chunks[0]
+    )
+    provider = FakeLLMProvider(
+        canned={
+            "": json.dumps(
+                {
+                    "answer": "请先按配送交付检查拍照，并保留纸箱。",
+                    "citation_chunk_ids": [delivery.chunk_id],
+                    "refused": False,
+                },
+                ensure_ascii=False,
+            )
+        }
+    )
+
+    result = await generate_node(
+        {
+            "user_query": H05_QUERY,
+            "policy_scope": scope,
+            "strategy": RetrievalStrategy.MULTI,
+            "retrieved_chunks": chunks,
+            "tool_results": [],
+        },
+        provider,
+    )
+
+    assert result["refused"] is False
+    assert MISSING_CHECKLIST in result["final_answer"]
+    citation_ids = {citation.chunk_id for citation in result["citations"]}
+    assert faults.chunk_id in citation_ids
+    assert delivery.chunk_id in citation_ids
+
+
+@pytest.mark.asyncio
+async def test_generate_never_invents_the_checklist_without_a_faults_chunk() -> None:
+    retriever, _ = await _components()
+    scope = _scope("sg", category="furniture")
+    delivery = next(
+        chunk
+        for chunk in retriever.corpus
+        if chunk.market == "sg"
+        and chunk_document_topic(chunk) == "delivery"
+        and chunk_matches_scope(chunk, scope)
+    )
+    provider = FakeLLMProvider(
+        canned={
+            "": json.dumps(
+                {
+                    "answer": "请先按配送交付检查拍照，并保留纸箱。",
+                    "citation_chunk_ids": [delivery.chunk_id],
+                    "refused": False,
+                },
+                ensure_ascii=False,
+            )
+        }
+    )
+
+    result = await generate_node(
+        {
+            "user_query": H05_QUERY,
+            "policy_scope": scope,
+            "strategy": RetrievalStrategy.SINGLE,
+            "retrieved_chunks": [delivery],
+            "tool_results": [],
+        },
+        provider,
+    )
+
+    assert "包装清单" not in result["final_answer"]
+    assert "全部包材" not in result["final_answer"]
+    assert [citation.chunk_id for citation in result["citations"]] == [delivery.chunk_id]
+
+
+@pytest.mark.asyncio
+async def test_generate_does_not_complete_a_refused_answer() -> None:
+    retriever, reranker = await _components()
+    scope = _scope("sg", category="furniture")
+    retrieval = await _run_retrieval_node(
+        retriever, reranker, scope, RetrievalStrategy.MULTI, H05_QUERY
+    )
+    chunks = retrieval["retrieved_chunks"]
+    provider = FakeLLMProvider(
+        canned={
+            "": json.dumps(
+                {
+                    "answer": "无法处理。",
+                    "citation_chunk_ids": [],
+                    "refused": True,
+                },
+                ensure_ascii=False,
+            )
+        }
+    )
+
+    result = await generate_node(
+        {
+            "user_query": H05_QUERY,
+            "policy_scope": scope,
+            "strategy": RetrievalStrategy.MULTI,
+            "retrieved_chunks": chunks,
+            "tool_results": [],
+        },
+        provider,
+    )
+
+    assert result["refused"] is True
+    assert "包装清单" not in result["final_answer"]
+    assert result["citations"] == []
 
 
 @pytest.mark.asyncio

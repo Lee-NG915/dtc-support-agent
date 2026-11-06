@@ -50,6 +50,22 @@ class HybridRetriever:
         """Evaluate structured exception rules before result-size truncation."""
         return self._bm25.matching_review_chunks(query, scope=scope)
 
+    def matching_topic_chunks(
+        self,
+        query: str,
+        *,
+        document_topic: str,
+        scope: PolicyScope | None = None,
+        limit: int = 2,
+    ) -> list[RetrievedChunk]:
+        """Bounded, scope-filtered recall for one policy document topic."""
+        return self._bm25.matching_topic_chunks(
+            query,
+            document_topic=document_topic,
+            scope=scope,
+            limit=limit,
+        )
+
     async def retrieve(
         self, query: str, *, top_k: int, scope: PolicyScope | None = None
     ) -> list[RetrievedChunk]:

@@ -31,6 +31,15 @@ DEMO_LOGIN_FILES = {
     "app/schemas/after_sales.py",
 }
 
+QUALITY_REFREEZE_FILES = {
+    "app/agents/nodes/generate.py",
+    "app/agents/nodes/retrieval.py",
+    "app/retrieval/bm25.py",
+    "app/retrieval/hybrid.py",
+    "app/retrieval/policy.py",
+    "app/services/after_sales/service.py",
+}
+
 
 class _EchoProvider:
     def __init__(self) -> None:
@@ -87,14 +96,16 @@ class _ValidSuggestionProvider:
         self.calls += 1
         payload = json.loads(messages[-1]["content"])
         chunk_id = payload["policy"]["chunks"][0]["chunk_id"]
+        total_display = payload["order_amounts"]["total_display"]
         return LLMResponse(
             content=json.dumps(
                 {
                     "action": "other",
-                    "internal_summary": "Synthetic fixture-valid suggestion.",
+                    "internal_summary": f"Synthetic fixture-valid suggestion; {total_display}.",
                     "consumer_reply": "Synthetic fixture-valid reply.",
                     "evidence_chunk_ids": [chunk_id],
-                }
+                },
+                ensure_ascii=False,
             ),
             usage=TokenUsage(total_tokens=3),
             model="fake-valid",
@@ -113,7 +124,7 @@ class _ValidSuggestionProvider:
 def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
     artifacts = acceptance.verify_frozen()
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 4
+    assert artifacts.freeze_revision == 5
     assert len(artifacts.rows) == 12
 
     dataset_copy = tmp_path / "after_sales_holdout_v1.jsonl"
@@ -140,8 +151,8 @@ def test_revision_3_engineering_refreeze_metadata_is_exact(tmp_path: Path) -> No
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 4
-    assert manifest["freeze_revision"] == 4
+    assert artifacts.freeze_revision == 5
+    assert manifest["freeze_revision"] == 5
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -178,17 +189,17 @@ def test_revision_3_engineering_refreeze_metadata_is_exact(tmp_path: Path) -> No
         }
         assert manifest["freeze_hashes"][relative] == new_sha256
 
-    # Every frozen entry outside both re-freezes stays byte-identical to
-    # revision 2. This keeps the later demo-login refreeze from widening the
-    # revision-3 change set.
-    touched = set(expected) | DEMO_LOGIN_FILES
+    # Every frozen entry outside the later re-freezes stays byte-identical to
+    # revision 2. This keeps each later re-freeze from widening the revision-3
+    # change set.
+    touched = set(expected) | DEMO_LOGIN_FILES | QUALITY_REFREEZE_FILES
     unchanged = sorted(
         (path, digest) for path, digest in manifest["freeze_hashes"].items() if path not in touched
     )
     unchanged_digest = hashlib.sha256(
         json.dumps(unchanged, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).hexdigest()
-    assert unchanged_digest == ("be14af3147e05e4523fab5124ce48426f0171b4c095fe27e3ea3667e88346a7b")
+    assert unchanged_digest == ("fd7f1991584e2722d703015f2895c1fcbd4dd69ee1f6bd472bf22c38491235b8")
 
     # Prior re-freeze history remains available rather than being rewritten.
     assert manifest["protocol_refreeze"]["files"]
@@ -213,8 +224,8 @@ def test_revision_4_demo_login_refreeze_metadata_is_exact(tmp_path: Path) -> Non
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 4
-    assert manifest["freeze_revision"] == 4
+    assert artifacts.freeze_revision == 5
+    assert manifest["freeze_revision"] == 5
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -269,12 +280,12 @@ def test_revision_4_demo_login_refreeze_metadata_is_exact(tmp_path: Path) -> Non
     unchanged = sorted(
         (path, digest)
         for path, digest in manifest["freeze_hashes"].items()
-        if path not in DEMO_LOGIN_FILES
+        if path not in DEMO_LOGIN_FILES | QUALITY_REFREEZE_FILES
     )
     unchanged_digest = hashlib.sha256(
         json.dumps(unchanged, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).hexdigest()
-    assert unchanged_digest == "98312b7b971e16b5c55687442c059ae1dd840cabb11db6d7d659ea2403f395ca"
+    assert unchanged_digest == "dd6f8c903334144c09fffb330cb6e0d2ada1584f63bccd1cf3b2e125a3dc668c"
 
     # Earlier refreeze history remains available rather than being rewritten.
     assert manifest["engineering_refreeze"]["files"]
@@ -287,6 +298,94 @@ def test_revision_4_demo_login_refreeze_metadata_is_exact(tmp_path: Path) -> Non
     # Revision 3 is now rejected as stale.
     stale = json.loads(json.dumps(manifest))
     stale["freeze_revision"] = 3
+    stale_manifest = tmp_path / "stale_revision_manifest.json"
+    stale_manifest.write_text(json.dumps(stale), encoding="utf-8")
+    with pytest.raises(acceptance.FreezeVerificationError, match="freeze revision"):
+        acceptance.verify_frozen(
+            dataset_path=acceptance.DATASET_PATH,
+            manifest_path=stale_manifest,
+        )
+
+
+def test_revision_5_h05_h08_quality_refreeze_metadata_is_exact(tmp_path: Path) -> None:
+    artifacts = acceptance.verify_frozen()
+    manifest = artifacts.manifest
+
+    assert artifacts.freeze_revision == 5
+    assert manifest["freeze_revision"] == 5
+    assert manifest["state"] == "frozen_prepared_not_run"
+    assert artifacts.freeze_count == 203
+    assert len(manifest["freeze_hashes"]) == 203
+    assert manifest["dataset_sha256"] == (
+        "ae13159484b31dde3bc6c63db9060169b2b6971b002d8b03e569c62707c256da"
+    )
+    assert artifacts.dataset_sha256 == manifest["dataset_sha256"]
+
+    refreeze = manifest["quality_refreeze"]
+    assert refreeze["parent_revision"] == 4
+    assert refreeze["parent_source_commit"] == "4c218ac14a5ca4cc260d0691e9e615e77cae1e30"
+    assert refreeze["parent_manifest_sha256"] == (
+        "281bcbafc076b2917a732a308f7b9e6cd80efd7d6722724f7c50d646e5b7e51e"
+    )
+    assert refreeze["model_evaluation_status"] == "not_run_for_revision_5"
+    assert set(refreeze["files"]) == QUALITY_REFREEZE_FILES
+
+    expected = {
+        "app/agents/nodes/generate.py": (
+            "07888a1ef43b0d4440bb41f55c263aefd3f29259696571ff80620ba5e7d1d201",
+            "7a782bbc292b59b93c869eafaada30058e7f60d353546e3d149e312f7b959fc6",
+        ),
+        "app/agents/nodes/retrieval.py": (
+            "324842136174e2fff8d8cc9e94006931337e4e571adb4f6730a8ed6088f3e81b",
+            "9e0fd9cfd0e40da8526c75e54e98e30772fa4c53a845ef2948ec7ce74341ca16",
+        ),
+        "app/retrieval/bm25.py": (
+            "1f51eebaa5aca38997db7d8f163d74987a9ce5ce306dd90277e06eff0a94a87a",
+            "412b08d1fe9db910655cc97f417dae0e9e8acac7ebef38e865d79598bbcab7ad",
+        ),
+        "app/retrieval/hybrid.py": (
+            "d8caa412aa6bb337e58ab4902968c1b4f640bf4105585ff68c003a822f35badb",
+            "29633a41ab16555e391bebf53933d6bb68a2402b32b1014ca53cbe4636d340d2",
+        ),
+        "app/retrieval/policy.py": (
+            "4c05b14262b67a289a4c7673ce19d5b1586f2ef76c83a658d6ad95884caf2a4b",
+            "7c2a202dc53cd71726623e151f12d9a0f9a0ef4db3177c10aba1e789efe58f39",
+        ),
+        "app/services/after_sales/service.py": (
+            "5a72aa4534b29284e43ddeb06d1ba0706ec17413d96100350137bb25bf4a2cdc",
+            "c3f200c61c1fef5d6e99adafb65ff28ba2284ba35b6091cfd04a28f1d7d035e2",
+        ),
+    }
+    for relative, (old_sha256, new_sha256) in expected.items():
+        assert refreeze["files"][relative] == {
+            "old_sha256": old_sha256,
+            "new_sha256": new_sha256,
+        }
+        assert manifest["freeze_hashes"][relative] == new_sha256
+
+    # Every other entry stays byte-identical to revision 4.
+    unchanged = sorted(
+        (path, digest)
+        for path, digest in manifest["freeze_hashes"].items()
+        if path not in QUALITY_REFREEZE_FILES
+    )
+    unchanged_digest = hashlib.sha256(
+        json.dumps(unchanged, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    assert unchanged_digest == "135c08360e183a07936a99adaeb746d62ee28134fa3c79aca864f9bc3faa83ec"
+
+    # Prior protocol, fixture, engineering and demo-login history is preserved.
+    assert manifest["protocol_refreeze"]["files"]
+    assert manifest["fixture_protocol_refreeze"]["prior_fixture_invalid_cases"] == [
+        "H07",
+        "H08",
+    ]
+    assert manifest["engineering_refreeze"]["files"]
+    assert manifest["demo_login_refreeze"]["files"]
+
+    # Revision 4 is now rejected as stale.
+    stale = json.loads(json.dumps(manifest))
+    stale["freeze_revision"] = 4
     stale_manifest = tmp_path / "stale_revision_manifest.json"
     stale_manifest.write_text(json.dumps(stale), encoding="utf-8")
     with pytest.raises(acceptance.FreezeVerificationError, match="freeze revision"):

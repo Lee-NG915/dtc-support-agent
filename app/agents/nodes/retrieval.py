@@ -8,7 +8,11 @@ from app.agents.state import AgentState
 from app.config.settings import Settings
 from app.core.enums import RetrievalStrategy
 from app.retrieval.hybrid import HybridRetriever
-from app.retrieval.policy import merge_policy_review_chunks
+from app.retrieval.policy import (
+    merge_policy_review_chunks,
+    merge_policy_topic_chunks,
+    policy_topic_hints,
+)
 from app.retrieval.query_rewrite import QueryRewriter
 from app.retrieval.reranker import DocumentReranker
 from app.retrieval.self_rag import SelfRAGLoop
@@ -47,6 +51,21 @@ async def retrieval_node(
         chunks = await reranker.rerank(query, list(by_id.values()), top_n=settings.rerank_top_n)
     review_chunks = retriever.matching_review_chunks(query, scope=scope)
     chunks = merge_policy_review_chunks(chunks, review_chunks)
+    # Anomaly wording is matched deterministically, not via model intent or
+    # rewriting. Each hint recalls only its trusted-scope document topic; the
+    # merge appends a bounded, deduplicated supplement without disturbing the
+    # ranked results or review evidence above.
+    topic_chunks: list[RetrievedChunk] = []
+    for hint in policy_topic_hints(query):
+        topic_chunks.extend(
+            retriever.matching_topic_chunks(
+                hint.query,
+                document_topic=hint.document_topic,
+                scope=scope,
+                limit=2,
+            )
+        )
+    chunks = merge_policy_topic_chunks(chunks, topic_chunks)
     latency = state.get("latency") or LatencyBreakdown()
     latency.retrieval_ms = (time.perf_counter() - started) * 1000
     return {
