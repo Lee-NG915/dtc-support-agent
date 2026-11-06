@@ -83,4 +83,6 @@ DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sa
 
 H05/H08质量与CI增量（2026-11-06，本地验收并推送`e7cd20e`）：`app/retrieval/`增加异常政策主题补召回；缺件答案从真实faults-missing段补齐材料清单和引用。员工建议模型不再接收原始`*_minor`，只接收服务端`order_amounts`展示字符串；minor误写或缺少总额fail closed。冻结revision5；696 passed/5 skipped/82.29%，mypy150，Ruff231。真实DeepSeek重跑35/64 calls、25619 tokens，生成6/6满足冻结断言；H04/H06确定性转人工仍1/2/1。仅已看过v1回归，不是独立holdout。DTC push run42184894521和PR run42184900472四任务均success。
 
-当前验收进度（2026-11-06）：六故事服务层与跨系统丢响应备份恢复已独立验证；两仓Compose空feed独立通过。真实模型revision5已执行并人工复核H05/H08修复，生成6/6满足当前回归集；尚未建立新的独立holdout、Faithfulness全集或真实试用。独立Chromium页面四组与精确清理已独立验收，默认单测不需Node/engine；操作入口见部署指南。最新有效计数与失败保留在[流程记录](../docs/records/after-sales/dtc-workflow.md)，不以本档案历史计数代替当前成绩。
+独立holdout v2增量（2026-11-06，本地验收并推送`6784f9e`）：受控`--holdout v1|v2`、独立manifest/SHA/版本校验；v2为运行前新写12例。唯一真实运行38/64 calls、26567 tokens，生成6/6满足冻结断言，H05/H06确定性转人工1/2/1，工程4/4。v2结果未回改v2；未来优化需新建v3。
+
+当前验收进度（2026-11-06）：六故事服务层与跨系统丢响应备份恢复已独立验证；两仓Compose空feed独立通过。真实模型revision5与独立v2均已执行并人工复核，v2生成6/6满足当前冻结子集；80/40全集、独立Faithfulness固定集、容量和真实试用仍未验收。独立Chromium页面四组与精确清理已独立验收，默认单测不需Node/engine；操作入口见部署指南。最新有效计数与失败保留在[流程记录](../docs/records/after-sales/dtc-workflow.md)，不以本档案历史计数代替当前成绩。

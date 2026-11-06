@@ -104,3 +104,11 @@ revision5把已发现的H05/H08转为确定性回归后重新执行。H05增加�
 2026-11-06 revision5真实报告`eval/reports/after_sales_acceptance_20261106T075849Z.json`：35/64次DeepSeek调用、21567 prompt + 4052 completion = 25619 tokens，8条模型场景全部observed、0 failed/protected not-run，4条工程守卫通过。人工复核生成6例H01/H02/H03/H05/H07/H08均完全满足冻结断言；H05已包含配件合照、包装清单、全部包材和缺少部件并引用SG faults-missing，H08内部摘要准确写`SGD 137.95`且无伪引用/写权限。H04/H06仍是安全的确定性转人工，但下一步不够具体，单独保持1/2/1部分结果。首次同候选运行在H01意图/复杂度阶段遇到两次Provider错误后停止，原报告保留，不当作质量结果。对应提交`e7cd20e`的DTC push CI42184894521与PR CI42184900472均通过Node24前端、Python3.11/3.12和专用PostgreSQL任务。
 
 这6/6只表示已查看并转成回归的12例子集在该候选上满足冻结断言，不是未见holdout、80/40全集、生产准确率或员工采用率。后续仍需独立新 holdout、Faithfulness 固定集、容量和真实试用；员工必须核对原订单金额、证据和草稿。
+
+## 独立 holdout v2
+
+`after_sales_holdout_v2.jsonl`在运行前独立编写并冻结，未使用v1或任何模型输出辅助出题。分区仍为6条政策图、2条员工建议、4条工程守卫；12个ID和fixture边界保持兼容，但H01-H08问题和断言全部替换。入口只允许受控的`--holdout v1|v2`，默认v1；manifest必须声明匹配的`holdout_version`，不接受任意路径。
+
+v2 dataset SHA-256为`d89a7ed8548602108f6bc5b5b41eebf0123789bbe5fa1ca9b29a94e4d894418e`，manifest复用revision5的203个app/knowledge源摘要，并在运行前记录`not_run_for_holdout_v2`。离线工程守卫4/4通过后才执行真实模型。
+
+唯一一次v2真实运行报告为`eval/reports/after_sales_acceptance_20261106T082544Z.json`（SHA-256 `6a8157c8b88aeb4985e849d975ddfdf09c29f08f0bc8c06bcc1e264e05f57c92`）：38/64次DeepSeek调用，22380 prompt + 4187 completion = 26567 tokens；8个模型场景全部observed，0 failed/not-run，4个工程守卫通过。人工复核H01/H02/H03/H04/H07/H08生成6例全部满足；H05/H06仍是安全但不够具体的确定性转人工，各1/2/1。v2失败或部分结果未用于修改v2本身；未来优化需要新建v3，不能继续称v2为未见数据。
