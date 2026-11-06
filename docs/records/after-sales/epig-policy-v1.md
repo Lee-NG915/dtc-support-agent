@@ -85,7 +85,9 @@ Faithfulness 改写、checker 不可用和最终不支持拒答均由代码恢�
 | US 家具保修真实 HTTP | HTTP 200，包含 3 年、demo 声明和 US `internal_demo` warranty 引用 |
 | SG 家具保修真实 HTTP | HTTP 200，包含 2 年、demo 声明和 SG `internal_demo` warranty 引用 |
 
-三条 HTTP 请求经过实际图和生成后处理，但只是三市场冒烟，不替代完整图固定集、Faithfulness 固定集或故障注入。历史隔离修复后曾再次重启 8003 并复验；本轮 Codex 修复完成后又停止旧 8003 进程、启动最新代码，并复验 `/health`、`/ready`、`/capabilities` 均为 HTTP 200，AU 家具保修返回 4 年、demo 声明和 AU `internal_demo` 引用。8002 原端口重启仍是本地操作阻塞项；当前可验证的新服务地址为 8003。
+三条 HTTP 请求经过实际图和生成后处理，但只是三市场冒烟，不替代完整图固定集、Faithfulness 固定集或故障注入。历史隔离修复后曾再次重启 8003 并复验；本轮 Codex 修复完成后又停止旧 8003 进程、启动最新代码，并复验 `/health`、`/ready`、`/capabilities` 均为 HTTP 200，AU 家具保修返回 4 年、demo 声明和 AU `internal_demo` 引用。8002 原端口重启仍是本地操作阻塞项。
+
+后续后台任务通知显示，承载 8003 的 uvicorn 任务已被停止；当前端口可用性尚未复验，不能继续把 8003 描述为活跃服务。上述 HTTP 结果保留为历史验证证据，后续需要时按协作规范交 Codex 重启并复验，本次没有自动重启。
 
 ## 5. Codex 双仓 Review 与剃刀裁决
 
