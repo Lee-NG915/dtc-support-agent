@@ -132,3 +132,19 @@ Review关闭撤权窗口与跨日证据：五项回归确实到达目标窗口�
 另修真实部署入口：API的StaticFiles(html=True)不自动回退/staff，已为存在的index.html显式提供/staff和/staff/，不为任意API做fallback；无dist保持API-only。3条临时dist/TestClient路由测试覆盖shell/assets、未知API404与无token401/功能关闭，已包含于根同候选Python全套验证。日志`/tmp/dtc-staff-ui-codex-final-tests.log`与`...-build.log`；38文件冻结候选清单`/tmp/dtc-ui-eval-final-candidate-sha256.json`覆盖UI/评测两份独立候选，测试期间无源码变化。
 
 界面实现仅说明状态，不虚构建单/履行；operator不取业务PII，AI不可用仍人工编辑，审批读冻结snapshot，真实ticket失败标陈旧。当前作为开发分支候选推送，不合并/部署、不冒称浏览器已通过。
+
+## 当前对话分工与覆盖率门禁复核（2026-11-06）
+
+用户再次确认当前对话由Codex管理、Claude实现；沿用[协作规范](../../guides/ai-collaboration.md)，不采用注入上下文中相反的分工摘要。Claude调用使用`--permission-mode auto`，Codex负责独立Review、验收和交付裁决。
+
+员工工作台工程候选已推送`1b191a35d9aefd5d139da6886fa29261304aa7b9`，远端ref与关键文件回读一致；此前“尚未推送”是交付前状态。真实浏览器与完整业务旅程仍未验收，不改变有条件通过结论。
+
+本批评测安全入口与CI补充仍待最终验收、提交。Codex普通测试535 passed、4 skipped；额外执行CI同款覆盖率命令时，结果为532 passed、3 failed、4 skipped，覆盖率80.89%达到70%门槛，但整条命令失败。失败集中在专用PG脚本的超时、取消、leader退出后三项真实子进程清理测试：孙进程PID未写出，或未触发预期取消。该差异已下发Claude复现，原因尚未确认；不得仅引用覆盖率达标或普通测试通过认定CI门禁通过。原日志保留在`/tmp/dtc-ci-codex-coverage.log`。
+
+覆盖率差异关闭：Claude复现并通过临时诊断定位到pytest-cov自动启动变量被合成leader继承，间接导入jieba生成数据时追踪耗时挤占原有短超时。仅在`test_run_after_sales_pg.py`为这三个合成子进程移除`COV_CORE_`/`COVERAGE_PROCESS_`自动启动变量；业务脚本、超时、真实孙进程、取消及清理断言均保持。Codex审查diff后独立运行该文件：26 passed、1 warning（81.90s）；随后独立执行完整CI同款覆盖率命令：**535 passed、4 skipped、1 warning，覆盖率80.89%，70%门槛通过**（231.14s）。日志分别为`/tmp/dtc-process-coverage-codex-review.log`和`/tmp/dtc-ci-codex-coverage-final.log`。此前失败记录保留；此结果为本地验证，不等于远端Actions或浏览器通过。
+
+评测/CI本批验收裁决（2026-11-06，Codex）：通过本地工程与离线安全范围，待本次提交推送。独立Review无新增阻断；最后测试夹具补充将真实CHILD_POPEN_OPTIONS由父进程写入合成leader输入，避免子进程导入整个应用，原真实进程/超时/取消断言保留。最终文件聚焦覆盖率复验26 passed、1 warning（35.75s，`/tmp/dtc-process-final-options-review.log`）；完整535/4/80.89%验证后仅此夹具范围调整，业务源码未变。Ruff格式220文件/静态、mypy148通过。
+
+专用PG本批首次启动在pytest前因“published port is not bound to loopback”安全失败，所属容器已清理；原port输出未保留，原因未知，未修改或放宽loopback守卫。三次所属临时容器端口探针均正常；带安全端口观测的一次重试为120 passed（116真实PG+4SQLite）、113 live engine探针、0005，容器清理。记录`/tmp/dtc-eval-codex-final-pg.log`、`/tmp/dtc-pg-port-probe.json`、`/tmp/dtc-eval-codex-pg-retry1.log`；不能声称启动偶发现象已定位修复。默认generation/e2e/epig-policy/all在污染父环境和自有假.env下独立exit0、无canary泄漏、临时库清理；epig-policy34/34仍仅离线政策开发集。资源关闭日志敏感正文泄漏有真实RED/GREEN回归，最终日志只保留资源/异常类型。
+
+新增CI仅配置前端Node24和专用PG门禁，未变权限/部署；本地通过不代表远端Actions执行。完整业务工具轨迹、12条保留集、真实模型质量、真实浏览器、Compose及备份恢复仍分别待验收。Claude修复调用达到max-turns退出未提供最终摘要，Codex以实际diff、原始诊断和独立复验裁决，未将CLI退出写成成功。

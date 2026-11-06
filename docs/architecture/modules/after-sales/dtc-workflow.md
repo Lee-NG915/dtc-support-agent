@@ -233,3 +233,18 @@ Worker在发送建单后被杀，数据库可能只知道“已经开始派遣�
 先读[StaffApp](../../../../frontend/src/staff/StaffApp.tsx)与[RequestGuard](../../../../frontend/src/staff/guard.ts)，再读DraftSection和ApprovalSection：generation绑定当前身份/市场，请求取消后迟到结果仍须检查；baseRevision是编辑依据的服务端版本，自动刷新不代表用户看过新版；编辑序号保护“保存A期间输入B”不能被A的回包误标已保存。审批内容来自冻结snapshot，批准后仍显示等待真实回执。`SELF_APPROVAL_FORBIDDEN`是明确业务拒绝，会话保留以展示原因；其他身份/市场失效的401/403会清理页面与附件。
 
 运行`npm --prefix frontend test`及`npm --prefix frontend run build`检查组件行为和编译；`tests/unit/test_staff_entry_route.py`使用临时dist验证/staff和未知API404、无token拒绝。预期包含真实登录/退出、旧重试不借新身份、409保持输入、背景刷新不静默重基、晚编辑保存后仍需再保存才能送审。jsdom结果不证明真实320px布局、键盘可用性或跨仓旅程；这些保留在后续验收清单，不预先勾选。
+
+
+## 评测安全入口交付范围
+
+默认eval显式离线Settings、新临时SQLite和确定性依赖，不读取应用.env或继承既有业务目标；generation标未测模型质量，e2e仅离线图plumbing。真实评测需显式允许、Provider/model及cases/calls上限；调用上限不是费用保证。报告记录实际任务覆盖、源码候选digest、数据/知识与prompt版本，旧关键词工具指标明确为legacy proxy。初始化失败/取消关闭已取得资源，关闭失败日志仅记录资源/异常类，不带异常正文或URL。使用与边界以[评测指南](../../../10-evaluation.md)为准；本批不实现完整业务工具轨迹或保留集。
+
+## 隔离部署交付实施顺序（计划）
+
+业务问题是维护者能否从干净源码启动可核对版本的API/Worker，并在任务中断后恢复。直接沿用旧SQLite单API Compose缺少迁移/Worker；新增通用部署框架维护面过大。选择复用Dockerfile/Compose，另设明确命名的本地售后演示配置，不改变既有启动入口的语义。
+
+第一步仅交付DTC部署基础：镜像按uv.lock安装，包含Alembic配置/迁移；独立PostgreSQL16健康后显式一次性迁移，API与Worker依赖迁移成功。绑定主机端口仅loopback、默认不读取.env/应用密钥、无云服务/生产写入；标注Fake Connector只能验证启动，不能当跨进程共享外部业务存储。凭据不写镜像或输出配置。构建上下文排除.env及变体、.work、数据、报告和凭据目录；输出镜像版本/迁移head，健康仅声明实测范围。
+
+第二步在两仓各自新建合成数据库，以真实E-pig HTTP连接完成演示；不得用DTC/E-pig共享业务表，也不得把两个进程各自Fake当成同一外部系统。第三步针对所属新库做备份恢复到另一新目标，先停止Worker并核对原key/原批准/源回执再恢复执行；备份早于审批造成的历史缺失必须转人工，不补造审批。备份不是两仓分布式原子快照，不承诺零数据丢失。
+
+本章验收逐项提供真实构建、迁移、健康、Worker一次轮询、隔离与清理、备份恢复和跨仓故事证据；未完成部分保留计划。继续使用现有框架，不引入队列、Kubernetes、心跳平台或任意命令/数据库目标执行器。

@@ -1,120 +1,66 @@
 # 10 · 评测与回归
 
-> 一句话：改 Prompt 或切分后必须跑全集；简历数字只能来自 `eval/runner` 与 [`MEASURED.md`](../eval/MEASURED.md)。完整口径、消融与路径表见 [14 · 测评报告](14-evaluation-report.md)。
-
-## 本章目录
-
-1. [命令与数据集](#命令与数据集)
-2. [指标怎么算](#指标怎么算)
-3. [已测量](#已测量须与代码一起引用)
-4. [可以写 / 不能写](#简历可以写--不能写)
-5. [口径陷阱](#口径陷阱面试主动说)
-6. [CI](#ci-建议)
-
-对应：`eval/runner.py`、`eval/metrics.py`、`eval/dataset/`。
+更新日期：2026-11-06。当前入口默认离线；工程守卫、Fake流程、真实模型质量和实际试用分别记证据。完整项目进度见[项目方案](project-plan.md)，实际验证见[流程记录](records/after-sales/dtc-workflow.md)。[旧测评报告](14-evaluation-report.md)与[MEASURED](../eval/MEASURED.md)保留历史来源，不作为本fork的新成绩。
 
 ## 命令与数据集
 
+在项目根目录、安装原锁定开发依赖后运行：
+
 ```bash
-python -m eval.runner --task all --llm
-python -m eval.runner --task retrieval          # CI；装了 .[rerank] 且能加载权重时含 Cross-Encoder
-python -m eval.runner --task intent --llm
-python -m eval.runner --task generation --llm
-python -m eval.runner --task e2e --llm
+.venv/bin/python -m eval.runner --task intent
+.venv/bin/python -m eval.runner --task retrieval
+.venv/bin/python -m eval.runner --task epig-policy
+.venv/bin/python -m eval.runner --task generation
+.venv/bin/python -m eval.runner --task e2e
+.venv/bin/python -m eval.runner --task all
 ```
 
-报告：`eval/reports/*.json`（git 忽略）。
+默认使用显式`Settings(_env_file=None)`、HashEmbedding、词法重排、Offline/Fake及新临时SQLite；不读取应用.env、不继承已有数据库/Provider/EPIG目标，不下载本地模型。generation默认明确未测质量，e2e只验证离线图能运行；all执行intent/retrieval/generation/e2e，**不包含epig-policy**，需另运行对应命令。报告的task_coverage以实际执行为准。
 
-| 文件 | 用途 | 条数 |
-|---|---|---|
-| `eval/dataset/intent_100.jsonl` | 14 类意图 | 100 |
-| `eval/dataset/rag_eval.jsonl` | 政策检索 + 关键词 | 65 |
-| `eval/dataset/e2e_eval.jsonl` | 注入/订单/政策 | 16 |
+| 文件 | 作用与边界 |
+|---|---|
+| `intent_100.jsonl` | 既有意图开发集；默认规则/覆盖层，不是本fork真实模型保留集 |
+| `rag_eval.jsonl` | 既有65条检索回归；离线Hash向量/词法与真实embedding/CE分别报告 |
+| `epig_policy_eval.jsonl` | 34条AU/US/SG内部演示政策开发回归；不是holdout或完整Agent成绩 |
+| `e2e_eval.jsonl` | 既有16条upstream_demo问答；不是员工售后六故事的整体验收 |
+
+10个业务开发/演示种子与12条独立保留集的规划在[流程设计](architecture/modules/after-sales/dtc-workflow.md)。后者须在prompt/知识/参数冻结后准备；若用其失败调参，该集转为回归集，另建保留样例。
+
+## 真实模型的显式入口
+
+当前项目尚未确认真实评测Provider、模型与累计预算，默认不执行。旧`--llm`单独会安全失败；不能再用它或应用.env隐式启用收费调用。
+
+当前编码支持DeepSeek显式路径，运行前必须确认以下配置：
+
+| 配置 | 含义 |
+|---|---|
+| `--allow-real-model` | 明确进入真实调用路径；省略时保持离线 |
+| `--provider`、`--model` | 明确本次已确认的Provider/模型，不根据机器现有配置猜测 |
+| `--max-cases`、`--max-calls` | 案例和模型调用数量上界，必须为正数 |
+| `--max-output-tokens` | 单次输出token上界；这些是调用限制，不是Provider硬计费上限 |
+| `DTC_EVAL_DEEPSEEK_API_KEY` | 专用凭据，仅显式真实路径读取；不读应用DEEPSEEK_API_KEY/.env，禁止贴入对话或报告 |
+| `DTC_EVAL_DEEPSEEK_BASE_URL` | 可选的专用Provider地址；不作为业务Connector目标 |
+
+先核对模型、当前计费和预算，再配置专用环境变量。真实路径的运行还需逐例核对事实/引用/可执行性，不能仅靠同模型裁判。当前真实成本、质量、Faithfulness和用户效率均未由本次离线结果证明。
 
 ## 指标怎么算
 
-文档级：chunk 的 `document_id` 去掉 `_{index}` 得到 stem，与 `relevant_doc_ids` 比。
+检索按实际document/chunk匹配计算Precision@k、Recall@k、MRR；准确率需要同时给分子、分母和集合版本。规则检索成绩可以报告，不能把Hash向量叫真实embedding或把词法重排叫Cross-Encoder；本入口默认不会因装了模型依赖而自动加载CE。
 
-### 代码摘要
+模型质量仅在实际真实输出与评分执行后讨论。零调用、纯规则review门控、预算截断和错误分别列出，报告质量完整度full/partial/none；配置了real不等于质量已测。关键词命中只说明词面覆盖，旧e2e的`legacy_answer_keyword_proxy`不证明实际工具名、参数或调用次数正确，真实工具trace另行验收。生成成功也不等于已获人工批准或工单已核验。
 
-```python
-# eval/metrics.py
-def precision_at_k(relevant: set[str], retrieved: list[str], k: int) -> float:
-    top = retrieved[:k]
-    return sum(item in relevant for item in top) / len(top)
+## 报告与复算
 
-def recall_at_k(relevant: set[str], retrieved: list[str], k: int) -> float:
-    return sum(item in relevant for item in retrieved[:k]) / len(relevant)
+报告写入忽略目录`eval/reports/{task}_{UTC}.json`及latest索引，不默认入Git。检查run中的mode/provider/model、实际task_coverage、measured/not_measured、源码commit与工作区digest/dirty说明、数据/知识digest和prompt版本。未提交代码不属于报告中的HEAD，需结合候选digest/最终提交核对；Git不可用写unknown。报告不存凭据、数据库URL或完整设置。
 
-def mrr(relevant: set[str], retrieved: list[str]) -> float:
-    for rank, item in enumerate(retrieved, start=1):
-        if item in relevant:
-            return 1.0 / rank
-    return 0.0
-```
+涉及DB的e2e只操作本次新临时SQLite，容器构建失败/取消和正常结束都关闭已取得资源，再清理所属目录。临时报告不承诺长期保留；稳定记录保存版本、命令、结果与失败边界，不删除旧失败。
 
-意图：`accuracy = 命中数 / 100`。生产评测跑 `intent_v3` + overlay。  
-生成：幻觉 = 忠实度裁判 `supported=false`。相对下降 = `(naive - checked) / naive`。裁判与生成器同模型，**偏乐观**；关键词命中更独立。
+## 已测量与可以使用的结论
 
-检索评测在未加载 Cross-Encoder 时**不会**把词面 overlap 标成 Cross-Encoder。
+以[当前流程记录](records/after-sales/dtc-workflow.md)的版本和运行范围为准。Fake、规则/检索、真实模型、HTTP/PG、浏览器、真实试用各自证明对应层次；不要合成一个“Agent通过率”。历史Koala/Kimi、DeepSeek生成节点、CE与旧问答数字保留各自来源，不能转作本fork的新收益或完整图成绩。
 
-## 已测量（须与代码一起引用）
+## CI与变更验证
 
-**意图**（DeepSeek `deepseek-chat`，100 条）
+先选受影响单元/集成检查；权限、事务、模型入口或依赖有实质变化时跑必要全套。政策/知识变更执行epig-policy及相关检索检查，prompt变更冻结候选并运行开发回归；真实模型和保留集需独立配置/记录。CI没有运行不写通过，本地工程测试不替代浏览器或业务验收。
 
-| 版本 | 准确率 |
-|---|---|
-| 关键词规则 | 51% |
-| `intent_v1`（无覆盖，历史） | 85% |
-| `intent_v2`（无覆盖，历史） | 86% |
-| 仅歧义覆盖层 | **100%** |
-| `intent_v3` + 覆盖（生产） | **100%** |
-
-**检索**（65 条，39 篇；**已加载 `bge-small-zh-v1.5` + Cross-Encoder**）
-
-| 系统 | Precision@1 | Recall@3 | MRR |
-|---|---|---|---|
-| BM25 | 76.9% | 90.0% | 0.84 |
-| 仅 `bge-small-zh-v1.5` | 83.1% | 94.6% | 0.89 |
-| BM25 + small + RRF | 83.1% | 94.6% | 0.89 |
-| Hybrid + Cross-Encoder | **89.2%** | **97.7%** | **0.94** |
-
-P@1 / R@3 落在简历常用的 58%–85% / 63%–91%（CE 已超出上沿，面试报实测即可）。CE 相对 BM25：+12.3 / +7.7 个百分点。同日 hash 对照仅向量 Hit@1 3.1%。
-
-**生成 / 幻觉**（65 条，同模型裁判）
-
-| | Faithfulness | 幻觉率 | 关键词命中 |
-|---|---|---|---|
-| 无检索 | 80.0% | 20.0% | 36.9% |
-| RAG | 96.9% | 3.1% | 95.4% |
-| RAG + LLM 自纠错 | **100%** | **0%**（&lt;4%） | 95.4% |
-
-无检索 Faithfulness 80% 落在 54%–88%；幻觉相对下降 100%（≥62%）。
-
-**E2E**（16 条，2026-08-22 12:13Z）：拒答 / 工具路径 100%；关键词 **9/11（81.8%）**；P50 **4.9s** / P95 **5.8s**。
-
-## 简历可以写 / 不能写
-
-**可以：** 规则 51% → intent_v3+覆盖 100%；仅 small P@1 83.1%、R@3 94.6%；Hybrid+CE P@1 89.2%、R@3 97.7%；BM25 76.9% / 90% / 0.84；无检索幻觉 20% → RAG+自纠错 0%。
-
-**不能：** 把本轮 E2E 关键词写成 100%；把稠密路写成 bge-m3；把 RRF 说成本集上优于仅 small。
-
-## 口径陷阱（面试主动说）
-
-1. 生产意图 = LLM JSON + 覆盖层；覆盖针对稳定中文歧义，不是按 query id 写死。
-2. Faithfulness 同模型裁判偏乐观。
-3. 稠密路是 `bge-small-zh-v1.5`，不是 bge-m3；本集上 RRF 没有超过仅 small。
-4. pytest 不打真实 LLM。
-
-## CI 建议
-
-- PR：`pytest -q` + `python -m eval.runner --task retrieval`
-- Prompt 变更：`--task intent --llm`，看 `mismatches`
-- 知识库变更：先改 `rag_eval.jsonl` 金标
-- 配上 Cross-Encoder：报告里必须出现 `hybrid+cross-encoder`
-
----
-
-完整测评报告：[14](14-evaluation-report.md)。
-
-上一章 [09](09-security.md) · 下一章 [11 · 部署](11-deployment.md)
+上一章[09 · 安全](09-security.md) · 下一章[11 · 部署](11-deployment.md)

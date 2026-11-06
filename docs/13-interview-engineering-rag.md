@@ -1,5 +1,7 @@
 # 面试官：你这 RAG 是 Demo 还是能上线的？
 
+> 当前边界（2026-11-06）：本篇的上游历史问答和数字不作为本fork新增成绩。当前评测默认离线，真实模型和预算配置见[评测指南](10-evaluation.md)。
+
 > 对照仓库：Adaptive-RAG 电商客服。数字来自 `eval/MEASURED.md`（2026-08-22，DeepSeek `deepseek-chat` + Cross-Encoder）。没跑过的数字本文不写。想按 zero2Agent 考察维度对照项目板块和代码，用 [16 · 项目面试地图](16-interview-bagu-map.md)。
 
 ## 一场面试带来的思考
@@ -340,9 +342,9 @@ def assert_permitted(tool, *, confirmed: bool) -> None:
 
 ```bash
 python -m eval.runner --task retrieval          # CI，可无网
-python -m eval.runner --task intent --llm
-python -m eval.runner --task generation --llm
-python -m eval.runner --task e2e --llm
+python -m eval.runner --task intent       # 默认规则；真实模型按第10章显式配置
+python -m eval.runner --task generation   # 默认未测模型质量
+python -m eval.runner --task e2e          # 默认隔离离线plumbing
 ```
 
 文档级 P@k / R@k：chunk 的 `document_id` 去掉后缀 stem，再和 `relevant_doc_ids` 比。

@@ -652,35 +652,57 @@ def test_run_pytest_isolated_detects_leader_exit_with_live_child(runner: Any) ->
 # options, rather than testing killpg in isolation.
 # ---------------------------------------------------------------------------
 
+# The real CHILD_POPEN_OPTIONS are passed in as JSON rather than imported inside
+# the leader: importing the integration module pulls in the whole app and
+# jieba's generated tables (~1.6s, or ~60s when a coverage hook is inherited),
+# which races the deliberately short timeout/cancellation bounds these tests
+# exercise. The grandchild and its real startup options stay the same.
 _GROUP_LEADER = """\
+import json
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, {root!r})
-from tests.integration.test_after_sales_pg_concurrency import CHILD_POPEN_OPTIONS
-
 pid_path = Path(sys.argv[1])
+options = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
 child = subprocess.Popen(
     [sys.executable, "-c", "import time; time.sleep(60)"],
-    **CHILD_POPEN_OPTIONS,
+    **options,
 )
 pid_path.write_text(str(child.pid), encoding="utf-8")
 {suffix}
 """
 
 
-def _write_group_leader(tmp_path: Path, *, keep_running: bool) -> Path:
+_COVERAGE_ENV_PREFIXES = ("COV_CORE_", "COVERAGE_PROCESS_")
+
+
+def _isolated_env() -> dict[str, str]:
+    """Drop pytest-cov's auto-start variables from synthetic leader processes.
+
+    ``pytest-cov.pth`` starts coverage in every Python subprocess that inherits
+    ``COV_CORE_*``. Tracing the import of jieba's generated tables turns the
+    leader's ~1.6s startup into ~60s, which races these tests' deliberately
+    short timeout/grace settings. Coverage of the synthetic leader is not what
+    these tests assert, so it must not leak into the child environment.
+    """
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(_COVERAGE_ENV_PREFIXES)
+    }
+
+
+def _write_group_leader(tmp_path: Path, *, keep_running: bool) -> tuple[Path, Path]:
     script = tmp_path / "leader.py"
     script.write_text(
-        _GROUP_LEADER.format(
-            root=str(ROOT),
-            suffix="time.sleep(60)\n" if keep_running else "",
-        ),
+        _GROUP_LEADER.format(suffix="time.sleep(60)\n" if keep_running else ""),
         encoding="utf-8",
     )
-    return script
+    options_path = tmp_path / "child_options.json"
+    options_path.write_text(json.dumps(pg_concurrency.CHILD_POPEN_OPTIONS), encoding="utf-8")
+    return script, options_path
 
 
 def _read_grandchild_pid(path: Path, *, timeout: float = 15.0) -> int:
@@ -750,14 +772,14 @@ def test_pg_child_spawn_inherits_the_pytest_process_group(
 
 
 def test_runner_timeout_kills_pg_grandchild_in_the_same_group(runner: Any, tmp_path: Path) -> None:
-    script = _write_group_leader(tmp_path, keep_running=True)
+    script, options = _write_group_leader(tmp_path, keep_running=True)
     pid_path = tmp_path / "grandchild.pid"
     started = time.monotonic()
     try:
         result = runner.run_pytest_isolated(
-            [sys.executable, str(script), str(pid_path)],
+            [sys.executable, str(script), str(pid_path), str(options)],
             cwd=ROOT,
-            env=os.environ,
+            env=_isolated_env(),
             state=runner.SignalState(),
             timeout=3.0,
             group_grace=0.5,
@@ -776,7 +798,7 @@ def test_runner_timeout_kills_pg_grandchild_in_the_same_group(runner: Any, tmp_p
 def test_runner_cancellation_kills_pg_grandchild_in_the_same_group(
     runner: Any, tmp_path: Path
 ) -> None:
-    script = _write_group_leader(tmp_path, keep_running=True)
+    script, options = _write_group_leader(tmp_path, keep_running=True)
     pid_path = tmp_path / "grandchild.pid"
     state = runner.SignalState()
     cancelled = threading.Event()
@@ -795,9 +817,9 @@ def test_runner_cancellation_kills_pg_grandchild_in_the_same_group(
     try:
         with pytest.raises(runner.RunnerCancelled):
             runner.run_pytest_isolated(
-                [sys.executable, str(script), str(pid_path)],
+                [sys.executable, str(script), str(pid_path), str(options)],
                 cwd=ROOT,
-                env=os.environ,
+                env=_isolated_env(),
                 state=state,
                 timeout=30.0,
                 group_grace=0.5,
@@ -814,14 +836,14 @@ def test_runner_cancellation_kills_pg_grandchild_in_the_same_group(
 
 
 def test_runner_reaps_pg_grandchild_after_pytest_leader_exits(runner: Any, tmp_path: Path) -> None:
-    script = _write_group_leader(tmp_path, keep_running=False)
+    script, options = _write_group_leader(tmp_path, keep_running=False)
     pid_path = tmp_path / "grandchild.pid"
     started = time.monotonic()
     try:
         result = runner.run_pytest_isolated(
-            [sys.executable, str(script), str(pid_path)],
+            [sys.executable, str(script), str(pid_path), str(options)],
             cwd=ROOT,
-            env=os.environ,
+            env=_isolated_env(),
             state=runner.SignalState(),
             timeout=10.0,
             group_grace=0.5,

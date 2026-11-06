@@ -2,14 +2,15 @@
 
 基于 [Adaptive-rag](https://github.com/JEen-wang/Adaptive-rag) 扩展的 DTC 电商售后 Agent。首期计划围绕订单查询、政策检索、工单草稿、人工审批与工单创建，完善身份权限、持久任务、幂等执行和效果评测。
 
-**当前状态（2026-11-05）：E-pig synthetic demo 政策增量与售后 v1 候选契约已实现并完成本地验证；完整售后工作台、持久审批和真实跨仓联调尚未实现。**
+**当前状态（2026-11-06）：E-pig持久运行时、DTC员工身份/证据/草稿/持久审批、Worker与真实HTTP提交后崩溃恢复已阶段验收；员工前端已工程检查并推送候选，实际浏览器/完整旅程尚未验收。**
 
-- 当前政策为 AU/US/SG 共 18 篇内部自编演示条款，非官方或生产批准。最终全量测试为 **242 passed、覆盖率 80%**，固定离线集 **34/34**；DeepSeek Flash 生成节点评测本轮最后两次为 **33/34、34/34**，不代表完整 LangGraph 或 Faithfulness 固定集通过。详见[验证记录](docs/records/after-sales/epig-policy-v1.md)。
-- 售后 v1 候选包含 **13 个操作、49 个共享 fixtures**，本地语义、隐私和 checksum 检查通过；E-pig 运行时 vendor 与联调仍待实现。详见[契约记录](docs/records/after-sales/epig-contract-v1.md)。
-- `127.0.0.1:8003` 已重启加载本轮代码并通过健康、就绪、能力和 AU 政策 HTTP 冒烟；8002 旧进程未重启。验证范围与提交身份分别以记录和 Git 历史为准。
+- 当前政策为AU/US/SG内部自编演示条款，非官方或生产批准；历史生成节点与本轮规则/检索、Fake、真实PG/HTTP分别报告，不外推完整Agent质量或业务收益。现状见[流程记录](docs/records/after-sales/dtc-workflow.md)，历史政策验证见[政策记录](docs/records/after-sales/epig-policy-v1.md)。
+- v1线路契约含13个操作、49个共享fixtures；E-pig持久HTTP运行时已有阶段验收。不可变vendor源锁与跨仓最新交付状态见[对接规范](docs/architecture/modules/after-sales/epig-contract.md)及对应Issue，不以本仓包存在代替freshness。
+- 员工入口为`/staff`，仅公开登录shell，业务API继续按员工角色/市场授权；真实浏览器工具当前阻塞，键盘/窄屏和完整旅程未测。评测默认离线、模型质量未测；显式真实模型配置与边界见[评测指南](docs/10-evaluation.md)。Compose/恢复演示继续按项目方案交付，尚无生产部署或真实试用。
+- 当前DTC分支未产生实际Actions run；工作流配置与本地通过是不同证据，不写远端CI通过。
 
 - [项目背景、MVP 范围与实施方案](docs/project-plan.md)
-- [Issue #1：实施进度与验收跟踪](https://github.com/Lee-NG915/dtc-support-agent/issues/1)
+- [Issue #2：当前跨仓售后开发与验收](https://github.com/Lee-NG915/dtc-support-agent/issues/2) · [Issue #1：原方案规划](https://github.com/Lee-NG915/dtc-support-agent/issues/1)
 - [学习路线：从前端经验理解售后 Agent](docs/learning/README.md)
 - [文档规范](docs/guides/documentation.md) · [开发技能用法与选择](docs/guides/skills.md) · [Claude / Codex 协作规范](docs/guides/ai-collaboration.md)
 - [技术文档目录](docs/README.md)

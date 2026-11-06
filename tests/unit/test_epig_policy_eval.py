@@ -41,6 +41,9 @@ async def test_epig_generation_eval_separates_model_calls_from_deterministic_gua
     assert result["fallback_answers"] == 0
     assert result["disclosure_failures"] == 0
     assert result["model_generation_tested"] is True
+    assert result["mode"] == "fake"
+    assert result["quality_measured"] is False
+    assert "model_output_quality" in result["not_measured"]
     assert result["full_graph_tested"] is False
     assert result["faithfulness_tested"] is False
     assert all("answer" not in case for case in result["cases"])

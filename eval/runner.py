@@ -1,24 +1,50 @@
-"""Offline eval harness for resume-quantifiable metrics.
+"""Offline-first evaluation harness.
 
-python -m eval.runner --task all --llm
-python -m eval.runner --task intent --llm
-python -m eval.runner --task retrieval
-python -m eval.runner --task epig-policy
-python -m eval.runner --task generation --llm
-python -m eval.runner --task e2e --llm
+Default tasks are deterministic and offline:
+
+    python -m eval.runner --task all
+    python -m eval.runner --task intent
+    python -m eval.runner --task retrieval
+    python -m eval.runner --task epig-policy
+    python -m eval.runner --task generation
+    python -m eval.runner --task e2e
+
+They construct ``Settings(_env_file=None)`` with empty provider keys, the
+offline LLM, hash embeddings, lexical reranking, no MCP/Redis/Qdrant/local
+models, a fake business connector and a fresh temporary SQLite database for
+graph tasks. A developer ``.env`` or production environment cannot turn a
+default run into a paid or networked evaluation.
+
+Real model calls are a separate, explicit path:
+
+    --allow-real-model --provider deepseek --model <model> \
+    --max-cases <n> --max-calls <n> [--max-output-tokens <n>]
+
+Credentials are read only from ``DTC_EVAL_DEEPSEEK_API_KEY`` (and optionally
+``DTC_EVAL_DEEPSEEK_BASE_URL``) on that path. The call/token limits are
+enforced eval guards, not billing guarantees.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
+import os
+import re
+import subprocess
+import tempfile
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import SecretStr
+
+from app.config.settings import Settings
 from eval.metrics import (
     accuracy,
     classification_report,
@@ -35,7 +61,25 @@ RAG_PATH = ROOT / "eval/dataset/rag_eval.jsonl"
 EPIG_POLICY_PATH = ROOT / "eval/dataset/epig_policy_eval.jsonl"
 E2E_PATH = ROOT / "eval/dataset/e2e_eval.jsonl"
 REPORT_DIR = ROOT / "eval/reports"
+KNOWLEDGE_DIR = ROOT / "knowledge"
 EPIG_DEMO_DISCLOSURE = "内部自编演示政策，非官方或生产批准"
+
+RULES_VERSION = "intent_rules_v1"
+OVERLAY_VERSION = "intent_overlay_v1"
+ANSWER_PROMPT_VERSION = "answer_v1"
+FAITHFULNESS_PROMPT_VERSION = "faithfulness_v1"
+RETRIEVAL_VERSION = "offline_hash_bm25_lexical_v1"
+EPIG_POLICY_VERSION = "epig-policy-v1"
+
+Mode = Literal["offline", "fake", "real"]
+_LLM_TASKS = {"all", "intent", "generation", "e2e", "epig-policy"}
+
+_SECRET_URL_RE = re.compile(r"\b(?:https?|postgres(?:ql)?|mysql|redis|amqp)://[^\s\"']+", re.I)
+_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_API_KEY_RE = re.compile(
+    r"(?i)\b(api[_-]?key|access[_-]?token|service[_-]?token|secret)\s*[=:]\s*[^\s,;\"']+"
+)
+_SK_TOKEN_RE = re.compile(r"\bsk-[A-Za-z0-9_-]{6,}\b")
 
 
 def load_jsonl(path: Path) -> list[dict]:
@@ -44,6 +88,539 @@ def load_jsonl(path: Path) -> list[dict]:
         if line.strip():
             rows.append(json.loads(line))
     return rows
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _dataset_meta(path: Path, rows: list[dict], *, role: str) -> dict:
+    return {
+        "source": path.name,
+        "n": len(rows),
+        "sha256": _sha256_bytes(path.read_bytes()),
+        "role": role,
+    }
+
+
+def _knowledge_digest() -> str:
+    digest = hashlib.sha256()
+    for path in sorted(item for item in KNOWLEDGE_DIR.rglob("*") if item.is_file()):
+        digest.update(path.relative_to(KNOWLEDGE_DIR).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+_GIT_TIMEOUT_SECONDS = 5.0
+_PROVENANCE_GIT_PATHS = ("app", "eval", "uv.lock", "pyproject.toml")
+
+
+def _git(root: Path, *args: str):
+    try:
+        return subprocess.run(
+            ["git", *args],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _digest_paths(root: Path, paths: list[Path]) -> dict:
+    digest = hashlib.sha256()
+    count = 0
+    for path in sorted(paths):
+        if not path.is_file():
+            continue
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+        count += 1
+    return {"files": count, "sha256": digest.hexdigest() if count else None}
+
+
+def _dirty_scopes(root: Path) -> list[str] | str:
+    result = _git(
+        root,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--",
+        *_PROVENANCE_GIT_PATHS,
+    )
+    if result is None or result.returncode != 0:
+        return "unknown"
+    scopes: set[str] = set()
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        path = path.strip('"')
+        if path.startswith("app/") and path.endswith(".py"):
+            scopes.add("app")
+        elif path.startswith("eval/") and path.endswith(".py"):
+            scopes.add("eval")
+        elif path == "uv.lock":
+            scopes.add("dependencies")
+        elif path == "pyproject.toml":
+            scopes.add("config")
+    return sorted(scopes)
+
+
+def _provenance(root: Path = ROOT) -> dict:
+    """Summarise the candidate commit plus allowlisted source/config digests.
+
+    Only app/eval Python sources, the lock file and key project config are
+    read. No file contents or filenames reach the report, and no ``.env`` or
+    credentials are inspected.
+    """
+    commit = _git(root, "rev-parse", "HEAD")
+    candidate_commit = (
+        commit.stdout.strip() if commit is not None and commit.returncode == 0 else ""
+    ) or "unknown"
+    dirty = _dirty_scopes(root)
+
+    def dirty_state(scope: str) -> bool | str:
+        return "unknown" if dirty == "unknown" else scope in dirty
+
+    return {
+        "candidate_commit": candidate_commit,
+        "candidate_commit_source": "HEAD",
+        "candidate_commit_note": ("Uncommitted working-tree changes are not part of this commit."),
+        "worktree_dirty": dirty if dirty == "unknown" else bool(dirty),
+        "dirty_scopes": dirty,
+        "source": {
+            "app": {
+                "scope": "app/**/*.py",
+                "dirty": dirty_state("app"),
+                **_digest_paths(root, list((root / "app").rglob("*.py"))),
+            },
+            "eval": {
+                "scope": "eval/**/*.py",
+                "dirty": dirty_state("eval"),
+                **_digest_paths(root, list((root / "eval").rglob("*.py"))),
+            },
+        },
+        "dependency_lock": {
+            "path": "uv.lock",
+            "dirty": dirty_state("dependencies"),
+            **_digest_paths(root, [root / "uv.lock"]),
+        },
+        "config": {
+            "path": "pyproject.toml",
+            "dirty": dirty_state("config"),
+            **_digest_paths(root, [root / "pyproject.toml"]),
+        },
+    }
+
+
+def _prompt_versions() -> dict[str, str]:
+    from app.prompts.intent import PROMPT_VERSION as intent_prompt_version
+
+    return {
+        "intent": intent_prompt_version,
+        "answer": ANSWER_PROMPT_VERSION,
+        "faithfulness": FAITHFULNESS_PROMPT_VERSION,
+        "epig_policy": EPIG_POLICY_VERSION,
+    }
+
+
+def _redact(value: Any, *, secrets: tuple[str, ...] = ()) -> str:
+    """Remove credentials and URLs from text that may reach a report or log."""
+    text = str(value)
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, "[REDACTED]")
+    text = _BEARER_RE.sub("Bearer [REDACTED]", text)
+    text = _SECRET_URL_RE.sub("[REDACTED_URL]", text)
+    text = _API_KEY_RE.sub(lambda match: f"{match.group(1)}=[REDACTED]", text)
+    text = _SK_TOKEN_RE.sub("[REDACTED]", text)
+    return text
+
+
+def offline_settings(
+    *,
+    database_url: str = "sqlite+aiosqlite:///:memory:",
+) -> Settings:
+    """Settings that cannot inherit a real provider, model, DB or business target.
+
+    Every security-relevant field is overridden explicitly; ``_env_file=None``
+    prevents pydantic-settings from opening a developer ``.env``. Explicit init
+    values also take priority over polluted parent environment variables.
+    """
+    return Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        app_name="eval-offline",
+        app_env="testing",
+        log_level="WARNING",
+        deepseek_api_key=SecretStr(""),
+        deepseek_base_url="",
+        deepseek_model="offline",
+        deepseek_temperature=None,
+        deepseek_reasoning_effort="",
+        deepseek_min_max_tokens=0,
+        llm_timeout_seconds=30.0,
+        llm_max_retries=1,
+        embedding_api_key=SecretStr(""),
+        embedding_base_url="",
+        local_embedding_enabled=False,
+        local_embedding_force=False,
+        cross_encoder_enabled=False,
+        cross_encoder_force=False,
+        unstructured_enabled=False,
+        unstructured_force=False,
+        mcp_enabled=False,
+        mcp_remote_url="",
+        redis_url="",
+        qdrant_url="",
+        database_url=database_url,
+        admin_api_token=SecretStr(""),
+        knowledge_dir=str(KNOWLEDGE_DIR),
+        rate_limit_per_minute=1000,
+        after_sales_enabled=False,
+        business_connector="fake",
+        epig_base_url="",
+        epig_service_token=SecretStr(""),
+        epig_allowed_markets="",
+        after_sales_sku_category_map="",
+        after_sales_worker_markets="",
+    )
+
+
+class ModelBudgetExceeded(RuntimeError):
+    """Raised before an eval call beyond the explicitly configured call cap."""
+
+
+@dataclass(frozen=True)
+class ModelRun:
+    mode: Literal["fake", "real"]
+    provider: str
+    model: str
+    max_cases: int
+    max_calls: int
+    max_output_tokens: int
+    llm: Any = field(repr=False)
+
+
+@dataclass(frozen=True)
+class RealModelConfig:
+    provider: str
+    model: str
+    max_cases: int
+    max_calls: int
+    max_output_tokens: int
+    api_key: str = field(repr=False)
+    base_url: str = ""
+
+
+class _BoundedLLM:
+    """Count calls and cap per-request output tokens on an injected provider."""
+
+    def __init__(self, provider: Any, *, max_calls: int, max_output_tokens: int) -> None:
+        self._provider = provider
+        self._max_calls = max_calls
+        self._max_output_tokens = max_output_tokens
+        self.calls = 0
+
+    def _reserve(self) -> None:
+        self.calls += 1
+        if self.calls > self._max_calls:
+            raise ModelBudgetExceeded(
+                f"eval model call budget exceeded ({self._max_calls}); "
+                "raise --max-calls explicitly if more calls are intended"
+            )
+
+    def _bounded_tokens(self, requested: int) -> int:
+        return max(1, min(int(requested), self._max_output_tokens))
+
+    async def generate(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+        response_format: dict[str, str] | None = None,
+    ):
+        self._reserve()
+        return await self._provider.generate(
+            messages,
+            temperature=temperature,
+            max_tokens=self._bounded_tokens(max_tokens),
+            response_format=response_format,
+        )
+
+    def stream(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+        response_format: dict[str, str] | None = None,
+    ) -> AsyncIterator[str]:
+        self._reserve()
+        return self._provider.stream(
+            messages,
+            temperature=temperature,
+            max_tokens=self._bounded_tokens(max_tokens),
+            response_format=response_format,
+        )
+
+    async def ping(self) -> bool:
+        return await self._provider.ping()
+
+    async def aclose(self) -> None:
+        closer = getattr(self._provider, "aclose", None)
+        if closer is not None:
+            await closer()
+
+
+def _model_calls(llm: Any) -> int:
+    return int(getattr(llm, "calls", 0))
+
+
+def fake_model_run(
+    llm: Any,
+    *,
+    provider: str = "fake",
+    model: str = "test-double",
+    max_cases: int = 10_000,
+    max_calls: int = 10_000,
+    max_output_tokens: int = 512,
+) -> ModelRun:
+    """Wrap an injected fake provider for plumbing tests; never a real call."""
+    return ModelRun(
+        mode="fake",
+        provider=provider,
+        model=model,
+        max_cases=max_cases,
+        max_calls=max_calls,
+        max_output_tokens=max_output_tokens,
+        llm=_BoundedLLM(llm, max_calls=max_calls, max_output_tokens=max_output_tokens),
+    )
+
+
+def _coerce_model_run(value: ModelRun | Any | None) -> ModelRun | None:
+    if value is None or isinstance(value, ModelRun):
+        return value
+    return fake_model_run(value)
+
+
+def _resolve_injection(
+    model_run: ModelRun | Any | None,
+    llm: Any | None,
+) -> ModelRun | None:
+    """Accept either the new ``model_run`` seam or the old ``llm`` test seam."""
+    if model_run is not None and llm is not None:
+        raise TypeError("pass either model_run or llm, not both")
+    return _coerce_model_run(model_run if model_run is not None else llm)
+
+
+def _limited_rows(path: Path, max_cases: int | None) -> list[dict]:
+    rows = load_jsonl(path)
+    return rows if max_cases is None else rows[:max_cases]
+
+
+def _model_meta(model_run: ModelRun | None) -> dict:
+    if model_run is None:
+        return {
+            "mode": "offline",
+            "provider": "none",
+            "model": None,
+            "quality_measured": False,
+        }
+    return {
+        "mode": model_run.mode,
+        "provider": model_run.provider,
+        "model": model_run.model,
+        # Configuration alone never proves measured quality; each eval sets
+        # this from the calls and errors it actually observed.
+        "quality_measured": False,
+        "limits": {
+            "max_cases_per_task": model_run.max_cases,
+            "max_model_calls": model_run.max_calls,
+            "max_output_tokens_per_call": model_run.max_output_tokens,
+        },
+    }
+
+
+_EVAL_SECTIONS = (
+    "intent_rules",
+    "intent_overlay",
+    "intent_v1",
+    "intent_v2",
+    "intent_v3",
+    "retrieval",
+    "epig_policy",
+    "epig_policy_llm",
+    "generation",
+    "e2e",
+)
+_TASK_SECTIONS = {
+    "intent": ("intent_rules", "intent_overlay", "intent_v1", "intent_v2", "intent_v3"),
+    "retrieval": ("retrieval",),
+    "epig-policy": ("epig_policy", "epig_policy_llm"),
+    "generation": ("generation",),
+    "e2e": ("e2e",),
+}
+_DETERMINISTIC_LABELS = {
+    "intent_rules": "intent_rules",
+    "intent_overlay": "intent_overlay",
+    "retrieval": "offline_retrieval",
+    "epig_policy": "epig_policy_deterministic",
+}
+
+
+def _quality_scope(
+    *,
+    mode: str,
+    attempted_calls: int,
+    errors: int,
+    budget_exceeded: bool,
+) -> str:
+    """Classify how much real-model quality was actually observed."""
+    if mode != "real" or attempted_calls <= 0:
+        return "none"
+    if errors or budget_exceeded:
+        return "partial"
+    return "full"
+
+
+def _effective_quality_scope(section: dict) -> str:
+    """Read the recorded scope, falling back to execution evidence."""
+    scope = section.get("quality_scope")
+    if scope in {"full", "partial", "none"}:
+        return scope
+    if section.get("mode") != "real":
+        return "none"
+    attempted = section.get("attempted_model_calls")
+    if attempted is None:
+        return "full" if section.get("quality_measured") is True else "none"
+    if attempted <= 0:
+        return "none"
+    if section.get("errors") or section.get("budget_exceeded"):
+        return "partial"
+    return "full" if section.get("quality_measured") is True else "none"
+
+
+def _section_measurement_label(key: str, section: dict) -> str | None:
+    if key in _DETERMINISTIC_LABELS:
+        return _DETERMINISTIC_LABELS[key]
+    scope = _effective_quality_scope(section)
+    if key in {"intent_v1", "intent_v2", "intent_v3"}:
+        if scope == "full":
+            return f"{key}_real_model_quality"
+        if section.get("measurement") == "injected_fake_plumbing":
+            return f"{key}_call_plumbing"
+        return f"{key}_partial_model_run" if scope == "partial" else None
+    if key == "generation":
+        if scope == "full":
+            return "generation_faithfulness_quality"
+        if scope == "partial":
+            return "generation_partial_model_run"
+        if section.get("model_generation_tested"):
+            return "generation_call_plumbing"
+        return None
+    if key == "epig_policy_llm":
+        if scope == "full":
+            return "epig_policy_generation_quality"
+        if scope == "partial":
+            return "epig_policy_generation_partial_model_run"
+        if section.get("attempted_model_calls"):
+            return "epig_policy_generation_call_plumbing"
+        return "epig_policy_review_gating_only"
+    if key == "e2e":
+        if scope == "full":
+            return "real_model_graph_quality"
+        if section.get("measurement") == "offline_graph_plumbing":
+            return "offline_graph_plumbing"
+        if scope == "partial":
+            return "real_model_graph_partial_model_run"
+        return "real_model_graph_plumbing"
+    return None
+
+
+def _run_metadata(
+    *,
+    task: str,
+    model_run: ModelRun | None,
+    results: dict | None = None,
+) -> dict:
+    results = results or {}
+    executed_sections = [key for key in _EVAL_SECTIONS if isinstance(results.get(key), dict)]
+    measured: list[str] = []
+    not_measured: list[str] = []
+    for key in executed_sections:
+        label = _section_measurement_label(key, results[key])
+        if label is not None and label not in measured:
+            measured.append(label)
+        for item in results[key].get("not_measured") or []:
+            if item not in not_measured:
+                not_measured.append(item)
+    real_quality_scopes = [
+        _effective_quality_scope(results[key])
+        for key in executed_sections
+        if results[key].get("mode") == "real"
+    ]
+    if not any(scope in {"full", "partial"} for scope in real_quality_scopes):
+        quality_scope = "none"
+    elif all(scope == "full" for scope in real_quality_scopes):
+        quality_scope = "full"
+    else:
+        quality_scope = "partial"
+    quality_measured = quality_scope == "full"
+    if not quality_measured:
+        for item in ("real_model_output_quality", "human_quality_review"):
+            if item not in not_measured:
+                not_measured.append(item)
+    executed_tasks = [
+        name
+        for name, sections in _TASK_SECTIONS.items()
+        if any(section in executed_sections for section in sections)
+    ]
+    return {
+        "task": task,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "mode": "offline" if model_run is None else model_run.mode,
+        "provider": "none" if model_run is None else model_run.provider,
+        "model": None if model_run is None else model_run.model,
+        "quality_measured": quality_measured,
+        "quality_scope": quality_scope,
+        "budget": None if model_run is None else _model_meta(model_run)["limits"],
+        "budget_note": (
+            None
+            if model_run is None
+            else "Enforced eval call/token guards, not a provider billing cap."
+        ),
+        "task_coverage": {
+            "requested": task,
+            "executed_tasks": executed_tasks,
+            "not_run_tasks": [name for name in _TASK_SECTIONS if name not in executed_tasks],
+            "sections": executed_sections,
+        },
+        "data": {
+            "intent": _dataset_meta(INTENT_PATH, load_jsonl(INTENT_PATH), role="internal_eval"),
+            "rag": _dataset_meta(RAG_PATH, load_jsonl(RAG_PATH), role="internal_eval"),
+            "epig_policy": _dataset_meta(
+                EPIG_POLICY_PATH,
+                load_jsonl(EPIG_POLICY_PATH),
+                role="development_regression",
+            ),
+            "e2e": _dataset_meta(E2E_PATH, load_jsonl(E2E_PATH), role="upstream_demo_qa"),
+        },
+        "knowledge_sha256": _knowledge_digest(),
+        "prompt_versions": _prompt_versions(),
+        "provenance": _provenance(),
+        "measured": measured,
+        "not_measured": not_measured,
+    }
 
 
 def _doc_stem(document_id: str) -> str:
@@ -94,23 +671,35 @@ def eval_intent_rules() -> dict:
     rows = load_jsonl(INTENT_PATH)
     pairs = [(row["intent"], rule_based_intent(row["query"]).label.value) for row in rows]
     return {
+        **_model_meta(None),
+        "measurement": "deterministic",
         "backend": "rules",
-        "prompt_version": "intent_rules_v1",
+        "prompt_version": RULES_VERSION,
+        "data": _dataset_meta(INTENT_PATH, rows, role="internal_eval"),
         "n": len(pairs),
         "accuracy": round(accuracy(pairs), 4),
         "per_label": {k: round(v, 4) for k, v in classification_report(pairs).items()},
+        "not_measured": ["real_model_output_quality"],
     }
 
 
-async def eval_intent_llm(*, version: str, overlay: bool) -> dict:
+async def eval_intent_llm(
+    *,
+    model_run: ModelRun | Any | None = None,
+    llm: Any | None = None,
+    version: str,
+    overlay: bool,
+) -> dict:
     from app.agents.nodes.intent import IntentClassifier
-    from app.config.settings import get_settings
     from app.prompts.intent import INTENT_SYSTEM, INTENT_SYSTEM_V1, INTENT_SYSTEM_V2
-    from app.providers.deepseek import DeepSeekProvider
 
-    settings = get_settings()
-    if not settings.llm_configured:
-        raise SystemExit("DEEPSEEK_API_KEY missing")
+    run = _resolve_injection(model_run, llm)
+    if run is None:
+        raise SystemExit(
+            "eval_intent_llm requires an explicit provider; the default offline path "
+            "does not construct one. Use --allow-real-model with DTC_EVAL_* credentials "
+            "or inject a fake ModelRun in tests."
+        )
     if version == "intent_v1":
         system = INTENT_SYSTEM_V1
     elif version == "intent_v2":
@@ -118,40 +707,85 @@ async def eval_intent_llm(*, version: str, overlay: bool) -> dict:
     else:
         system = INTENT_SYSTEM
     classifier = IntentClassifier(
-        DeepSeekProvider(settings),
+        run.llm,
         system_prompt=system,
         prompt_version=version,
         apply_overlay=overlay,
     )
-    rows = load_jsonl(INTENT_PATH)
+    rows = _limited_rows(INTENT_PATH, run.max_cases)
+    calls_before_all = _model_calls(run.llm)
     semaphore = asyncio.Semaphore(4)
     errors = 0
+    budget_exceeded = False
+    error_samples: list[str] = []
 
     async def _one(row: dict) -> tuple[str, str]:
-        nonlocal errors
+        nonlocal errors, budget_exceeded
         async with semaphore:
             try:
                 pred = (await classifier.classify(row["query"])).label.value
                 return row["intent"], pred
-            except Exception:
+            except ModelBudgetExceeded as exc:
                 errors += 1
+                budget_exceeded = True
+                if len(error_samples) < 3:
+                    error_samples.append(_redact(exc))
+                return row["intent"], "ERROR"
+            except Exception as exc:
+                errors += 1
+                if len(error_samples) < 3:
+                    error_samples.append(_redact(exc))
                 return row["intent"], "ERROR"
 
     pairs = list(await asyncio.gather(*[_one(row) for row in rows]))
-    mismatches = [
-        {"query": rows[i]["query"], "gold": gold, "pred": pred}
-        for i, (gold, pred) in enumerate(pairs)
-        if gold != pred
-    ]
+    real = run.mode == "real"
+    attempted_model_calls = _model_calls(run.llm) - calls_before_all
+    quality_scope = _quality_scope(
+        mode=run.mode,
+        attempted_calls=attempted_model_calls,
+        errors=errors,
+        budget_exceeded=budget_exceeded,
+    )
+    quality_measured = quality_scope == "full"
+    mismatches = (
+        [
+            {"query": rows[i]["query"], "gold": gold, "pred": pred}
+            for i, (gold, pred) in enumerate(pairs)
+            if gold != pred
+        ]
+        if real
+        else []
+    )
     return {
-        "backend": "deepseek",
+        **_model_meta(run),
+        "quality_measured": quality_measured,
+        "quality_scope": quality_scope,
+        "measurement": "real_model" if real else "injected_fake_plumbing",
+        "backend": run.provider,
         "prompt_version": version,
         "overlay": overlay,
+        "data": _dataset_meta(INTENT_PATH, rows, role="internal_eval"),
         "n": len(pairs),
+        "attempted_model_calls": attempted_model_calls,
         "errors": errors,
-        "accuracy": round(accuracy(pairs), 4),
-        "per_label": {k: round(v, 4) for k, v in classification_report(pairs).items()},
+        "budget_exceeded": budget_exceeded,
+        "error_samples": error_samples,
+        "accuracy": round(accuracy(pairs), 4) if real else None,
+        "per_label": (
+            {k: round(v, 4) for k, v in classification_report(pairs).items()} if real else None
+        ),
         "mismatches": mismatches,
+        "not_measured": [] if quality_measured else ["intent_accuracy"],
+        "quality_note": (
+            "Real provider output measured on the fixed dataset."
+            if quality_measured
+            else (
+                "Real provider output was partial or absent; intent quality is not "
+                "reported as fully measured."
+                if real
+                else "Injected fake provider: call plumbing only, not model quality."
+            )
+        ),
     }
 
 
@@ -169,39 +803,40 @@ def eval_intent_overlay() -> dict:
         else:
             pairs.append((row["intent"], pred.value))
     return {
+        **_model_meta(None),
+        "measurement": "deterministic",
         "backend": "overlay",
-        "prompt_version": "intent_overlay_v1",
+        "prompt_version": OVERLAY_VERSION,
+        "data": _dataset_meta(INTENT_PATH, rows, role="internal_eval"),
         "n": len(pairs),
         "uncovered": uncovered,
         "accuracy": round(accuracy(pairs), 4),
         "per_label": {k: round(v, 4) for k, v in classification_report(pairs).items()},
+        "not_measured": ["real_model_output_quality"],
     }
 
 
-async def eval_retrieval() -> dict:
-    from app.config.settings import get_settings
-    from app.providers.embeddings import build_embedding_provider
-    from app.providers.reranker import CrossEncoderRerankProvider, LexicalRerankProvider
+async def eval_retrieval(*, rows: list[dict] | None = None) -> dict:
+    """Deterministic BM25 + hash-vector + lexical rerank; no model is loaded."""
+    from app.providers.embeddings import HashEmbeddingProvider
+    from app.providers.reranker import LexicalRerankProvider
     from app.retrieval.hybrid import HybridRetriever
     from app.retrieval.ingest import ingest_to_memory
     from app.retrieval.reranker import DocumentReranker
     from app.retrieval.vector import VectorRetriever
 
-    settings = get_settings()
-    embedder = build_embedding_provider(settings)
-    dense_backend = getattr(embedder, "backend", "vector")
-    vector_label = "hash-vector" if dense_backend == "hash" else dense_backend
-    hybrid_label = f"bm25+{vector_label}+rrf"
-    bm25, store, _ = await ingest_to_memory("knowledge", embedder)
+    settings = offline_settings()
+    embedder = HashEmbeddingProvider(dim=512)
+    bm25, store, chunks = await ingest_to_memory(str(KNOWLEDGE_DIR), embedder, settings=settings)
     vector = VectorRetriever(store, embedder)
     hybrid = HybridRetriever(bm25, vector, rrf_k=60)
-    rows = load_jsonl(RAG_PATH)
+    data_rows = rows if rows is not None else load_jsonl(RAG_PATH)
 
     async def _run(name: str, retrieve) -> dict:
         precs1, recalls3, hits1, hits3, mrrs = [], [], [], [], []
-        for row in rows:
-            chunks = await retrieve(row["query"])
-            stems = _unique_stems(chunks)
+        for row in data_rows:
+            result = await retrieve(row["query"])
+            stems = _unique_stems(result)
             relevant = set(row["relevant_doc_ids"])
             precs1.append(precision_at_k(relevant, stems, 1))
             recalls3.append(recall_at_k(relevant, stems, 3))
@@ -210,7 +845,7 @@ async def eval_retrieval() -> dict:
             mrrs.append(mrr(relevant, stems))
         return {
             "backend": name,
-            "n": len(rows),
+            "n": len(data_rows),
             "precision_at_1": _summarize_scores(precs1),
             "recall_at_3": _summarize_scores(recalls3),
             "hit_at_1": _summarize_scores(hits1),
@@ -227,53 +862,39 @@ async def eval_retrieval() -> dict:
     async def _hybrid(query: str):
         return await hybrid.retrieve(query, top_k=5)
 
+    lexical = DocumentReranker(LexicalRerankProvider())
+
+    async def _hybrid_lexical(query: str):
+        fused = await hybrid.retrieve(query, top_k=8)
+        return await lexical.rerank(query, fused, top_n=5)
+
     systems = [
         await _run("bm25", _bm25),
-        await _run(vector_label, _vector),
-        await _run(hybrid_label, _hybrid),
+        await _run("hash-vector", _vector),
+        await _run("bm25+hash-vector+rrf", _hybrid),
+        await _run("hybrid+lexical-fallback", _hybrid_lexical),
     ]
-    ce_provider = CrossEncoderRerankProvider(settings)
-    if ce_provider.available:
-        reranker = DocumentReranker(ce_provider)
-
-        async def _hybrid_cross_encoder(query: str):
-            fused = await hybrid.retrieve(query, top_k=8)
-            return await reranker.rerank(query, fused, top_n=5)
-
-        systems.append(await _run("hybrid+cross-encoder", _hybrid_cross_encoder))
-        note = (
-            f"Rerank is local Cross-Encoder ({settings.cross_encoder_model}). "
-            f"Dense side is {vector_label}."
-        )
-    else:
-        fallback = DocumentReranker(LexicalRerankProvider())
-
-        async def _hybrid_lexical(query: str):
-            fused = await hybrid.retrieve(query, top_k=8)
-            return await fallback.rerank(query, fused, top_n=5)
-
-        systems.append(await _run("hybrid+lexical-fallback", _hybrid_lexical))
-        # Kept out of the f-string on purpose: a backslash inside an f-string
-        # expression is a SyntaxError on Python 3.11 (PEP 701 landed in 3.12).
-        rerank_hint = ce_provider.load_error or 'pip install -e ".[rerank]"'
-        note = (
-            "Cross-Encoder not loaded; hybrid+cross-encoder skipped. "
-            f"{rerank_hint}. "
-            "Lexical fallback is CI-only, not a Cross-Encoder."
-        )
     return {
-        "n": len(rows),
-        "dense_backend": vector_label,
+        **_model_meta(None),
+        "measurement": "deterministic",
+        "version": RETRIEVAL_VERSION,
+        "data": _dataset_meta(RAG_PATH, data_rows, role="internal_eval"),
+        "knowledge_sha256": _knowledge_digest(),
+        "dense_backend": "hash-vector",
         "local_embedding_configured": settings.local_embedding_configured,
         "cross_encoder_configured": settings.cross_encoder_configured,
-        "cross_encoder_available": ce_provider.available,
-        "cross_encoder_model": settings.cross_encoder_model,
-        "note": note,
+        "cross_encoder_available": False,
+        "note": (
+            "Offline hash embeddings + BM25 + lexical rerank. Local embedding and "
+            "Cross-Encoder models are disabled; the lexical fallback is not a Cross-Encoder."
+        ),
+        "n": len(data_rows),
         "systems": systems,
+        "not_measured": ["local_embedding_quality", "cross_encoder_quality"],
     }
 
 
-async def eval_epig_policy() -> dict:
+async def eval_epig_policy(*, rows: list[dict] | None = None) -> dict:
     """Deterministic scoped-retrieval eval; no paid model or live storefront calls."""
     from app.providers.embeddings import HashEmbeddingProvider
     from app.providers.reranker import LexicalRerankProvider
@@ -290,8 +911,9 @@ async def eval_epig_policy() -> dict:
     from app.retrieval.vector import VectorRetriever
     from app.schemas.retrieval import PolicyScope
 
+    settings = offline_settings()
     embedder = HashEmbeddingProvider(dim=512)
-    bm25, store, chunks = await ingest_to_memory("knowledge", embedder)
+    bm25, store, chunks = await ingest_to_memory(str(KNOWLEDGE_DIR), embedder, settings=settings)
     retriever = HybridRetriever(
         bm25,
         VectorRetriever(store, embedder),
@@ -299,10 +921,10 @@ async def eval_epig_policy() -> dict:
         cache=MemoryRetrievalCache(ttl_seconds=60),
         corpus_revision=corpus_fingerprint(chunks),
     )
-    rows = load_jsonl(EPIG_POLICY_PATH)
+    data_rows = rows if rows is not None else load_jsonl(EPIG_POLICY_PATH)
     reranker = DocumentReranker(LexicalRerankProvider())
     cases = []
-    for row in rows:
+    for row in data_rows:
         scope = PolicyScope(
             brand=row["brand"],
             market=row["market"],
@@ -353,6 +975,8 @@ async def eval_epig_policy() -> dict:
             }
         )
     return {
+        **_model_meta(None),
+        "measurement": "deterministic",
         "n": len(cases),
         "passed": sum(case["passed"] for case in cases),
         "scope_violations": sum(not case["scope_ok"] for case in cases),
@@ -362,7 +986,12 @@ async def eval_epig_policy() -> dict:
         "term_failures": sum(not case["terms_ok"] for case in cases),
         "review_failures": sum(not case["review_ok"] for case in cases),
         "backend": "bm25+hash-vector+rrf+lexical-rerank+scoped-cache",
+        "data": _dataset_meta(EPIG_POLICY_PATH, data_rows, role="development_regression"),
+        "knowledge_sha256": _knowledge_digest(),
+        "corpus_revision": corpus_fingerprint(chunks),
+        "dataset_note": ("34 synthetic policy cases are a fixed development regression set."),
         "model_generation_tested": False,
+        "not_measured": ["model_generation", "faithfulness", "real_tool_call_accuracy"],
         "cases": cases,
     }
 
@@ -393,7 +1022,11 @@ async def _generate_answer(llm, query: str, evidence: str) -> str:
     return parse_model(response.content, AnswerPayload).answer
 
 
-async def eval_epig_policy_generation(llm: Any | None = None) -> dict:
+async def eval_epig_policy_generation(
+    model_run: ModelRun | Any | None = None,
+    *,
+    llm: Any | None = None,
+) -> dict:
     """Evaluate the generation node separately from deterministic retrieval/guardrails."""
     from app.agents.nodes.generate import generate_node
     from app.core.enums import RetrievalStrategy
@@ -407,35 +1040,16 @@ async def eval_epig_policy_generation(llm: Any | None = None) -> dict:
     from app.retrieval.vector import VectorRetriever
     from app.schemas.retrieval import PolicyScope
 
-    model_name = "test-double"
-    if llm is None:
-        from app.config.settings import get_settings
-        from app.providers.deepseek import DeepSeekProvider
+    run = _resolve_injection(model_run, llm)
+    if run is None:
+        raise SystemExit(
+            "eval_epig_policy_generation requires an explicit provider; the default "
+            "offline path does not construct one."
+        )
 
-        settings = get_settings()
-        if not settings.llm_configured:
-            raise SystemExit("DEEPSEEK_API_KEY missing")
-        llm = DeepSeekProvider(settings)
-        model_name = settings.deepseek_model
-
-    class _CountingLLM:
-        def __init__(self, provider: Any) -> None:
-            self.provider = provider
-            self.calls = 0
-
-        async def generate(self, messages: list[dict[str, str]], **kwargs: Any):
-            self.calls += 1
-            return await self.provider.generate(messages, **kwargs)
-
-        async def ping(self) -> bool:
-            return await self.provider.ping()
-
-        def stream(self, messages: list[dict[str, str]], **kwargs: Any) -> AsyncIterator[str]:
-            return self.provider.stream(messages, **kwargs)
-
-    counted_llm = _CountingLLM(llm)
+    settings = offline_settings()
     embedder = HashEmbeddingProvider(dim=512)
-    bm25, store, chunks = await ingest_to_memory("knowledge", embedder)
+    bm25, store, chunks = await ingest_to_memory(str(KNOWLEDGE_DIR), embedder, settings=settings)
     retriever = HybridRetriever(
         bm25,
         VectorRetriever(store, embedder),
@@ -444,10 +1058,14 @@ async def eval_epig_policy_generation(llm: Any | None = None) -> dict:
         corpus_revision=corpus_fingerprint(chunks),
     )
     reranker = DocumentReranker(LexicalRerankProvider())
-    rows = load_jsonl(EPIG_POLICY_PATH)
+    data_rows = _limited_rows(EPIG_POLICY_PATH, run.max_cases)
     cases = []
     fallback_answers = 0
-    for row in rows:
+    errors = 0
+    budget_exceeded = False
+    error_samples: list[str] = []
+    calls_before_all = _model_calls(run.llm)
+    for row in data_rows:
         scope = PolicyScope(
             brand=row["brand"],
             market=row["market"],
@@ -458,17 +1076,29 @@ async def eval_epig_policy_generation(llm: Any | None = None) -> dict:
         found = await reranker.rerank(row["query"], candidates, top_n=6)
         review_chunks = retriever.matching_review_chunks(row["query"], scope=scope)
         found = merge_policy_review_chunks(found, review_chunks)
-        calls_before = counted_llm.calls
-        result = await generate_node(
-            {
-                "user_query": row["query"],
-                "policy_scope": scope,
-                "strategy": RetrievalStrategy.SINGLE,
-                "retrieved_chunks": found,
-                "tool_results": [],
-            },
-            counted_llm,
-        )
+        calls_before = _model_calls(run.llm)
+        try:
+            result = await generate_node(
+                {
+                    "user_query": row["query"],
+                    "policy_scope": scope,
+                    "strategy": RetrievalStrategy.SINGLE,
+                    "retrieved_chunks": found,
+                    "tool_results": [],
+                },
+                run.llm,
+            )
+        except ModelBudgetExceeded as exc:
+            errors += 1
+            budget_exceeded = True
+            if len(error_samples) < 3:
+                error_samples.append(_redact(exc))
+            break
+        except Exception as exc:
+            errors += 1
+            if len(error_samples) < 3:
+                error_samples.append(_redact(exc))
+            continue
         expected_refused = bool(row.get("expected_empty") or row.get("expect_review"))
         citations = result.get("citations") or []
         answer = result.get("final_answer") or ""
@@ -492,7 +1122,7 @@ async def eval_epig_policy_generation(llm: Any | None = None) -> dict:
         )
         disclosure_ok = EPIG_DEMO_DISCLOSURE in answer
         expected_calls = 0 if expected_refused else 1
-        model_call_ok = counted_llm.calls - calls_before == expected_calls
+        model_call_ok = _model_calls(run.llm) - calls_before == expected_calls
         fallback = answer.startswith("暂时无法生成完整答复") or answer.startswith(
             "暂时无法基于现有信息"
         )
@@ -521,144 +1151,316 @@ async def eval_epig_policy_generation(llm: Any | None = None) -> dict:
                 "citation_chunk_ids": [citation.chunk_id for citation in citations],
             }
         )
+    real = run.mode == "real"
+    attempted_model_calls = _model_calls(run.llm) - calls_before_all
+    quality_scope = _quality_scope(
+        mode=run.mode,
+        attempted_calls=attempted_model_calls,
+        errors=errors,
+        budget_exceeded=budget_exceeded,
+    )
+    quality_measured = quality_scope == "full"
+    if real:
+        not_measured = ["faithfulness", "full_graph", "real_tool_call_accuracy"]
+        if not quality_measured:
+            not_measured = ["model_output_quality", *not_measured]
+    else:
+        not_measured = ["model_output_quality", "faithfulness", "hallucination_rate"]
     return {
+        **_model_meta(run),
+        "quality_measured": quality_measured,
+        "quality_scope": quality_scope,
+        "measurement": "real_model" if real else "injected_fake_plumbing",
         "n": len(cases),
         "passed": sum(case["passed"] for case in cases),
-        "model": model_name,
-        "model_generation_tested": True,
-        "attempted_model_calls": counted_llm.calls,
+        "errors": errors,
+        "budget_exceeded": budget_exceeded,
+        "error_samples": error_samples,
+        "model_generation_tested": attempted_model_calls > 0,
+        "attempted_model_calls": attempted_model_calls,
         "fallback_answers": fallback_answers,
         "disclosure_failures": sum(not case["disclosure_ok"] for case in cases),
         "full_graph_tested": False,
         "faithfulness_tested": False,
-        "note": "Direct generation-node eval with fixed scoped evidence; deterministic guards make no model calls.",
+        "data": _dataset_meta(EPIG_POLICY_PATH, data_rows, role="development_regression"),
+        "knowledge_sha256": _knowledge_digest(),
+        "corpus_revision": corpus_fingerprint(chunks),
+        "prompt_versions": _prompt_versions(),
+        "dataset_note": ("34 synthetic policy cases are a fixed development regression set."),
+        "quality_note": (
+            "Real provider output on fixed scoped evidence."
+            if quality_measured
+            else (
+                "Real provider output was partial or absent; generation quality is not "
+                "reported as fully measured."
+                if real
+                else "Injected fake provider: pass/fail is call plumbing, not model quality."
+            )
+        ),
+        "not_measured": not_measured,
+        "note": "Direct generation-node eval with fixed scoped evidence.",
         "cases": cases,
     }
 
 
-async def eval_generation() -> dict:
-    from app.config.settings import get_settings
-    from app.guardrails.hallucination import FaithfulnessChecker
-    from app.providers.deepseek import DeepSeekProvider
-    from app.providers.embeddings import build_embedding_provider
+async def eval_generation(
+    model_run: ModelRun | Any | None = None,
+    *,
+    llm: Any | None = None,
+) -> dict:
+    """Faithfulness/hallucination eval on a real provider, or not_measured offline."""
+    from app.providers.embeddings import HashEmbeddingProvider
     from app.retrieval.hybrid import HybridRetriever
     from app.retrieval.ingest import ingest_to_memory
     from app.retrieval.vector import VectorRetriever
 
-    settings = get_settings()
-    if not settings.llm_configured:
-        raise SystemExit("DEEPSEEK_API_KEY missing")
-    llm = DeepSeekProvider(settings)
-    checker = FaithfulnessChecker(llm)
-    embedder = build_embedding_provider(settings)
-    bm25, store, _ = await ingest_to_memory("knowledge", embedder)
-    retriever = HybridRetriever(bm25, VectorRetriever(store, embedder), rrf_k=60)
-    rows = load_jsonl(RAG_PATH)
-    semaphore = asyncio.Semaphore(3)
+    run = _resolve_injection(model_run, llm)
+    if run is None:
+        rows = load_jsonl(RAG_PATH)
+        return {
+            **_model_meta(None),
+            "quality_scope": "none",
+            "model_generation_tested": False,
+            "faithfulness_tested": False,
+            "n": len(rows),
+            "data": _dataset_meta(RAG_PATH, rows, role="internal_eval"),
+            "knowledge_sha256": _knowledge_digest(),
+            "prompt_versions": _prompt_versions(),
+            "reason": (
+                "No model provider configured. The default offline run retrieves with hash "
+                "embeddings but does not call an LLM, so faithfulness and hallucination "
+                "rates are not measured."
+            ),
+            "not_measured": [
+                "faithfulness",
+                "hallucination_rate",
+                "llm_output_quality",
+                "keyword_hit",
+            ],
+            "cases": [],
+        }
 
-    naive_supported = 0
-    rag_supported = 0
-    checked_supported = 0
-    naive_keyword = 0
-    rag_keyword = 0
-    checked_keyword = 0
-    naive_hallucinated = 0
-    rag_hallucinated = 0
-    checked_hallucinated = 0
+    settings = offline_settings()
+    embedder = HashEmbeddingProvider(dim=512)
+    bm25, store, chunks = await ingest_to_memory(str(KNOWLEDGE_DIR), embedder, settings=settings)
+    retriever = HybridRetriever(bm25, VectorRetriever(store, embedder), rrf_k=60)
+    data_rows = _limited_rows(RAG_PATH, run.max_cases)
+    calls_before_all = _model_calls(run.llm)
+
+    if run.mode == "fake":
+        plumbing_cases = []
+        plumbing_errors = 0
+        plumbing_budget_exceeded = False
+        plumbing_error_samples: list[str] = []
+        for row in data_rows:
+            retrieved = await retriever.retrieve(row["query"], top_k=5)
+            evidence = (
+                "\n\n".join(f"[{c.chunk_id}] {c.content}" for c in retrieved[:6]) or "(无检索结果)"
+            )
+            try:
+                await _generate_answer(run.llm, row["query"], evidence)
+                plumbing_cases.append({"id": row["id"], "ok": True})
+            except ModelBudgetExceeded as exc:
+                plumbing_errors += 1
+                plumbing_budget_exceeded = True
+                if len(plumbing_error_samples) < 3:
+                    plumbing_error_samples.append(_redact(exc))
+                break
+            except Exception as exc:
+                plumbing_errors += 1
+                if len(plumbing_error_samples) < 3:
+                    plumbing_error_samples.append(_redact(exc))
+                plumbing_cases.append({"id": row["id"], "ok": False, "error": _redact(exc)})
+        attempted_model_calls = _model_calls(run.llm) - calls_before_all
+        return {
+            **_model_meta(run),
+            "quality_scope": "none",
+            "measurement": "injected_fake_plumbing",
+            "model_generation_tested": attempted_model_calls > 0,
+            "faithfulness_tested": False,
+            "n": len(data_rows),
+            "attempted_model_calls": attempted_model_calls,
+            "errors": plumbing_errors,
+            "budget_exceeded": plumbing_budget_exceeded,
+            "error_samples": plumbing_error_samples,
+            "data": _dataset_meta(RAG_PATH, data_rows, role="internal_eval"),
+            "knowledge_sha256": _knowledge_digest(),
+            "prompt_versions": _prompt_versions(),
+            "quality_note": (
+                "Injected fake provider: only call plumbing was exercised. Faithfulness, "
+                "hallucination and keyword rates are intentionally absent."
+            ),
+            "not_measured": [
+                "faithfulness",
+                "hallucination_rate",
+                "llm_output_quality",
+                "keyword_hit",
+            ],
+            "cases": plumbing_cases,
+        }
+
+    from app.guardrails.hallucination import FaithfulnessChecker
+
+    checker = FaithfulnessChecker(run.llm)
+    semaphore = asyncio.Semaphore(3)
+    counts = {
+        "naive_supported": 0,
+        "rag_supported": 0,
+        "checked_supported": 0,
+        "naive_keyword": 0,
+        "rag_keyword": 0,
+        "checked_keyword": 0,
+        "errors": 0,
+    }
+    error_samples: list[str] = []
+    budget_exceeded = False
 
     async def _one(row: dict) -> None:
-        nonlocal naive_supported, rag_supported, checked_supported
-        nonlocal naive_keyword, rag_keyword, checked_keyword
-        nonlocal naive_hallucinated, rag_hallucinated, checked_hallucinated
+        nonlocal budget_exceeded
         async with semaphore:
-            chunks = await retriever.retrieve(row["query"], top_k=5)
-            evidence = (
-                "\n\n".join(f"[{c.chunk_id}] {c.content}" for c in chunks[:6]) or "(无检索结果)"
-            )
-            naive = await _generate_answer(llm, row["query"], "(无检索结果)")
-            rag = await _generate_answer(llm, row["query"], evidence)
-            naive_judge = await checker.check(
-                query=row["query"], answer=naive, chunks=chunks, tool_results_text=""
-            )
-            rag_judge = await checker.check(
-                query=row["query"], answer=rag, chunks=chunks, tool_results_text=""
-            )
-            checked = rag
-            checked_judge = rag_judge
-            if not rag_judge.supported:
-                from app.agents.nodes.faithfulness import self_correct_answer
-
-                checked, checked_judge, _, _ = await self_correct_answer(
-                    llm=llm,
-                    checker=checker,
+            try:
+                retrieved = await retriever.retrieve(row["query"], top_k=5)
+                evidence = (
+                    "\n\n".join(f"[{c.chunk_id}] {c.content}" for c in retrieved[:6])
+                    or "(无检索结果)"
+                )
+                naive = await _generate_answer(run.llm, row["query"], "(无检索结果)")
+                rag = await _generate_answer(run.llm, row["query"], evidence)
+                naive_judge = await checker.check(
+                    query=row["query"],
+                    answer=naive,
+                    chunks=retrieved,
+                    tool_results_text="",
+                )
+                rag_judge = await checker.check(
                     query=row["query"],
                     answer=rag,
-                    chunks=chunks,
+                    chunks=retrieved,
                     tool_results_text="",
-                    first_result=rag_judge,
                 )
-            keywords = row.get("gold_answer_contains") or []
-            if naive_judge.supported:
-                naive_supported += 1
-            else:
-                naive_hallucinated += 1
-            if rag_judge.supported:
-                rag_supported += 1
-            else:
-                rag_hallucinated += 1
-            if checked_judge.supported:
-                checked_supported += 1
-            else:
-                checked_hallucinated += 1
-            if _keyword_hit(naive, keywords):
-                naive_keyword += 1
-            if _keyword_hit(rag, keywords):
-                rag_keyword += 1
-            if _keyword_hit(checked, keywords):
-                checked_keyword += 1
+                checked = rag
+                checked_judge = rag_judge
+                if not rag_judge.supported:
+                    from app.agents.nodes.faithfulness import self_correct_answer
 
-    await asyncio.gather(*[_one(row) for row in rows])
-    n = len(rows)
-    naive_h = naive_hallucinated / n
-    checked_h = checked_hallucinated / n
+                    checked, checked_judge, _, _ = await self_correct_answer(
+                        llm=run.llm,
+                        checker=checker,
+                        query=row["query"],
+                        answer=rag,
+                        chunks=retrieved,
+                        tool_results_text="",
+                        first_result=rag_judge,
+                    )
+                keywords = row.get("gold_answer_contains") or []
+                counts["naive_supported"] += int(naive_judge.supported)
+                counts["rag_supported"] += int(rag_judge.supported)
+                counts["checked_supported"] += int(checked_judge.supported)
+                counts["naive_keyword"] += int(_keyword_hit(naive, keywords))
+                counts["rag_keyword"] += int(_keyword_hit(rag, keywords))
+                counts["checked_keyword"] += int(_keyword_hit(checked, keywords))
+            except ModelBudgetExceeded as exc:
+                counts["errors"] += 1
+                budget_exceeded = True
+                if len(error_samples) < 3:
+                    error_samples.append(_redact(exc))
+            except Exception as exc:
+                counts["errors"] += 1
+                if len(error_samples) < 3:
+                    error_samples.append(_redact(exc))
+
+    await asyncio.gather(*[_one(row) for row in data_rows])
+    n = len(data_rows)
+    checked_h = (n - counts["checked_supported"]) / n if n else 0.0
+    naive_h = (n - counts["naive_supported"]) / n if n else 0.0
     drop = ((naive_h - checked_h) / naive_h) if naive_h else 0.0
+    attempted_model_calls = _model_calls(run.llm) - calls_before_all
+    quality_scope = _quality_scope(
+        mode=run.mode,
+        attempted_calls=attempted_model_calls,
+        errors=counts["errors"],
+        budget_exceeded=budget_exceeded,
+    )
+    quality_measured = quality_scope == "full"
+    not_measured = ["full_graph_faithfulness", "human_quality_review"]
+    if not quality_measured:
+        not_measured = ["faithfulness", "hallucination_rate", *not_measured]
     return {
+        **_model_meta(run),
+        "quality_measured": quality_measured,
+        "quality_scope": quality_scope,
+        "measurement": "real_model",
         "n": n,
-        "judge": "deepseek-faithfulness_v1",
+        "judge": f"{run.provider}-faithfulness_v1",
+        "judge_model": run.model,
+        "errors": counts["errors"],
+        "budget_exceeded": budget_exceeded,
+        "error_samples": error_samples,
+        "attempted_model_calls": attempted_model_calls,
         "naive_no_context": {
-            "faithfulness": round(naive_supported / n, 4),
+            "faithfulness": round(counts["naive_supported"] / n, 4) if n else 0.0,
             "hallucination_rate": round(naive_h, 4),
-            "keyword_hit": round(naive_keyword / n, 4),
+            "keyword_hit": round(counts["naive_keyword"] / n, 4) if n else 0.0,
         },
         "rag": {
-            "faithfulness": round(rag_supported / n, 4),
-            "hallucination_rate": round(rag_hallucinated / n, 4),
-            "keyword_hit": round(rag_keyword / n, 4),
+            "faithfulness": round(counts["rag_supported"] / n, 4) if n else 0.0,
+            "hallucination_rate": round((n - counts["rag_supported"]) / n, 4) if n else 0.0,
+            "keyword_hit": round(counts["rag_keyword"] / n, 4) if n else 0.0,
         },
         "rag_plus_self_check": {
-            "faithfulness": round(checked_supported / n, 4),
+            "faithfulness": round(counts["checked_supported"] / n, 4) if n else 0.0,
             "hallucination_rate": round(checked_h, 4),
-            "keyword_hit": round(checked_keyword / n, 4),
+            "keyword_hit": round(counts["checked_keyword"] / n, 4) if n else 0.0,
         },
         "hallucination_relative_drop": round(drop, 4),
-        "note": "Hallucination = LLM judge supported=false. Relative drop is naive vs RAG+self-check.",
+        "data": _dataset_meta(RAG_PATH, data_rows, role="internal_eval"),
+        "knowledge_sha256": _knowledge_digest(),
+        "prompt_versions": _prompt_versions(),
+        "not_measured": not_measured,
+        "note": (
+            "Hallucination = LLM judge supported=false. Same-provider judge is optimistic; "
+            "relative drop is naive vs RAG+self-check. Not a human quality verdict."
+        ),
     }
 
 
-async def eval_e2e() -> dict:
-    import os
+def _chat_service_with_llm(container: Any, llm: Any) -> Any:
+    """Rebuild ChatService with an explicitly injected, budgeted provider."""
+    from app.services.chat_service import ChatService
 
-    os.environ["RATE_LIMIT_PER_MINUTE"] = "1000"
-    from app.config.settings import clear_settings_cache, get_settings
+    old = container.chat_service
+    return ChatService(
+        settings=container.settings,
+        llm=llm,
+        retriever=container.retriever,
+        reranker=old._reranker,
+        session_factory=container.session_factory,
+        rate_limiter=old._rate_limiter,
+        registry=old.registry,
+        staff_mode=old._staff_mode,
+    )
+
+
+async def eval_e2e(
+    model_run: ModelRun | Any | None = None,
+    *,
+    llm: Any | None = None,
+    rows: list[dict] | None = None,
+) -> dict:
+    """Run the graph only against a fresh temp SQLite DB, with guaranteed cleanup."""
     from app.schemas.chat import ChatRequest
     from app.services.container import build_container
 
-    clear_settings_cache()
-    settings = get_settings()
-    if not settings.llm_configured:
-        raise SystemExit("DEEPSEEK_API_KEY missing")
-    container = await build_container(settings, seed=True)
-    rows = load_jsonl(E2E_PATH)
+    run = _resolve_injection(model_run, llm)
+    data_rows = (
+        rows
+        if rows is not None
+        else _limited_rows(E2E_PATH, run.max_cases if run is not None else None)
+    )
+    calls_before_all = _model_calls(run.llm) if run is not None else 0
+    errors = 0
+    budget_exceeded = False
+    error_samples: list[str] = []
     latencies: list[float] = []
     intent_ms: list[float] = []
     retrieval_ms: list[float] = []
@@ -668,49 +1470,122 @@ async def eval_e2e() -> dict:
     refuse_n = 0
     keyword_ok = 0
     keyword_n = 0
-    toolish_ok = 0
-    toolish_n = 0
-    details = []
-    try:
-        for row in rows:
-            request = ChatRequest(message=row["query"], user_id=row.get("user_id") or "u_demo")
-            started = time.perf_counter()
-            response = await container.chat_service.chat(request, trace_id=f"eval_{row['id']}")
-            total_ms = (time.perf_counter() - started) * 1000
-            latencies.append(response.latency.total_ms or total_ms)
-            intent_ms.append(response.latency.intent_ms)
-            retrieval_ms.append(response.latency.retrieval_ms)
-            llm_ms.append(response.latency.llm_ms)
-            tool_ms.append(response.latency.tool_ms)
-            if row.get("expect_refused"):
-                refuse_n += 1
-                if response.refused:
-                    refuse_ok += 1
-            keywords = row.get("expect_keywords") or []
-            if keywords:
-                keyword_n += 1
-                if _keyword_hit(response.answer, keywords):
-                    keyword_ok += 1
-            if any(token in row["query"] for token in ("ORD", "库存", "取消")):
-                toolish_n += 1
-                if "ORD" in response.answer or response.pending_action or "库存" in response.answer:
-                    toolish_ok += 1
-            details.append(
-                {
-                    "id": row["id"],
-                    "refused": response.refused,
-                    "strategy": response.strategy.value if response.strategy else None,
-                    "intent": response.intent.value if response.intent else None,
-                    "latency_ms": round(latencies[-1], 1),
-                }
-            )
-    finally:
-        await container.aclose()
+    proxy_ok = 0
+    proxy_n = 0
+    details: list[dict] = []
+
+    with tempfile.TemporaryDirectory(prefix="dtc-eval-e2e-") as temp_dir:
+        database_url = f"sqlite+aiosqlite:///{Path(temp_dir, 'eval.sqlite3').as_posix()}"
+        settings = offline_settings(database_url=database_url)
+        container = None
+        try:
+            try:
+                container = await build_container(settings, seed=True)
+            except Exception as exc:
+                raise RuntimeError(f"e2e infrastructure failed: {_redact(exc)}") from None
+            if run is not None:
+                container.chat_service = _chat_service_with_llm(container, run.llm)
+            for row in data_rows:
+                request = ChatRequest(message=row["query"], user_id=row.get("user_id") or "u_demo")
+                started = time.perf_counter()
+                try:
+                    response = await container.chat_service.chat(
+                        request, trace_id=f"eval_{row['id']}"
+                    )
+                except ModelBudgetExceeded as exc:
+                    errors += 1
+                    budget_exceeded = True
+                    if len(error_samples) < 3:
+                        error_samples.append(_redact(exc))
+                    details.append({"id": row["id"], "error": "model_budget_exceeded"})
+                    break
+                except Exception as exc:
+                    errors += 1
+                    redacted = _redact(exc)
+                    if len(error_samples) < 3:
+                        error_samples.append(redacted)
+                    details.append({"id": row["id"], "error": redacted})
+                    continue
+                total_ms = (time.perf_counter() - started) * 1000
+                latencies.append(response.latency.total_ms or total_ms)
+                intent_ms.append(response.latency.intent_ms)
+                retrieval_ms.append(response.latency.retrieval_ms)
+                llm_ms.append(response.latency.llm_ms)
+                tool_ms.append(response.latency.tool_ms)
+                if row.get("expect_refused"):
+                    refuse_n += 1
+                    if response.refused:
+                        refuse_ok += 1
+                keywords = row.get("expect_keywords") or []
+                if keywords:
+                    keyword_n += 1
+                    if _keyword_hit(response.answer, keywords):
+                        keyword_ok += 1
+                if any(token in row["query"] for token in ("ORD", "库存", "取消")):
+                    proxy_n += 1
+                    if (
+                        "ORD" in response.answer
+                        or response.pending_action
+                        or "库存" in response.answer
+                    ):
+                        proxy_ok += 1
+                details.append(
+                    {
+                        "id": row["id"],
+                        "refused": response.refused,
+                        "strategy": response.strategy.value if response.strategy else None,
+                        "intent": response.intent.value if response.intent else None,
+                        "latency_ms": round(latencies[-1], 1),
+                    }
+                )
+        finally:
+            if container is not None:
+                await container.aclose()
+
+    mode: Mode = "offline" if run is None else run.mode
+    real = mode == "real"
+    attempted_model_calls = (run and _model_calls(run.llm) - calls_before_all) or 0
+    quality_scope = _quality_scope(
+        mode=mode,
+        attempted_calls=attempted_model_calls,
+        errors=errors,
+        budget_exceeded=budget_exceeded,
+    )
+    quality_measured = quality_scope == "full"
+    not_measured = ["real_tool_call_accuracy", "human_quality_review"]
+    if not quality_measured:
+        not_measured = ["faithfulness", "llm_output_quality", *not_measured]
     return {
-        "n": len(rows),
+        "mode": mode,
+        "provider": "offline" if run is None else run.provider,
+        "model": "offline-template" if run is None else run.model,
+        "quality_measured": quality_measured,
+        "quality_scope": quality_scope,
+        "measurement": "real_model_graph" if real else "offline_graph_plumbing",
+        "n": len(data_rows),
+        "errors": errors,
+        "budget_exceeded": budget_exceeded,
+        "error_samples": error_samples,
+        "attempted_model_calls": attempted_model_calls,
+        "data": _dataset_meta(E2E_PATH, data_rows, role="upstream_demo_qa"),
+        "knowledge_sha256": _knowledge_digest(),
+        "prompt_versions": _prompt_versions(),
+        "database": "fresh-temporary-sqlite",
+        "temporary_database_removed": True,
+        "synthetic_seed": True,
         "refuse_accuracy": round(refuse_ok / refuse_n, 4) if refuse_n else None,
         "keyword_hit": round(keyword_ok / keyword_n, 4) if keyword_n else None,
-        "tool_path_hit": round(toolish_ok / toolish_n, 4) if toolish_n else None,
+        "keyword_hit_note": (
+            "Answer-text keyword presence only; not a model-quality or tool-correctness score."
+        ),
+        # Historic field name was misleading: it only checks answer text, not tool execution.
+        "legacy_answer_keyword_proxy": round(proxy_ok / proxy_n, 4) if proxy_n else None,
+        "legacy_answer_keyword_proxy_note": (
+            "Answer-text keyword/pending-action presence for order/inventory/cancel hints. "
+            "This is NOT tool-call name/parameter/count accuracy."
+        ),
+        "real_tool_trace_measured": False,
+        "latency_scope": "real-model-pipeline" if real else "offline-pipeline",
         "latency_ms": {
             "p50": round(percentile(latencies, 50), 1),
             "p95": round(percentile(latencies, 95), 1),
@@ -720,6 +1595,7 @@ async def eval_e2e() -> dict:
             "llm_p50": round(percentile(llm_ms, 50), 1),
             "tool_p50": round(percentile(tool_ms, 50), 1),
         },
+        "not_measured": not_measured,
         "cases": details,
     }
 
@@ -731,11 +1607,11 @@ def _resume_bullets(report: dict) -> list[str]:
     intent_v2 = report.get("intent_v2")
     intent_v3 = report.get("intent_v3")
     overlay = report.get("intent_overlay")
-    if intent_v3:
+    if intent_v3 and intent_v3.get("mode") == "real":
         parts = [f"intent_v3+overlay {intent_v3['accuracy']:.1%}"]
-        if intent_v2:
+        if intent_v2 and intent_v2.get("mode") == "real":
             parts.insert(0, f"intent_v2 {intent_v2['accuracy']:.1%}")
-        if intent_v1:
+        if intent_v1 and intent_v1.get("mode") == "real":
             parts.insert(0, f"intent_v1 {intent_v1['accuracy']:.1%}")
         extra = f"；规则 {intent_rules['accuracy']:.1%}" if intent_rules else ""
         if overlay:
@@ -748,7 +1624,12 @@ def _resume_bullets(report: dict) -> list[str]:
             (
                 s
                 for s in retrieval["systems"]
-                if s["backend"] not in {"bm25", "hybrid+cross-encoder", "hybrid+lexical-fallback"}
+                if s["backend"]
+                not in {
+                    "bm25",
+                    "hybrid+cross-encoder",
+                    "hybrid+lexical-fallback",
+                }
                 and not str(s["backend"]).endswith("+rrf")
             ),
             None,
@@ -759,7 +1640,8 @@ def _resume_bullets(report: dict) -> list[str]:
         )
         if bm25:
             bullets.append(
-                f"BM25 Precision@1 {bm25['precision_at_1']['mean']:.1%}，Recall@3 {bm25['recall_at_3']['mean']:.1%}，MRR {bm25['mrr']['mean']:.2f}"
+                f"BM25 Precision@1 {bm25['precision_at_1']['mean']:.1%}，"
+                f"Recall@3 {bm25['recall_at_3']['mean']:.1%}，MRR {bm25['mrr']['mean']:.2f}"
             )
         if dense:
             bullets.append(
@@ -777,40 +1659,138 @@ def _resume_bullets(report: dict) -> list[str]:
                 f"Recall@3 {cross_encoder['recall_at_3']['mean']:.1%}"
             )
     gen = report.get("generation")
-    if gen:
+    if gen and gen.get("mode") == "real" and gen.get("quality_measured"):
         naive = gen["naive_no_context"]
         rag = gen["rag"]
         checked = gen["rag_plus_self_check"]
         bullets.append(
-            f"Faithfulness：无检索 {naive['faithfulness']:.0%} → RAG {rag['faithfulness']:.0%} → RAG+自纠错 {checked['faithfulness']:.0%}"
+            f"Faithfulness：无检索 {naive['faithfulness']:.0%} → "
+            f"RAG {rag['faithfulness']:.0%} → RAG+自纠错 {checked['faithfulness']:.0%}"
         )
         bullets.append(
-            f"幻觉率：无检索 {naive['hallucination_rate']:.0%} → RAG+自纠错 {checked['hallucination_rate']:.0%}，相对下降 {gen['hallucination_relative_drop']:.0%}"
+            f"幻觉率：无检索 {naive['hallucination_rate']:.0%} → "
+            f"RAG+自纠错 {checked['hallucination_rate']:.0%}，"
+            f"相对下降 {gen['hallucination_relative_drop']:.0%}"
         )
     e2e = report.get("e2e")
-    if e2e:
+    if e2e and e2e.get("mode") == "real" and e2e.get("quality_measured"):
         lat = e2e["latency_ms"]
         bullets.append(
-            f"E2E {e2e['n']} 条：P50 {lat['p50']}ms / P95 {lat['p95']}ms；拒答准确率 {e2e['refuse_accuracy']}；关键词命中 {e2e['keyword_hit']}"
+            f"E2E {e2e['n']} 条：P50 {lat['p50']}ms / P95 {lat['p95']}ms；"
+            f"拒答准确率 {e2e['refuse_accuracy']}；关键词命中 {e2e['keyword_hit']}"
         )
     return bullets
 
 
-async def run_all(*, llm: bool) -> dict:
+async def run_all(
+    *,
+    model_run: ModelRun | Any | None = None,
+    llm: Any | None = None,
+) -> dict:
+    if isinstance(llm, bool):
+        if llm:
+            raise SystemExit(
+                "run_all(llm=True) no longer enables real calls; pass an explicit "
+                "ModelRun built from --allow-real-model configuration."
+            )
+        run = _resolve_injection(model_run, None)
+    else:
+        run = _resolve_injection(model_run, llm)
     report: dict = {
         "generated_at": datetime.now(UTC).isoformat(),
         "intent_rules": eval_intent_rules(),
         "intent_overlay": eval_intent_overlay(),
         "retrieval": await eval_retrieval(),
+        "generation": await eval_generation(run),
+        "e2e": await eval_e2e(model_run=run),
     }
-    if llm:
-        report["intent_v1"] = await eval_intent_llm(version="intent_v1", overlay=False)
-        report["intent_v2"] = await eval_intent_llm(version="intent_v2", overlay=False)
-        report["intent_v3"] = await eval_intent_llm(version="intent_v3", overlay=True)
-        report["generation"] = await eval_generation()
-        report["e2e"] = await eval_e2e()
+    if run is not None:
+        report["intent_v1"] = await eval_intent_llm(
+            model_run=run, version="intent_v1", overlay=False
+        )
+        report["intent_v2"] = await eval_intent_llm(
+            model_run=run, version="intent_v2", overlay=False
+        )
+        report["intent_v3"] = await eval_intent_llm(
+            model_run=run, version="intent_v3", overlay=True
+        )
     report["resume_bullets"] = _resume_bullets(report)
     return report
+
+
+async def _aclose_llm(llm: Any) -> None:
+    closer = getattr(llm, "aclose", None)
+    if closer is not None:
+        await closer()
+
+
+def _real_model_config_from_args(args: argparse.Namespace) -> RealModelConfig | None:
+    if args.llm and not args.allow_real_model:
+        raise SystemExit(
+            "--llm no longer enables real model calls; pass --allow-real-model with "
+            "--provider, --model, --max-cases and --max-calls. Credentials are read only "
+            "from DTC_EVAL_* variables."
+        )
+    if not args.allow_real_model:
+        return None
+    if args.task not in _LLM_TASKS:
+        raise SystemExit(f"--task {args.task} is deterministic offline; omit --allow-real-model")
+    if args.provider != "deepseek":
+        raise SystemExit("--provider deepseek is required in real mode")
+    if not args.model or not str(args.model).strip():
+        raise SystemExit("--model is required in real mode")
+    if args.max_cases is None or args.max_cases <= 0:
+        raise SystemExit("--max-cases must be a positive integer in real mode")
+    if args.max_calls is None or args.max_calls <= 0:
+        raise SystemExit("--max-calls must be a positive integer in real mode")
+    if not 1 <= args.max_output_tokens <= 2048:
+        raise SystemExit("--max-output-tokens must be between 1 and 2048")
+
+    api_key = os.environ.get("DTC_EVAL_DEEPSEEK_API_KEY", "").strip()
+    if not api_key:
+        raise SystemExit(
+            "DTC_EVAL_DEEPSEEK_API_KEY is required in real mode; "
+            "DEEPSEEK_API_KEY and .env files are intentionally not read"
+        )
+    base_url = (
+        os.environ.get("DTC_EVAL_DEEPSEEK_BASE_URL", "").strip() or "https://api.deepseek.com"
+    )
+    return RealModelConfig(
+        provider=args.provider,
+        model=str(args.model).strip(),
+        max_cases=args.max_cases,
+        max_calls=args.max_calls,
+        max_output_tokens=args.max_output_tokens,
+        api_key=api_key,
+        base_url=base_url,
+    )
+
+
+def _build_model_run(config: RealModelConfig) -> ModelRun:
+    from app.providers.deepseek import DeepSeekProvider
+
+    settings = offline_settings().model_copy(
+        update={
+            "deepseek_api_key": SecretStr(config.api_key),
+            "deepseek_base_url": config.base_url,
+            "deepseek_model": config.model,
+            "llm_max_retries": 1,
+        }
+    )
+    provider = DeepSeekProvider(settings)
+    return ModelRun(
+        mode="real",
+        provider=config.provider,
+        model=config.model,
+        max_cases=config.max_cases,
+        max_calls=config.max_calls,
+        max_output_tokens=config.max_output_tokens,
+        llm=_BoundedLLM(
+            provider,
+            max_calls=config.max_calls,
+            max_output_tokens=config.max_output_tokens,
+        ),
+    )
 
 
 def main() -> None:
@@ -820,35 +1800,59 @@ def main() -> None:
         choices=["all", "intent", "retrieval", "epig-policy", "generation", "e2e"],
         default="all",
     )
-    parser.add_argument("--llm", action="store_true")
+    parser.add_argument("--llm", action="store_true", help="deprecated; needs --allow-real-model")
+    parser.add_argument(
+        "--allow-real-model",
+        action="store_true",
+        help="explicitly allow real provider calls (credentials via DTC_EVAL_*)",
+    )
+    parser.add_argument("--provider", choices=["deepseek"], default=None)
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--max-cases", type=int, default=None)
+    parser.add_argument("--max-calls", type=int, default=None)
+    parser.add_argument("--max-output-tokens", type=int, default=512)
     args = parser.parse_args()
 
+    config = _real_model_config_from_args(args)
+    model_run = _build_model_run(config) if config is not None else None
+
     async def _go() -> dict:
-        if args.task == "all":
-            return await run_all(llm=args.llm)
-        if args.task == "intent":
-            result: dict[str, Any] = {
-                "intent_rules": eval_intent_rules(),
-                "intent_overlay": eval_intent_overlay(),
-            }
-            if args.llm:
-                result["intent_v1"] = await eval_intent_llm(version="intent_v1", overlay=False)
-                result["intent_v2"] = await eval_intent_llm(version="intent_v2", overlay=False)
-                result["intent_v3"] = await eval_intent_llm(version="intent_v3", overlay=True)
-            result["resume_bullets"] = _resume_bullets(result)
-            return result
-        if args.task == "retrieval":
-            return {"retrieval": await eval_retrieval()}
-        if args.task == "epig-policy":
-            policy_result: dict[str, Any] = {"epig_policy": await eval_epig_policy()}
-            if args.llm:
-                policy_result["epig_policy_llm"] = await eval_epig_policy_generation()
-            return policy_result
-        if args.task == "generation":
-            return {"generation": await eval_generation()}
-        return {"e2e": await eval_e2e()}
+        try:
+            if args.task == "all":
+                return await run_all(model_run=model_run)
+            if args.task == "intent":
+                result: dict[str, Any] = {
+                    "intent_rules": eval_intent_rules(),
+                    "intent_overlay": eval_intent_overlay(),
+                }
+                if model_run is not None:
+                    result["intent_v1"] = await eval_intent_llm(
+                        model_run=model_run, version="intent_v1", overlay=False
+                    )
+                    result["intent_v2"] = await eval_intent_llm(
+                        model_run=model_run, version="intent_v2", overlay=False
+                    )
+                    result["intent_v3"] = await eval_intent_llm(
+                        model_run=model_run, version="intent_v3", overlay=True
+                    )
+                result["resume_bullets"] = _resume_bullets(result)
+                return result
+            if args.task == "retrieval":
+                return {"retrieval": await eval_retrieval()}
+            if args.task == "epig-policy":
+                policy_result: dict[str, Any] = {"epig_policy": await eval_epig_policy()}
+                if model_run is not None:
+                    policy_result["epig_policy_llm"] = await eval_epig_policy_generation(model_run)
+                return policy_result
+            if args.task == "generation":
+                return {"generation": await eval_generation(model_run)}
+            return {"e2e": await eval_e2e(model_run=model_run)}
+        finally:
+            if model_run is not None:
+                await _aclose_llm(model_run.llm)
 
     report = asyncio.run(_go())
+    report["run"] = _run_metadata(task=args.task, model_run=model_run, results=report)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = REPORT_DIR / f"{args.task}_{stamp}.json"
@@ -860,6 +1864,11 @@ def main() -> None:
     latest.write_text(text, encoding="utf-8")
     print(text)
     print(f"\nWrote {path}")
+    if report["run"]["mode"] == "offline":
+        print(
+            "\nOFFLINE: deterministic/plumbing checks only; model quality is not measured "
+            "and no provider was called."
+        )
     if args.task == "epig-policy":
         result = report["epig_policy"]
         if result["passed"] != result["n"]:

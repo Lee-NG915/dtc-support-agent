@@ -200,9 +200,9 @@ def test_keyword_hit_requires_every_keyword() -> None:
 def _report() -> dict:
     return {
         "intent_rules": {"accuracy": 0.62},
-        "intent_v1": {"accuracy": 0.80},
-        "intent_v2": {"accuracy": 0.88},
-        "intent_v3": {"accuracy": 0.91, "n": 100},
+        "intent_v1": {"accuracy": 0.80, "mode": "real"},
+        "intent_v2": {"accuracy": 0.88, "mode": "real"},
+        "intent_v3": {"accuracy": 0.91, "n": 100, "mode": "real"},
         "intent_overlay": {"accuracy": 0.93},
         "retrieval": {
             "systems": [
@@ -230,12 +230,16 @@ def _report() -> dict:
             ]
         },
         "generation": {
+            "mode": "real",
+            "quality_measured": True,
             "naive_no_context": {"faithfulness": 0.40, "hallucination_rate": 0.50},
             "rag": {"faithfulness": 0.70},
             "rag_plus_self_check": {"faithfulness": 0.90, "hallucination_rate": 0.10},
             "hallucination_relative_drop": 0.80,
         },
         "e2e": {
+            "mode": "real",
+            "quality_measured": True,
             "n": 16,
             "latency_ms": {"p50": 900, "p95": 2100},
             "refuse_accuracy": 0.90,
@@ -268,5 +272,45 @@ def test_resume_bullets_cover_every_section() -> None:
 
 
 def test_resume_bullets_without_earlier_intent_versions() -> None:
-    bullets = _resume_bullets({"intent_v3": {"accuracy": 0.90, "n": 10}})
+    bullets = _resume_bullets({"intent_v3": {"accuracy": 0.90, "n": 10, "mode": "real"}})
     assert bullets == ["意图识别：10 条 intent_v3+overlay 90.0%"]
+
+
+def test_resume_bullets_skip_fake_or_unmeasured_model_quality() -> None:
+    report = {
+        "intent_rules": {"accuracy": 0.62},
+        "intent_overlay": {"accuracy": 0.93},
+        "intent_v3": {"accuracy": 0.91, "n": 100, "mode": "fake"},
+        "retrieval": {
+            "systems": [
+                {
+                    "backend": "bm25",
+                    "precision_at_1": {"mean": 0.50},
+                    "recall_at_3": {"mean": 0.70},
+                    "mrr": {"mean": 0.60},
+                }
+            ]
+        },
+        "generation": {
+            "mode": "offline",
+            "quality_measured": False,
+            "not_measured": ["faithfulness", "hallucination_rate"],
+            # Deliberately present to prove the bullets never read them offline.
+            "naive_no_context": {"faithfulness": 0.40, "hallucination_rate": 0.50},
+            "rag": {"faithfulness": 0.70},
+            "rag_plus_self_check": {"faithfulness": 0.90, "hallucination_rate": 0.10},
+            "hallucination_relative_drop": 0.80,
+        },
+        "e2e": {
+            "mode": "offline",
+            "quality_measured": False,
+            "n": 16,
+            "latency_ms": {"p50": 900, "p95": 2100},
+            "refuse_accuracy": 1.0,
+            "keyword_hit": 0.5,
+        },
+    }
+    bullets = _resume_bullets(report)
+    assert bullets == [
+        "BM25 Precision@1 50.0%，Recall@3 70.0%，MRR 0.60",
+    ]

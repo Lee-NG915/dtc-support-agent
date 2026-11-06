@@ -200,7 +200,7 @@ if calls >= settings.max_tool_calls or (state.get("step_count") or 0) >= setting
 - `tests/unit/test_adaptive_router.py`：复杂度规则
 - `tests/unit/test_retry.py`：退避，不打网
 
-pytest 在 `conftest.py` 清空真实 API key，CI **不打真实 LLM**。整图路径用 `tests/e2e/` + Fake，或离线 `eval.runner --task e2e --llm`。
+pytest 在 `conftest.py` 清空真实 API key，CI **不打真实 LLM**。整图路径用 `tests/e2e/` + Fake，或默认离线 `eval.runner --task e2e`；真实模型另按[评测指南](../10-evaluation.md)显式配置。
 
 **条件边的价值：** 把「能不能单测一个节点」从架构上保住，而不是测一个 400 行 god function。
 
@@ -813,7 +813,7 @@ DeepSeek `deepseek-chat`（API 上的 V3）+ 版本化模板（`PROMPT_VERSION_I
 
 **详细答案：**
 
-每条形如 `{"id":"i011","query":"怎么开发票","intent":"faq_policy"}`。用途：分类准确率与 prompt 消融。评测命令：`python -m eval.runner --task intent --llm`。
+每条形如 `{"id":"i011","query":"怎么开发票","intent":"faq_policy"}`。用途：分类准确率与 prompt 消融。评测命令：`python -m eval.runner --task intent`（默认规则，真实分类评测按[评测指南](../10-evaluation.md)显式配置）。
 
 不均衡是有意的：政策问法最多、问候最少。面试不要说「分层随机抽样自生产日志」——仓库没有这条流水线。这是 **能力集**，用来回归「改 prompt 有没有把转人工打成退款」。
 
