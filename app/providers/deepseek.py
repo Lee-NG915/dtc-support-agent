@@ -55,6 +55,13 @@ class DeepSeekProvider:
         effort = self._settings.deepseek_reasoning_effort
         if effort:
             payload["reasoning_effort"] = effort
+        self._apply_thinking_mode(payload)
+
+    def _apply_thinking_mode(self, payload: dict[str, object]) -> None:
+        """Send the explicit DeepSeek thinking toggle; omit it when unspecified."""
+        mode = self._settings.deepseek_thinking_mode
+        if mode is not None:
+            payload["thinking"] = {"type": mode}
 
     async def ping(self) -> bool:
         """Do not call chat completions here — readiness must stay cheap."""

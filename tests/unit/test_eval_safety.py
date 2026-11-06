@@ -7,6 +7,7 @@ path is exercised only with an injected fake provider.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import sys
@@ -27,6 +28,8 @@ def _pollute_parent_env(monkeypatch) -> None:
         "APP_NAME": f"{CANARY}-app",
         "DEEPSEEK_API_KEY": f"{CANARY}-deepseek",
         "DEEPSEEK_BASE_URL": f"https://{CANARY}-provider.invalid/v1",
+        "DEEPSEEK_MODEL": f"{CANARY}-model",
+        "DEEPSEEK_THINKING_MODE": "enabled",
         "EMBEDDING_API_KEY": f"{CANARY}-embed",
         "EMBEDDING_BASE_URL": f"https://{CANARY}-embed.invalid",
         "DATABASE_URL": f"postgresql+asyncpg://{CANARY}:{CANARY}@db.invalid/{CANARY}",
@@ -76,6 +79,8 @@ def test_offline_settings_ignore_polluted_env_and_decoy_dotenv(tmp_path: Path, m
     assert settings.app_name == "eval-offline"
     assert settings.api_v1_prefix == "/api/v1"  # decoy .env was not opened
     assert settings.deepseek_api_key.get_secret_value() == ""
+    assert settings.deepseek_model == "offline"
+    assert settings.deepseek_thinking_mode is None
     assert settings.embedding_api_key.get_secret_value() == ""
     assert settings.database_url == "sqlite+aiosqlite:///:memory:"
     assert settings.business_connector == "fake"
@@ -120,7 +125,13 @@ async def test_default_generation_is_not_measured_without_an_llm() -> None:
     assert result["data"]["role"] == "internal_eval"
 
 
-def _real_model_run(llm, *, max_cases: int = 1, max_calls: int = 10) -> runner.ModelRun:
+def _real_model_run(
+    llm,
+    *,
+    max_cases: int = 1,
+    max_calls: int = 10,
+    thinking_mode: str | None = None,
+) -> runner.ModelRun:
     return runner.ModelRun(
         mode="real",
         provider="deepseek",
@@ -128,6 +139,7 @@ def _real_model_run(llm, *, max_cases: int = 1, max_calls: int = 10) -> runner.M
         max_cases=max_cases,
         max_calls=max_calls,
         max_output_tokens=64,
+        thinking_mode=thinking_mode,
         llm=runner._BoundedLLM(llm, max_calls=max_calls, max_output_tokens=64),
     )
 
@@ -578,7 +590,7 @@ def test_real_mode_missing_dtc_key_fails_before_provider_or_db(monkeypatch) -> N
             "--provider",
             "deepseek",
             "--model",
-            "deepseek-chat",
+            "deepseek-flash",
             "--max-cases",
             "1",
             "--max-calls",
@@ -615,7 +627,7 @@ def test_real_mode_requires_explicit_limits(monkeypatch) -> None:
             "--provider",
             "deepseek",
             "--model",
-            "deepseek-chat",
+            "deepseek-flash",
             "--max-calls",
             "1",
         ],
@@ -667,3 +679,87 @@ async def test_policy_34_stays_a_development_regression_set() -> None:
     assert result["data"]["role"] == "development_regression"
     assert result["model_generation_tested"] is False
     assert "holdout" not in json.dumps(result, ensure_ascii=False)
+
+
+def _real_args(**overrides) -> argparse.Namespace:
+    values = {
+        "llm": False,
+        "allow_real_model": True,
+        "task": "generation",
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "max_cases": 1,
+        "max_calls": 1,
+        "max_output_tokens": 128,
+        "thinking_mode": None,
+    }
+    values.update(overrides)
+    return argparse.Namespace(**values)
+
+
+@pytest.mark.parametrize(
+    ("cli_mode", "expected"),
+    [
+        (None, "disabled"),
+        ("disabled", "disabled"),
+        ("enabled", "enabled"),
+        ("unspecified", None),
+    ],
+)
+def test_real_mode_thinking_mode_defaults_to_disabled_and_ignores_env(
+    monkeypatch, cli_mode: str | None, expected: str | None
+) -> None:
+    monkeypatch.setenv("DTC_EVAL_DEEPSEEK_API_KEY", f"{CANARY}-eval-key")
+    monkeypatch.setenv("DEEPSEEK_THINKING_MODE", "enabled")
+
+    config = runner._real_model_config_from_args(_real_args(thinking_mode=cli_mode))
+
+    assert config is not None
+    assert config.thinking_mode == expected
+
+
+def test_thinking_mode_flag_requires_the_explicit_real_path(monkeypatch) -> None:
+    monkeypatch.setenv("DTC_EVAL_DEEPSEEK_API_KEY", f"{CANARY}-eval-key")
+
+    with pytest.raises(SystemExit) as excinfo:
+        runner._real_model_config_from_args(
+            _real_args(allow_real_model=False, task="retrieval", thinking_mode="enabled")
+        )
+
+    assert "--allow-real-model" in str(excinfo.value)
+
+
+def test_run_metadata_declares_the_actual_thinking_mode() -> None:
+    disabled = _real_model_run(_AnswerLLM(), thinking_mode="disabled")
+    provider_default = _real_model_run(_AnswerLLM())
+
+    assert runner._thinking_mode_meta(disabled) == "disabled"
+    assert runner._model_meta(disabled)["thinking_mode"] == "disabled"
+    assert (
+        runner._run_metadata(task="generation", model_run=disabled, results={})["thinking_mode"]
+        == "disabled"
+    )
+    assert runner._thinking_mode_meta(provider_default) == "provider_default"
+    assert runner._thinking_mode_meta(None) == "not_applicable"
+    assert runner._model_meta(None)["thinking_mode"] == "not_applicable"
+
+
+async def test_build_model_run_applies_cli_mode_without_reading_global_env(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_THINKING_MODE", "enabled")
+    config = runner.RealModelConfig(
+        provider="deepseek",
+        model="deepseek-flash",
+        max_cases=1,
+        max_calls=1,
+        max_output_tokens=16,
+        thinking_mode="disabled",
+        api_key=f"{CANARY}-eval-key",
+        base_url="https://api.deepseek.com",
+    )
+
+    run = runner._build_model_run(config)
+    try:
+        assert run.thinking_mode == "disabled"
+        assert run.llm._provider._settings.deepseek_thinking_mode == "disabled"
+    finally:
+        await run.llm.aclose()

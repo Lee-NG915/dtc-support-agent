@@ -202,3 +202,8 @@ Codex CLI浏览器插件的页面控制不构成已完成的项目页面验收�
 固定DTC d25dc00与E-pig 72f1621归档，作者构建镜像及受控Dockerfile overlay摘要与根新归档逐一匹配后复用相同image ID；根以全新项目757b51d3fbaebc44启动。迁移gate、ready200、Worker once退出0、两个PG无主机端口均通过，所属容器/卷/网络清理后0、配置目录删除。报告`/tmp/dtc-compose-root-acceptance-report.json`，日志`/tmp/dtc-compose-root-acceptance.log`。这不是当前未提交DeepSeek代码的镜像验收，也不包含业务种子、页面或AI质量。作者构建曾遇npm/Corepack网络及工作区依赖缺失，失败日志保留于`/tmp/dtc-demo-build*.log`；受控副本修复复制依赖后实测构建通过，不修改E-pig线上接口。
 
 独立Review未发现本候选新阻断。根25项Compose/DeepSeek/Settings聚焦测试通过（`/tmp/dtc-current-scoped-root-escalated.log`）。首次受限沙箱运行6项因绑定loopback端口被拒、19项通过；原日志保留，使用正常可绑定专用端口的授权环境按原代码重跑，没有放宽守卫。
+
+
+## DeepSeek协议适配独立复核（2026-11-06，Codex）
+
+Claude实现模型默认deepseek-flash与可选thinking开关；generate/stream一致，未设置时不下发该字段；真实eval默认disabled并记录实际选择，离线不接受真实模型参数。配置模板移除不能被float解析的空温度值，正常Settings加载无需忽略空值选项。Codex独立25项部署/provider/settings测试与27项eval安全测试通过，相关6文件Ruff格式/静态、3源文件mypy通过；独立只读Review无新阻断。真实开发集3条生成成功见报告`eval/reports/epig-policy_20261106T011653Z.json`，仍非完整图质量。专用凭据及无累计费上限授权在协作正本记载；凭据不提交，调用/案例/输出仍有界。

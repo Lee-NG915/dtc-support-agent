@@ -18,10 +18,13 @@ default run into a paid or networked evaluation.
 Real model calls are a separate, explicit path:
 
     --allow-real-model --provider deepseek --model <model> \
-    --max-cases <n> --max-calls <n> [--max-output-tokens <n>]
+    --max-cases <n> --max-calls <n> [--max-output-tokens <n>] \
+    [--thinking-mode disabled|enabled|unspecified]
 
 Credentials are read only from ``DTC_EVAL_DEEPSEEK_API_KEY`` (and optionally
-``DTC_EVAL_DEEPSEEK_BASE_URL``) on that path. The call/token limits are
+``DTC_EVAL_DEEPSEEK_BASE_URL``) on that path. Real runs default to
+``--thinking-mode disabled``; ``enabled`` is only reachable by an explicit CLI
+choice and ``unspecified`` omits the toggle. The call/token limits are
 enforced eval guards, not billing guarantees.
 """
 
@@ -268,6 +271,7 @@ def offline_settings(
         deepseek_model="offline",
         deepseek_temperature=None,
         deepseek_reasoning_effort="",
+        deepseek_thinking_mode=None,
         deepseek_min_max_tokens=0,
         llm_timeout_seconds=30.0,
         llm_max_retries=1,
@@ -310,6 +314,8 @@ class ModelRun:
     max_calls: int
     max_output_tokens: int
     llm: Any = field(repr=False)
+    # None means the provider default; real CLI runs normally set disabled.
+    thinking_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -319,6 +325,7 @@ class RealModelConfig:
     max_cases: int
     max_calls: int
     max_output_tokens: int
+    thinking_mode: str | None
     api_key: str = field(repr=False)
     base_url: str = ""
 
@@ -430,18 +437,27 @@ def _limited_rows(path: Path, max_cases: int | None) -> list[dict]:
     return rows if max_cases is None else rows[:max_cases]
 
 
+def _thinking_mode_meta(model_run: ModelRun | None) -> str:
+    """Declare the thinking toggle actually used, not an implicit guess."""
+    if model_run is None or model_run.mode != "real":
+        return "not_applicable"
+    return model_run.thinking_mode or "provider_default"
+
+
 def _model_meta(model_run: ModelRun | None) -> dict:
     if model_run is None:
         return {
             "mode": "offline",
             "provider": "none",
             "model": None,
+            "thinking_mode": "not_applicable",
             "quality_measured": False,
         }
     return {
         "mode": model_run.mode,
         "provider": model_run.provider,
         "model": model_run.model,
+        "thinking_mode": _thinking_mode_meta(model_run),
         # Configuration alone never proves measured quality; each eval sets
         # this from the calls and errors it actually observed.
         "quality_measured": False,
@@ -593,6 +609,7 @@ def _run_metadata(
         "mode": "offline" if model_run is None else model_run.mode,
         "provider": "none" if model_run is None else model_run.provider,
         "model": None if model_run is None else model_run.model,
+        "thinking_mode": _thinking_mode_meta(model_run),
         "quality_measured": quality_measured,
         "quality_scope": quality_scope,
         "budget": None if model_run is None else _model_meta(model_run)["limits"],
@@ -1918,6 +1935,8 @@ def _real_model_config_from_args(args: argparse.Namespace) -> RealModelConfig | 
             "from DTC_EVAL_* variables."
         )
     if not args.allow_real_model:
+        if args.thinking_mode is not None:
+            raise SystemExit("--thinking-mode only applies with --allow-real-model")
         return None
     if args.task not in _LLM_TASKS:
         raise SystemExit(f"--task {args.task} is deterministic offline; omit --allow-real-model")
@@ -1941,12 +1960,18 @@ def _real_model_config_from_args(args: argparse.Namespace) -> RealModelConfig | 
     base_url = (
         os.environ.get("DTC_EVAL_DEEPSEEK_BASE_URL", "").strip() or "https://api.deepseek.com"
     )
+    # Real runs disable thinking unless the operator explicitly chooses
+    # "enabled" or asks for the provider default with "unspecified".
+    effective_thinking_mode = args.thinking_mode or "disabled"
     return RealModelConfig(
         provider=args.provider,
         model=str(args.model).strip(),
         max_cases=args.max_cases,
         max_calls=args.max_calls,
         max_output_tokens=args.max_output_tokens,
+        thinking_mode=(
+            None if effective_thinking_mode == "unspecified" else effective_thinking_mode
+        ),
         api_key=api_key,
         base_url=base_url,
     )
@@ -1960,6 +1985,7 @@ def _build_model_run(config: RealModelConfig) -> ModelRun:
             "deepseek_api_key": SecretStr(config.api_key),
             "deepseek_base_url": config.base_url,
             "deepseek_model": config.model,
+            "deepseek_thinking_mode": config.thinking_mode,
             "llm_max_retries": 1,
         }
     )
@@ -1971,6 +1997,7 @@ def _build_model_run(config: RealModelConfig) -> ModelRun:
         max_cases=config.max_cases,
         max_calls=config.max_calls,
         max_output_tokens=config.max_output_tokens,
+        thinking_mode=config.thinking_mode,
         llm=_BoundedLLM(
             provider,
             max_calls=config.max_calls,
@@ -1997,6 +2024,16 @@ def main() -> None:
     parser.add_argument("--max-cases", type=int, default=None)
     parser.add_argument("--max-calls", type=int, default=None)
     parser.add_argument("--max-output-tokens", type=int, default=512)
+    parser.add_argument(
+        "--thinking-mode",
+        choices=["disabled", "enabled", "unspecified"],
+        default=None,
+        help=(
+            "DeepSeek thinking toggle for real runs. Defaults to disabled; "
+            "'enabled' is an explicit opt-in and 'unspecified' omits the toggle. "
+            "Only applies with --allow-real-model."
+        ),
+    )
     args = parser.parse_args()
 
     config = _real_model_config_from_args(args)
