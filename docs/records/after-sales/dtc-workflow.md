@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录已推送`c0ea606`，摘要优先UI已推送`1baaf78`，表单控件统一为本地未提交候选；真实模型revision2保留集仍有金额单位等质量缺口。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
+更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录已推送`c0ea606`，摘要优先UI已推送`1baaf78`，表单控件统一已推送`3c8f549`；真实模型revision2保留集仍有金额单位等质量缺口。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
 
 ## 员工工作台演示密码登录（2026-11-06，Codex本地验收）
 
@@ -32,7 +32,7 @@ Claude以auto模式新增`frontend/src/staff/FormControls.tsx`：`SelectControl`
 
 最终独立验证：前端**15文件59项通过**，构建通过；Vite保留既有`>500 kB` chunk提示。生产TSX对`<select`、date/datetime-local/time/radio/range/file的静态审计无命中。项目专用Chromium实测身份与状态select选择后关闭、Escape关闭、日期中文标题与星期、方向键移动、Escape回焦；320px弹层底部不超出viewport、无横向溢出，原生控件查询数0。未做完整WCAG、Firefox/Safari、真实客服试用或效率测量。
 
-结论：控件一致性的本地工程与合成Chromium范围通过，当前为未提交候选；不能据此宣称全浏览器兼容或生产验收。
+结论：控件一致性的本地工程与合成Chromium范围通过，功能提交已推送`3c8f5498dbb38fb5a63823fe131b825351709a94`至`codex/2-epig-after-sales`；远端ref、`FormControls`、`staff.css`与本文关键blob回读一致，草稿PR #4 head已推进。GitHub在该SHA实际Actions run仍为0，不能写成远端CI通过；也不能据此宣称全浏览器兼容或生产验收。
 
 ## 2026-11-06 Kimi CR 裁决与最小修复计划
 
