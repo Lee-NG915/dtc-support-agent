@@ -207,3 +207,17 @@ Codex CLI浏览器插件的页面控制不构成已完成的项目页面验收�
 ## DeepSeek协议适配独立复核（2026-11-06，Codex）
 
 Claude实现模型默认deepseek-flash与可选thinking开关；generate/stream一致，未设置时不下发该字段；真实eval默认disabled并记录实际选择，离线不接受真实模型参数。配置模板移除不能被float解析的空温度值，正常Settings加载无需忽略空值选项。Codex独立25项部署/provider/settings测试与27项eval安全测试通过，相关6文件Ruff格式/静态、3源文件mypy通过；独立只读Review无新阻断。真实开发集3条生成成功见报告`eval/reports/epig-policy_20261106T011653Z.json`，仍非完整图质量。专用凭据及无累计费上限授权在协作正本记载；凭据不提交，调用/案例/输出仍有界。
+
+
+## 修订夹具后的真实模型独立验收（2026-11-06，Codex）
+
+先冻结fixture_protocol_revision2与runner摘要1b9f0207…，保持app/knowledge203文件与原问题不变；H07杯子/H08SG床垫一致，材料经员工API创建，模型前实际事实gate，不再把query中的“齐全”当证据。根17项回归通过，独立Review确认协议有效；离线4守卫通过、8模型not_run。
+
+根真实命令见评测指南，report `eval/reports/after_sales_acceptance_20261106T020219Z.json`，日志`/tmp/dtc-holdout-valid-root-real.log`：36/64次成功调用，prompt21424、completion4026、total25450 tokens；fixture-invalid0、Provider错误0；203文件冻结核验通过。H01/H02/H03/H05实际政策图生成，H07/H08员工API保存editing；H04/H06虽有意图模型调用，但回答是确定性人工复核，分开统计。4工程守卫通过，H12实际API重启/Worker但Fake业务源，不冒称两仓业务一致性。
+
+Codex按冻结断言及预定0/1/2锚点人工复核，独立审查再次核对。实际生成6例中4例完全满足；H05漏包装清单（1/2/1），delivery证据可支持其主要已作建议，未因文件名缺失判全错；H08内部摘要把total_minor=13795误写SGD13795，应SGD137.95，事实/证据/可行动性为0/1/2。H08可信SG引用、拒绝伪引用及仅editing原守卫仍满足，但不抵消100倍金额事实错误。H04/H06确定性回复各1/2/1，安全但未具体指导员工核对状态/费用或邮编可达性。以上不是完整生产准确率。
+
+人工裁决在同名.codex-review.json revision2；初次只重点读取consumer_reply漏查内部摘要，曾给H08满分，独立Review发现后已保存.initial并下调，原模型报告始终不变。未基于v1反馈修改prompt/知识或重复至通过。质量缺口作为已知限制保留，模型不授予操作权限，员工必须核对原订单金额、证据和草稿；不能称AI质量全部验收通过。报告/日志仅本机受控临时证据，不保证长期可取。
+
+
+评测候选工程门禁（Codex）：完整pytest637 passed、4 skipped、1 warning，app+eval覆盖81.95%，70%门槛不变（111.16s，`/tmp/dtc-final-candidate-coverage.log`）；新增eval入口17项根聚焦通过，Ruff格式/静态与mypy150源文件通过。该完整门禁包括当时浏览器测试工具单测，但浏览器进程组清理Review尚未关闭，后续只按受影响范围重验，不以637项代替页面或清理验收。

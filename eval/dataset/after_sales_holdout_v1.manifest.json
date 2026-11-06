@@ -42,7 +42,7 @@
     "app/cli/render.py": "99074271cd4bf7c00397925bad9f6609a91ca780ea18907e3df89ad9acc1ece6",
     "app/config/__init__.py": "f5171bd43c2329de013241071b80ff7b58d8b038a907942fb886da4f4e7c951b",
     "app/config/policy_profiles.py": "09d2888cbffd0f613666be06a9312c89f902f9de5ca8f81743c8dcdc84ec8116",
-    "app/config/settings.py": "9659b34711d07845c5f9ffaa13629f7a4e1d3f9206b65b36ba403aba902f98f3",
+    "app/config/settings.py": "c2575d68f5a4b684af189e39a11411e0dd770e6d7708e0cf799017e7cb41f822",
     "app/connectors/__init__.py": "b49bf78848611f4dc6c43ccf50efcf4a05b27d1d1ff72c311878f4e4dd6326d9",
     "app/connectors/base.py": "34d89ed3a1753de7f61d886d366d0db5b55b3d23364173518d26181c6745b885",
     "app/connectors/epig.py": "55619e44c0cc860630638aaac7a7888e3f18b60984372c79c7e7cecf538c1bb3",
@@ -90,7 +90,7 @@
     "app/prompts/summary.py": "0a95e5296d8379dac8fe4b347010afe95e4136e3353d633b00c12c45efea7f13",
     "app/providers/__init__.py": "72be6ce741d0c62829466e93b8e05710f1af6b1acb99f63b70d08ee886a8485c",
     "app/providers/base.py": "b7525fda61d2fc93a5389f83f8d8ab07bfad5fa3b7af18e1337366e5a31f0fbc",
-    "app/providers/deepseek.py": "1a735d9d526bcfc4a9f1b0efafa7678796a536011f654183545700afff19041b",
+    "app/providers/deepseek.py": "3bdc98406085e76aaf6ee6bcc2c8200df92e50a73a28487603e7b9d72b3d6a8b",
     "app/providers/device.py": "14b981c01fc52f883c0f7cbfa80484907f2697b1653dfa22c002ac5e10d6d801",
     "app/providers/embeddings.py": "bb8bbd183a5d1c06ab12ca99d1f8e90ea9e95dda68089bcf02a96811d2654b7a",
     "app/providers/fake.py": "b4e6e4b4a16eabf3ae3e6dbb9ddd938409fb34bb4fa20b4e9cecee24486ab6a8",
@@ -220,5 +220,40 @@
     "No combined LLM score across engineering guards and model outputs.",
     "No execution implied by preparation; provider/model/budget and runtime fixture adapter still required.",
     "Actual HTTP/browser/OSrestart evidence must be separate; synthetic_only."
-  ]
+  ],
+  "freeze_revision": 2,
+  "protocol_refreeze": {
+    "reason": "Before first holdout execution: official DeepSeek model alias/thinking toggle compatibility only; no business prompt or knowledge changes and no holdout feedback used.",
+    "files": {
+      "app/config/settings.py": {
+        "old_sha256": "9659b34711d07845c5f9ffaa13629f7a4e1d3f9206b65b36ba403aba902f98f3",
+        "new_sha256": "c2575d68f5a4b684af189e39a11411e0dd770e6d7708e0cf799017e7cb41f822"
+      },
+      "app/providers/deepseek.py": {
+        "old_sha256": "1a735d9d526bcfc4a9f1b0efafa7678796a536011f654183545700afff19041b",
+        "new_sha256": "3bdc98406085e76aaf6ee6bcc2c8200df92e50a73a28487603e7b9d72b3d6a8b"
+      }
+    },
+    "baseline_commit": "d25dc00f35c20f3353d89997e348da9c72a392d5"
+  },
+  "fixture_protocol_revision": 2,
+  "fixture_protocol_refreeze": {
+    "frozen_at_utc": "2026-11-06T02:01:21.049741+00:00",
+    "reason": "Independent review invalidated H07/H08 complete-material fixture alignment; correct synthetic SKU/name/category/request and actual staff API materials, gate before model. No production prompt, knowledge or dataset question changes.",
+    "prior_report": "eval/reports/after_sales_acceptance_20261106T013354Z.json",
+    "prior_report_sha256": "e4ad17899c4d28e73d68c00db9775cee6baad48f32a6d023a41c5bfc035ff707",
+    "prior_fixture_invalid_cases": [
+      "H07",
+      "H08"
+    ],
+    "runner_sha256": "1b9f0207f31cb24033327aa7ce659c58a832b4318af35f1371c3a916738fe129",
+    "tests_sha256": "412a234272d1588d68aa7a9f8e98c0f04c27888b4d98d47a5e6dfe3e9f1c3f35",
+    "offline_evidence": "Codex17 unit tests pass; author offline4 engineering guards passed and8 modelcases notrun,0provider calls; read-only review confirmed actual staff material API and pre-call gate.",
+    "boundaries": [
+      "H01-H06 policy_scope_only, no order fixture",
+      "H09 intentionally unknown category; H10 market guard requires no materials",
+      "H12 actual API subprocess uses Fake default AU ceramic mug, materials through staff API; engineering restart scenario, not mattress quality",
+      "Synthetic materials are owned fixture records, never inferred from query or real customer verification"
+    ]
+  }
 }

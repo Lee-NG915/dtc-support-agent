@@ -28,7 +28,7 @@
 
 ## 真实模型的显式入口
 
-当前项目尚未确认真实评测Provider、模型与累计预算，默认不执行。旧`--llm`单独会安全失败；不能再用它或应用.env隐式启用收费调用。
+2026-11-06用户已授权DeepSeek真实评测、不设累计费用上限，专用凭据配置到本地0600忽略文件；CLI默认仍离线。当前选择官方支持的`deepseek-flash`，真实路径显式`--thinking-mode disabled`，每轮保留案例/调用/token边界。旧`--llm`单独会安全失败；不能再用它或应用.env隐式启用收费调用。
 
 当前编码支持DeepSeek显式路径，运行前必须确认以下配置：
 
@@ -73,8 +73,28 @@
 
 上一章[09 · 安全](09-security.md) · 下一章[11 · 部署](11-deployment.md)
 
-## 首批独立保留样例（已准备，未运行）
+## 首批独立保留样例（已执行，质量有缺口）
 
-[after_sales_holdout_v1.jsonl](../eval/dataset/after_sales_holdout_v1.jsonl)由Codex验收侧在当前业务prompt/知识冻结后准备，共12例：完整政策图6例、员工建议2例、工程守卫4例；[冻结清单](../eval/dataset/after_sales_holdout_v1.manifest.json)保存基线提交及203个app/knowledge文件的SHA-256。这里只准备了输入与人工验收断言，尚未接入本批通用CLI或运行真实模型，不能直接把该文件当旧epig-policy数据格式加载。
+[after_sales_holdout_v1.jsonl](../eval/dataset/after_sales_holdout_v1.jsonl)由Codex验收侧在当前业务prompt/知识冻结后准备，共12例：完整政策图6例、员工建议2例、工程守卫4例；[冻结清单](../eval/dataset/after_sales_holdout_v1.manifest.json)保存基线提交及203个app/knowledge文件的SHA-256。独立入口为`uv run python -m eval.after_sales_acceptance`，默认只跑工程守卫、模型例not_run。不能直接把该文件当旧epig-policy数据格式加载；实际运行与人工裁决见[流程记录](records/after-sales/dtc-workflow.md)。
 
 评测前须完成专用合成fixture适配、人工0/1/2评分与Provider/model/预算配置。政策图应记录检索、生成及Faithfulness各自结果，员工建议记录引用与仅editing边界，工程守卫记录真实API/进程/写入次数，三组不合并LLM准确率。使用失败调参时必须降级为开发回归集并另建保留集。初次实际运行前回核冻结清单；未运行就不填写通过数。
+
+当前模型与协议以[DeepSeek官方模型说明](https://api-docs.deepseek.com/quick_start/pricing/)及[思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)为依据；旧deepseek-chat别名已停用。Settings默认deepseek-flash，thinking未配置时省略字段保持兼容；真实eval默认disabled并写入报告。保留集首次执行前仅因该协议适配更新两个app文件冻结hash，原业务prompt/知识未改、未用保留集调参，清单revision2记录前后摘要。不要把不设累计费用上限理解成无界重试。
+
+
+人工裁决沿用冻结样例的acceptance_assertions与forbidden，在逐条阅读回答前固定以下0/1/2锚点：事实正确性2为核心政策事实全部正确且无越权执行承诺，1为不改变结论的遗漏，0为市场/期限等核心事实错误或虚构执行；证据充分性2为可信同scope引用支持所有实质结论，1为部分次要结论支持不足，0为错误/不存在引用或主要结论无支持；可行动性2为清楚且安全的下一步，1为有用但不完整，0为不可用或不安全。工程守卫不计语义总分；确定性拒绝与实际LLM生成分列。引用文件名匹配只是诊断，不能替代阅读引用内容；也不能在看到回答后降低原断言。
+
+首次执行发现的H07/H08合成订单/材料问题按fixture-invalid保留，不充当模型质量通过或失败；修复只改变评测夹具与运行前断言，不改变业务prompt、knowledge和样例问题，重跑前保存协议及runner摘要。
+
+
+真实执行示例（需要既有专用授权和DTC_EVAL配置）：
+
+```bash
+uv run python -m eval.after_sales_acceptance --allow-real-model \
+  --provider deepseek --model deepseek-flash --max-cases 12 \
+  --max-calls 64 --max-output-tokens 1200 --thinking-mode disabled
+```
+
+入口先核对冻结的app/knowledge/样例摘要，再建专用新库；只从专用DTC_EVAL环境或授权的0600文件取凭据，不读取应用.env。H07/H08的商品、类别和材料经实际API读取核验，不一致时在模型调用前停止；H12为真实API/Worker子进程重启，但业务源是合成Fake，不能当两仓HTTP唯一性证明。
+
+当前质量结论有限：真实生成6例中4例完全满足冻结断言；H05漏包装清单，H08内部摘要将minor金额13795写成SGD13795，实际应137.95。注入防护/仅editing守卫通过不能抵消事实错误。H04/H06为确定性转人工，安全但下一步不具体；工程4例另算。这里不承诺模型草稿可靠到可自动发送或执行，员工仍需核对原订单金额与证据。不得把已查看的v1反馈用于调参后继续声称它是未见保留集；未来优化需转开发回归并另建独立保留样例。

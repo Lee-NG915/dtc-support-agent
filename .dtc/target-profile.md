@@ -75,4 +75,4 @@ DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sa
 
 部署/工具轨迹候选（2026-11-06，最终门禁进行中）：`docker-compose.after-sales.yml`新增独立PG/migrate/API/Worker；须显式`--env-file`及随机新项目名，PG无主机端口，API loopback，Fake仅启动验证。Dockerfile按uv.lock frozen安装并包含迁移；镜像保留production与禁本地模型默认，指南见部署文档。eval/e2e新增真实Tool.run记录与可选工具期望；脱敏/截断不可评分，正向与抑制分别计数。`after_sales_holdout_v1`12例已准备未运行，完整业务质量未测。
 
-当前验收进度（2026-11-06）：六故事服务层与跨系统丢响应备份恢复已独立验证；真实模型保留集发现夹具不一致，修复协议后再验；独立Chromium页面测试正在实现。两仓Compose空feed作者实测已通过，根复验进行中。最新有效计数与失败保留在[流程记录](../docs/records/after-sales/dtc-workflow.md)，不以本档案历史计数代替当前成绩。
+当前验收进度（2026-11-06）：六故事服务层与跨系统丢响应备份恢复已独立验证；两仓Compose空feed独立通过。真实模型保留集修订夹具后已执行，生成6例4例全满足，金额单位等质量缺口保留；独立Chromium页面与清理修复仍在验收。最新有效计数与失败保留在[流程记录](../docs/records/after-sales/dtc-workflow.md)，不以本档案历史计数代替当前成绩。
