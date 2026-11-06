@@ -101,6 +101,6 @@ uv run python -m eval.after_sales_acceptance --allow-real-model \
 
 revision5把已发现的H05/H08转为确定性回归后重新执行。H05增加缺件/错发/运输损坏主题的确定性补召回，并从实际`faults-missing` chunk补齐缺件包装清单和引用；H08建议上下文不再向模型暴露任何`*_minor`原始整数，只提供服务端格式化金额；若输出仍把币种与minor整数组合则fail closed，内部摘要缺失服务端总额同样拒绝保存。
 
-2026-11-06 revision5真实报告`eval/reports/after_sales_acceptance_20261106T075849Z.json`：35/64次DeepSeek调用、21567 prompt + 4052 completion = 25619 tokens，8条模型场景全部observed、0 failed/protected not-run，4条工程守卫通过。人工复核生成6例H01/H02/H03/H05/H07/H08均完全满足冻结断言；H05已包含配件合照、包装清单、全部包材和缺少部件并引用SG faults-missing，H08内部摘要准确写`SGD 137.95`且无伪引用/写权限。H04/H06仍是安全的确定性转人工，但下一步不够具体，单独保持1/2/1部分结果。首次同候选运行在H01意图/复杂度阶段遇到两次Provider错误后停止，原报告保留，不当作质量结果。
+2026-11-06 revision5真实报告`eval/reports/after_sales_acceptance_20261106T075849Z.json`：35/64次DeepSeek调用、21567 prompt + 4052 completion = 25619 tokens，8条模型场景全部observed、0 failed/protected not-run，4条工程守卫通过。人工复核生成6例H01/H02/H03/H05/H07/H08均完全满足冻结断言；H05已包含配件合照、包装清单、全部包材和缺少部件并引用SG faults-missing，H08内部摘要准确写`SGD 137.95`且无伪引用/写权限。H04/H06仍是安全的确定性转人工，但下一步不够具体，单独保持1/2/1部分结果。首次同候选运行在H01意图/复杂度阶段遇到两次Provider错误后停止，原报告保留，不当作质量结果。对应提交`e7cd20e`的DTC push CI42184894521与PR CI42184900472均通过Node24前端、Python3.11/3.12和专用PostgreSQL任务。
 
 这6/6只表示已查看并转成回归的12例子集在该候选上满足冻结断言，不是未见holdout、80/40全集、生产准确率或员工采用率。后续仍需独立新 holdout、Faithfulness 固定集、容量和真实试用；员工必须核对原订单金额、证据和草稿。

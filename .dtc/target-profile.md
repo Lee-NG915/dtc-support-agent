@@ -81,6 +81,6 @@ DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sa
 
 部署/工具轨迹增量（2026-11-06，已独立范围验收）：`docker-compose.after-sales.yml`新增独立PG/migrate/API/Worker；须显式`--env-file`及随机新项目名，PG无主机端口，API loopback，Fake仅启动验证。Dockerfile按uv.lock frozen安装并包含迁移；镜像保留production与禁本地模型默认，指南见部署文档。eval/e2e新增真实Tool.run记录与可选工具期望；脱敏/截断不可评分，正向与抑制分别计数。`after_sales_holdout_v1`12例已真实运行并人工复核，金额单位等质量缺口保留，不能称AI质量全通过。
 
-H05/H08质量与CI增量（2026-11-06，本地候选）：`app/retrieval/`增加异常政策主题补召回；缺件答案从真实faults-missing段补齐材料清单和引用。员工建议模型不再接收原始`*_minor`，只接收服务端`order_amounts`展示字符串；minor误写或缺少总额fail closed。冻结revision5；696 passed/5 skipped/82.29%，mypy150，Ruff231。真实DeepSeek重跑35/64 calls、25619 tokens，生成6/6满足冻结断言；H04/H06确定性转人工仍1/2/1。仅已看过v1回归，不是独立holdout。GitHub首次CI主步骤全通过，post-job pip cache配置失败已修复，等待推送后新run。
+H05/H08质量与CI增量（2026-11-06，本地验收并推送`e7cd20e`）：`app/retrieval/`增加异常政策主题补召回；缺件答案从真实faults-missing段补齐材料清单和引用。员工建议模型不再接收原始`*_minor`，只接收服务端`order_amounts`展示字符串；minor误写或缺少总额fail closed。冻结revision5；696 passed/5 skipped/82.29%，mypy150，Ruff231。真实DeepSeek重跑35/64 calls、25619 tokens，生成6/6满足冻结断言；H04/H06确定性转人工仍1/2/1。仅已看过v1回归，不是独立holdout。DTC push run42184894521和PR run42184900472四任务均success。
 
 当前验收进度（2026-11-06）：六故事服务层与跨系统丢响应备份恢复已独立验证；两仓Compose空feed独立通过。真实模型revision5已执行并人工复核H05/H08修复，生成6/6满足当前回归集；尚未建立新的独立holdout、Faithfulness全集或真实试用。独立Chromium页面四组与精确清理已独立验收，默认单测不需Node/engine；操作入口见部署指南。最新有效计数与失败保留在[流程记录](../docs/records/after-sales/dtc-workflow.md)，不以本档案历史计数代替当前成绩。

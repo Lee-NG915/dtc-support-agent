@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录已推送`c0ea606`，摘要优先UI已推送`1baaf78`，表单控件统一已推送`3c8f549`；真实模型revision5回归已人工复核生成6/6满足冻结断言，H05/H08缺口已定向关闭。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
+更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录已推送`c0ea606`，摘要优先UI已推送`1baaf78`，表单控件统一已推送`3c8f549`；H05/H08修复与CI稳定化已推送`e7cd20e`，真实模型revision5回归人工复核生成6/6满足冻结断言，DTC push/PR CI均成功。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
 
 ## 员工工作台演示密码登录（2026-11-06，Codex本地验收）
 
@@ -44,7 +44,9 @@ Claude以auto模式实现两类最小修复：缺件/错发/运输损坏增加�
 
 真实模型首次运行在H01意图/复杂度阶段遇到两次Provider错误后提前停止，报告保留；重跑报告`eval/reports/after_sales_acceptance_20261106T075849Z.json`（SHA-256 `0fafc8cd…`）使用35/64次调用、25619 tokens，8模型场景全部observed、工程守卫4/4。人工复核H01/H02/H03/H05/H07/H08生成6例均完全满足；H05含配件合照、包装清单、全部包材、缺少部件及SG faults-missing引用；H08内部摘要准确写`SGD 137.95`，伪引用/写权限/approval/operation/create均为零。H04/H06仍是安全但不够具体的确定性转人工（各1/2/1）。该6/6仅限已看过的v1回归集，不是未见holdout或生产准确率。
 
-CI也已真正注册并运行：原始运行`42182576529`的前端、Python3.11/3.12、专用PG主步骤全部通过；job最终失败仅因`setup-python`尝试缓存不存在的pip目录。工作流已移除无效pip缓存，下一次推送必须回读新run，不能把旧运行写成CI通过。
+CI也已真正注册并运行：原始运行`42182576529`的前端、Python3.11/3.12、专用PG主步骤全部通过；job最终失败仅因`setup-python`尝试缓存不存在的pip目录。移除无效pip缓存后，提交`e7cd20e6ae2bb26162ba2fb02541815f0ded3aaa`已推送；push run[42184894521](https://github.com/Lee-NG915/dtc-support-agent/actions/runs/42184894521)与PR run[42184900472](https://github.com/Lee-NG915/dtc-support-agent/actions/runs/42184900472)的Python3.11、3.12、Node24前端、专用PostgreSQL四项均success。远端ref、H05/H08关键源码、revision5 manifest与CI配置blob已回读一致。
+
+结论：H05/H08 草稿事实修复、revision5真实回归和CI稳定化均通过当前验收范围，功能提交`e7cd20e`已推送；这仍不是未见holdout、完整80/40、生产准确率、容量或真实试用验收。
 
 ## 2026-11-06 Kimi CR 裁决与最小修复计划
 
