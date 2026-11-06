@@ -7,6 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -288,13 +289,53 @@ def merge_policy_topic_chunks(
     return merged
 
 
+# A structured term is matched character by character so common Chinese
+# function words or light punctuation ("原卡又注销", "原卡（已）注销") do not
+# hide an applicable rule. Only these tokens may appear between characters,
+# each gap is bounded, and character order is preserved, so unrelated words
+# cannot bridge a term into a false match.
+_REVIEW_TERM_FILLER_TOKENS = (
+    "已经",
+    "仍然",
+    "还是",
+    "又",
+    "已",
+    "也",
+    "还",
+    "仍",
+    "都",
+    "就",
+    "才",
+    "却",
+    "便",
+    "是",
+    "的",
+    "被",
+)
+_REVIEW_TERM_SEPARATOR_CHARS = "（）()【】[]，,、·—"
+_REVIEW_TERM_SEPARATOR_PATTERN = (
+    "(?:"
+    + "|".join(re.escape(token) for token in _REVIEW_TERM_FILLER_TOKENS)
+    + "|["
+    + re.escape(_REVIEW_TERM_SEPARATOR_CHARS)
+    + "]"
+    + "){0,3}"
+)
+
+
 def _normalize_review_text(value: str) -> str:
     return "".join(value.casefold().split())
 
 
+@lru_cache(maxsize=512)
+def _review_term_pattern(term: str) -> re.Pattern[str]:
+    normalized = _normalize_review_text(term)
+    return re.compile(_REVIEW_TERM_SEPARATOR_PATTERN.join(map(re.escape, normalized)))
+
+
 def _review_rule_matches_query(normalized_query: str, rule: ReviewQueryRule) -> bool:
     return all(
-        any(_normalize_review_text(term) in normalized_query for term in alternatives)
+        any(_review_term_pattern(term).search(normalized_query) for term in alternatives)
         for alternatives in rule.all_of
     )
 

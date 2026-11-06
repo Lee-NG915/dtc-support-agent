@@ -330,6 +330,49 @@ def test_policy_review_topics_lists_only_matching_structured_rules() -> None:
     assert policy_review_topics("任何问题", [legacy_review]) == ()
 
 
+def test_review_terms_tolerate_bounded_chinese_fillers() -> None:
+    fee = ReviewQueryRule(topic="service_fee_refund", all_of=[["配送费", "运费"], ["退"]])
+    payment = ReviewQueryRule(
+        topic="payment_refund_exception",
+        all_of=[
+            ["原支付账户失效", "支付账户失效", "原卡注销", "原支付方式不可用"],
+            ["退款", "退回", "退", "返还", "退还", "取消"],
+        ],
+    )
+    chunk = _chunk(review=True).model_copy(update={"review_query_rules": [fee, payment]})
+
+    for query in (
+        "原卡又注销了，退款怎么办",
+        "原卡已经注销了，退款怎么办",
+        "原卡（已）注销，退款怎么办",
+        "原卡被注销了，退款怎么办",
+        "原卡已经被注销了，退款怎么办",
+        "支付账户已经失效，能退款吗",
+        "原卡注销后退款怎么办",
+    ):
+        assert policy_review_topics(query, [chunk]) == ("payment_refund_exception",), query
+
+    v3_query = "AU退货已验收，但配送费没退，原卡又注销了。还能按普通六到八天等到原卡吗？"
+    assert policy_review_topics(v3_query, [chunk]) == (
+        "service_fee_refund",
+        "payment_refund_exception",
+    )
+    assert policy_review_topics("配送费能退吗", [chunk]) == ("service_fee_refund",)
+
+    # A payment-only description lacks the refund/return/cancel group.
+    assert policy_review_topics("原卡又注销了怎么办", [chunk]) == ()
+    assert policy_review_topics("支付账户已经失效了怎么办", [chunk]) == ()
+    # The filler allowance stays inside one term; a refund clause cannot bridge it.
+    assert policy_review_topics("原卡的退款注销还能退吗", [chunk]) == ()
+
+    three_groups = ReviewQueryRule(
+        topic="three_groups", all_of=[["原卡注销"], ["退款"], ["人工核对"]]
+    )
+    strict = _chunk(review=True).model_copy(update={"review_query_rules": [three_groups]})
+    assert policy_review_topics("原卡又注销了，退款怎么办", [strict]) == ()
+    assert policy_review_topics("原卡又注销了，退款需要人工核对", [strict]) == ("three_groups",)
+
+
 def test_review_rules_reject_blank_terms_and_require_all_topic_groups() -> None:
     with pytest.raises(ValidationError, match="cannot be empty or blank"):
         ReviewQueryRule(topic="bad", all_of=[["   "]])

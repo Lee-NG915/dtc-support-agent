@@ -534,6 +534,7 @@ async def test_review_gate_covers_cross_document_paraphrases_without_false_posit
 
 V2_DATE = date(2026, 11, 6)
 H04_V1_QUERY = "货已经出库了，能否直接替我撤掉订单并保证把配送费全部退回来？"
+H04_V3_QUERY = "AU退货已验收，但配送费没退，原卡又注销了。还能按普通六到八天等到原卡吗？"
 H06_V1_QUERY = "偏远邮编暂时查不到，普通床品时效是不是也能当作我的保证送达日期？"
 H05_V2_QUERY = "新加坡床垫角落被狗咬坏了，能直接按保修换新吗？这种情况是否还要看意外损坏规则？"
 H06_V2_QUERY = (
@@ -563,6 +564,19 @@ async def test_review_handoff_guidance_is_topic_specific_bounded_and_model_free(
             H04_V1_QUERY,
             {"service_fee_refund"},
             ("原订单的实际支付构成", "不能预先承诺配送费、装配费或附加费一定全部返还"),
+        ),
+        (
+            "au",
+            "homewares",
+            SNAPSHOT_DATE,
+            H04_V3_QUERY,
+            {"service_fee_refund", "payment_refund_exception"},
+            (
+                "原订单的实际支付构成",
+                "原支付方式当前是否可用",
+                "不能预先承诺配送费、装配费或附加费一定全部返还",
+                "不能承诺按固定支付渠道、固定金额或固定日期退回",
+            ),
         ),
         (
             "au",

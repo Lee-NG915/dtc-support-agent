@@ -13,7 +13,7 @@
     "staff_suggestion": 2,
     "engineering_guard": 4
   },
-  "freeze_revision": 6,
+  "freeze_revision": 7,
   "freeze_hashes": {
     "app/__init__.py": "9570dd078424854042b8eaef08df2bb70970a41040a6bcf93018a435369e91d8",
     "app/agents/__init__.py": "db6582301f970f1e73ed2223779ab670bc9794636e2084582343654b9b264de7",
@@ -117,7 +117,7 @@
     "app/retrieval/fusion.py": "ec7ab7c32a7cd8faf130a93269476357fdf3f42637adb80ff9b61f74aec9197f",
     "app/retrieval/hybrid.py": "29633a41ab16555e391bebf53933d6bb68a2402b32b1014ca53cbe4636d340d2",
     "app/retrieval/ingest.py": "243f79f13458ba8941cf4bd5268651a1285fcb0b23e44ab2dda98739411e731d",
-    "app/retrieval/policy.py": "139e0ae39005dd63031d850678094e53dfc9897c2ca4478b08302f45a4ed2d97",
+    "app/retrieval/policy.py": "93f2acc6678d5d65790b51ed5916675fec2ed9189541200e858ef3ae1c47eae0",
     "app/retrieval/query_rewrite.py": "d7c16a267e6a965bcdd7d7d740caa8049aea8c2776b5f1121dd82ad295f3b5c8",
     "app/retrieval/reranker.py": "a68ee907e1dce0e56af094279e208508e04ae939d5c62604b1d38c04615d99c8",
     "app/retrieval/self_rag.py": "8dbb1d4a83fa722f4d59773ee7fa3aada00cf80df84d8384b15a93b331ac7915",
@@ -248,5 +248,18 @@
       }
     },
     "model_evaluation_status": "not_run_for_revision_6"
+  },
+  "review_term_normalization_refreeze": {
+    "parent_revision": 6,
+    "parent_source_commit": "feb9130a66e595c67a5e9616e576e100af6c5c6b",
+    "parent_manifest_sha256": "af3e84e0b8ef41d2c125a290481a2cc2ab9ca0e52735bde81f60f92bf3fd4220",
+    "reason": "Bounded Chinese filler normalization for structured review query rules: allow explicit function words and light punctuation between characters of a term while preserving all_of, source/market scope, and the model-free review branch. Dataset questions, expectations, rubrics, knowledge and prompts are unchanged; no model evaluation was run for revision 7 and no v4 feedback was used.",
+    "files": {
+      "app/retrieval/policy.py": {
+        "old_sha256": "139e0ae39005dd63031d850678094e53dfc9897c2ca4478b08302f45a4ed2d97",
+        "new_sha256": "93f2acc6678d5d65790b51ed5916675fec2ed9189541200e858ef3ae1c47eae0"
+      }
+    },
+    "model_evaluation_status": "not_run_for_revision_7"
   }
 }
