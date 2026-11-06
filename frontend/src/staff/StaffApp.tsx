@@ -21,6 +21,7 @@ import {
 } from "./format";
 import { RequestGuard } from "./guard";
 import type { RunResult } from "./guard";
+import { SelectControl } from "./FormControls";
 import { EmptyBlock, Notice } from "./StaffBits";
 import { OperatorPanel } from "./OperatorPanel";
 import { StaffWorkbench } from "./StaffWorkbench";
@@ -323,22 +324,21 @@ export default function StaffApp() {
                 });
               }}
             >
-              <label className="staff-field">
+              <div className="staff-field">
                 <span className="staff-field-label">演示员工身份</span>
-                <select
+                <SelectControl
                   name="staff_id"
+                  ariaLabel="演示员工身份"
                   value={selectedDemoStaffId}
-                  onChange={(event) => setDemoStaffId(event.target.value)}
+                  onChange={setDemoStaffId}
                   disabled={loginBusy}
-                  aria-describedby="staff-demo-hint"
-                >
-                  {demoAccounts.map((account) => (
-                    <option value={account.staff_id} key={account.staff_id}>
-                      {account.display_name} · {account.roles.map((role) => ROLE_LABELS[role]).join(" / ")}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  ariaDescribedBy="staff-demo-hint"
+                  options={demoAccounts.map((account) => ({
+                    value: account.staff_id,
+                    label: `${account.display_name} · ${account.roles.map((role) => ROLE_LABELS[role]).join(" / ")}`,
+                  }))}
+                />
+              </div>
               <label className="staff-field">
                 <span className="staff-field-label">演示密码</span>
                 <input
@@ -464,18 +464,18 @@ export default function StaffApp() {
                   .join(" / ")}
               </span>
             </div>
-            <label className="staff-market-select">
+            <div className="staff-market-select">
               <span>市场</span>
-              <select
+              <SelectControl
                 value={market}
-                onChange={(event) => changeMarket(event.target.value as Market)}
-                aria-label="选择授权市场"
-              >
-                {identity.allowed_markets.map((item) => (
-                  <option value={item} key={item}>{MARKET_LABELS[item]}</option>
-                ))}
-              </select>
-            </label>
+                onChange={(next) => changeMarket(next as Market)}
+                ariaLabel="选择授权市场"
+                options={identity.allowed_markets.map((item) => ({
+                  value: item,
+                  label: MARKET_LABELS[item],
+                }))}
+              />
+            </div>
             <span className="staff-read-stamp" title="最近一次成功读取服务端数据的时间">
               数据读取：{lastReadAt ? formatDateTime(lastReadAt) : "尚未读取"}
             </span>

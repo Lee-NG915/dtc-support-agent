@@ -6,7 +6,7 @@
 
 - 当前政策为AU/US/SG内部自编演示条款，非官方或生产批准；历史生成节点与本轮规则/检索、Fake、真实PG/HTTP分别报告，不外推完整Agent质量或业务收益。现状见[流程记录](docs/records/after-sales/dtc-workflow.md)，历史政策验证见[政策记录](docs/records/after-sales/epig-policy-v1.md)。
 - v1线路契约含13个操作、49个共享fixtures；E-pig持久HTTP运行时已有阶段验收。不可变vendor源锁与跨仓最新交付状态见[对接规范](docs/architecture/modules/after-sales/epig-contract.md)及对应Issue，不以本仓包存在代替freshness。
-- 员工入口为`/staff`，仅公开登录shell，业务API继续按员工角色/市场授权。development/testing可显式启用固定演示密码并选择合成员工，生产禁用该模式；详情首屏现以下一步、客户原话和关键事实优先，审计证据与技术字段渐进展开。独立Chromium已复验客服、审批人和320px页面，但真实客服试用未执行。评测默认离线，显式真实模型配置与边界见[评测指南](docs/10-evaluation.md)。Compose/恢复演示继续按项目方案交付，尚无生产部署或真实试用。
+- 员工入口为`/staff`，仅公开登录shell，业务API继续按员工角色/市场授权。development/testing可显式启用固定演示密码并选择合成员工，生产禁用该模式；详情首屏现以下一步、客户原话和关键事实优先，审计证据与技术字段渐进展开。员工端select、date/datetime-local已统一为自定义可访问控件，checkbox、文本、密码、textarea和button使用同一设计系统样式。独立Chromium已复验客服、审批人和320px页面，但真实客服试用未执行。评测默认离线，显式真实模型配置与边界见[评测指南](docs/10-evaluation.md)。Compose/恢复演示继续按项目方案交付，尚无生产部署或真实试用。
 - 当前DTC分支未产生实际Actions run；工作流配置与本地通过是不同证据，不写远端CI通过。
 
 - [项目背景、MVP 范围与实施方案](docs/project-plan.md)

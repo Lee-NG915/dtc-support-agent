@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StaffApp from "./StaffApp";
 import type { CaseListResponse, StaffIdentity } from "./types";
 import {
+  chooseOption,
+  comboboxByLabel,
+  findCombobox,
   flushMicrotasks,
   pump,
   renderUi,
-  setControlValue,
   textOf,
   waitFor,
 } from "./testSupport";
@@ -113,9 +115,10 @@ describe("StaffApp demo password login", () => {
 
     const { container, unmount } = await renderUi(<StaffApp />);
     await waitFor(() => {
-      const select = container.querySelector('select[name="staff_id"]');
-      return select !== null && (select as HTMLSelectElement).value === "staff_support_au";
+      const combobox = findCombobox(container, "演示员工身份");
+      return combobox?.textContent?.includes("Synthetic Support AU") ?? false;
     }, "default support identity");
+    expect(comboboxByLabel(container, "演示员工身份").getAttribute("aria-expanded")).toBe("false");
 
     expect(textOf(container)).toContain("选择一个合成员工身份并使用演示密码登录");
     expect(container.querySelector('input[name="token"]')).toBeNull();
@@ -147,14 +150,14 @@ describe("StaffApp demo password login", () => {
       await flushMicrotasks();
     });
     await waitFor(
-      () => container.querySelector('select[name="staff_id"]') !== null,
+      () => findCombobox(container, "演示员工身份") !== null,
       "demo form after logout",
     );
     expect(textOf(container)).toContain("已退出");
     expect(textOf(container)).not.toContain("诉求队列");
 
-    const select = container.querySelector('select[name="staff_id"]') as HTMLSelectElement;
-    await setControlValue(select, "staff_approver_au");
+    await chooseOption(container, "演示员工身份", "Synthetic Approver AU");
+    expect(comboboxByLabel(container, "演示员工身份").textContent).toContain("Synthetic Approver AU");
     await submitDemoPassword(container, "demo-password-123");
     await waitFor(() => textOf(container).includes("Synthetic Approver AU"), "approver workbench");
     expect(demoBodies[1]).toEqual({

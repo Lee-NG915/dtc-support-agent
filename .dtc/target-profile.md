@@ -75,6 +75,8 @@ DTC-2c核心增量（2026-11-06，本地范围验收）：`app/services/after_sa
 
 员工摘要优先UI增量（2026-11-06，本地验收并推送`1baaf78`）：`CaseOverview`首屏显示下一步、客户原话、订单/金额/附件/证据关键事实和风险；技术标识及证据、订单、执行、工单、时间线渐进口径。客服草稿或审批人待办按角色默认展开，折叠保持编辑状态。前端48项、构建及Chromium桌面/320px已验收。
 
+员工表单控件增量（2026-11-06，本地候选）：`frontend/src/staff/FormControls.tsx`提供自定义Select和中文DatePicker，替换全部8个select、2个date、1个datetime-local；checkbox统一外观并保留原生语义。无新增依赖，真实Chromium键盘/弹层/320px边界已验收，尚未提交。
+
 评测安全入口增量（2026-11-06，已交付开发分支）：默认`uv run python -m eval.runner --task all`显式离线，all不包含epig-policy；后者单独执行。真实模型需专用DTC_EVAL配置、显式允许及cases/calls上限，当前真实DeepSeek评测已有专用授权，工程默认仍离线。完整门禁`uv run pytest -q --cov=app --cov=eval --cov-report=term:skip-covered --cov-fail-under=70`本地535通过/4跳过/80.89%。CI补前端Node24与独立PG入口，定义存在不等于远端已运行。详见[评测指南](../docs/10-evaluation.md)。
 
 部署/工具轨迹增量（2026-11-06，已独立范围验收）：`docker-compose.after-sales.yml`新增独立PG/migrate/API/Worker；须显式`--env-file`及随机新项目名，PG无主机端口，API loopback，Fake仅启动验证。Dockerfile按uv.lock frozen安装并包含迁移；镜像保留production与禁本地模型默认，指南见部署文档。eval/e2e新增真实Tool.run记录与可选工具期望；脱敏/截断不可评分，正向与抑制分别计数。`after_sales_holdout_v1`12例已真实运行并人工复核，金额单位等质量缺口保留，不能称AI质量全通过。

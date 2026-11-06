@@ -13,6 +13,7 @@ import {
   reasonLabel,
 } from "./format";
 import { sleep } from "./guard";
+import { SelectControl } from "./FormControls";
 import {
   Badge,
   EmptyBlock,
@@ -233,15 +234,21 @@ export function OperatorPanel() {
           </p>
         </div>
         <div className="staff-queue-actions">
-          <label className="staff-field">
+          <div className="staff-field">
             <span className="staff-field-label">操作状态</span>
-            <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setOffset(0); }}>
-              <option value="">全部状态</option>
-              {(Object.keys(OPERATION_STATUS_LABELS) as OperationStatus[]).map((status) => (
-                <option value={status} key={status}>{OPERATION_STATUS_LABELS[status]}</option>
-              ))}
-            </select>
-          </label>
+            <SelectControl
+              ariaLabel="操作状态"
+              value={statusFilter}
+              onChange={(value) => { setStatusFilter(value); setOffset(0); }}
+              options={[
+                { value: "", label: "全部状态" },
+                ...(Object.keys(OPERATION_STATUS_LABELS) as OperationStatus[]).map((status) => ({
+                  value: status,
+                  label: OPERATION_STATUS_LABELS[status],
+                })),
+              ]}
+            />
+          </div>
           <button className="staff-button" type="button" onClick={() => void loadList()} disabled={listLoading}>
             <RefreshCw size={15} aria-hidden="true" />{listLoading ? "读取中…" : "刷新"}
           </button>

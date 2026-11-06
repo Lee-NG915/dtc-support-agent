@@ -4,10 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import StaffApp from "./StaffApp";
 import type { CaseListResponse } from "./types";
 import {
+  chooseOption,
+  comboboxByLabel,
+  findCombobox,
   flushMicrotasks,
   pump,
   renderUi,
-  setControlValue,
   submitLogin,
   textOf,
   waitFor,
@@ -129,10 +131,7 @@ describe("StaffApp generation-scoped retries", () => {
     );
     expect(auCalls).toBe(1);
 
-    const marketSelect = container.querySelector(
-      'select[aria-label="选择授权市场"]',
-    ) as HTMLSelectElement;
-    await setControlValue(marketSelect, "sg");
+    await chooseOption(container, "选择授权市场", "新加坡 (SG)");
     await waitFor(() => sgCalls > 0, "sg queue request");
     await pump(4);
 
@@ -149,9 +148,7 @@ describe("StaffApp generation-scoped retries", () => {
     expect(textOf(container)).toContain("员工一");
     expect(textOf(container)).not.toContain("请重新登录");
     expect(container.querySelector('input[name="token"]')).toBeNull();
-    expect((container.querySelector(
-      'select[aria-label="选择授权市场"]',
-    ) as HTMLSelectElement).value).toBe("sg");
+    expect(comboboxByLabel(container, "选择授权市场").textContent).toContain("新加坡 (SG)");
 
     await unmount();
   });
@@ -172,15 +169,12 @@ describe("StaffApp generation-scoped retries", () => {
 
     const { container, unmount } = await renderUi(<StaffApp />);
     await submitLogin(container, "token-one");
-    await waitFor(() => {
-      const select = container.querySelector('select[aria-label="选择授权市场"]');
-      return select !== null;
-    }, "market select");
-
-    await setControlValue(
-      container.querySelector('select[aria-label="选择授权市场"]') as HTMLSelectElement,
-      "sg",
+    await waitFor(
+      () => findCombobox(container, "选择授权市场") !== null,
+      "market combobox",
     );
+
+    await chooseOption(container, "选择授权市场", "新加坡 (SG)");
     await pump(4);
 
     await act(async () => {

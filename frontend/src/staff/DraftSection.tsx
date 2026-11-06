@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Bot, ClipboardCheck, Save, Send, X } from "lucide-react";
 import { StaffApiError } from "./api";
 import { useStaff } from "./context";
+import { SelectControl } from "./FormControls";
 import {
   DRAFT_STATUS_LABELS,
   TICKET_ACTION_LABELS,
@@ -386,18 +387,19 @@ export function DraftSection({
 
           <div className="staff-form">
             <div className="staff-form-row">
-              <label className="staff-field">
+              <div className="staff-field">
                 <span className="staff-field-label">处理动作</span>
-                <select
+                <SelectControl
+                  ariaLabel="处理动作"
                   value={action}
-                  onChange={(event) => { setAction(event.target.value as TicketAction); markDirty(); }}
+                  onChange={(value) => { setAction(value as TicketAction); markDirty(); }}
                   disabled={completed}
-                >
-                  {(Object.keys(TICKET_ACTION_LABELS) as TicketAction[]).map((value) => (
-                    <option value={value} key={value}>{TICKET_ACTION_LABELS[value]}</option>
-                  ))}
-                </select>
-              </label>
+                  options={(Object.keys(TICKET_ACTION_LABELS) as TicketAction[]).map((value) => ({
+                    value,
+                    label: TICKET_ACTION_LABELS[value],
+                  }))}
+                />
+              </div>
               <div className="staff-form-inline-note">
                 <Badge tone={evidenceUsable ? "success" : "warning"}>
                   {evidenceLoading ? "证据读取中" : evidenceUsable ? `可用证据 ${evidenceChunks.length} 条` : "政策证据不可用于送审"}

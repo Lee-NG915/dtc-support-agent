@@ -147,6 +147,41 @@ export async function click(container: HTMLElement, label: string): Promise<void
   await settle();
 }
 
+/** Locate an accessible select-only combobox by its trigger aria-label. */
+export function findCombobox(container: HTMLElement, label: string): HTMLButtonElement | null {
+  return [...container.querySelectorAll<HTMLButtonElement>('[role="combobox"]')]
+    .find((item) => item.getAttribute("aria-label") === label) ?? null;
+}
+
+export function comboboxByLabel(container: HTMLElement, label: string): HTMLButtonElement {
+  const combobox = findCombobox(container, label);
+  if (!combobox) throw new Error(`combobox not found: ${label}`);
+  return combobox;
+}
+
+/** Open a SelectControl through its combobox and choose an option by text. */
+export async function chooseOption(
+  container: HTMLElement,
+  comboboxLabel: string,
+  optionLabel: string,
+): Promise<void> {
+  const combobox = comboboxByLabel(container, comboboxLabel);
+  await act(async () => {
+    combobox.click();
+    await flushMicrotasks();
+  });
+  const option = [...container.querySelectorAll<HTMLElement>('[role="option"]')]
+    .find((item) => item.textContent?.includes(optionLabel));
+  if (!option) throw new Error(`option not found: ${optionLabel}`);
+  await act(async () => {
+    option.click();
+    await flushMicrotasks();
+  });
+  if (container.querySelector('[role="listbox"]') !== null) {
+    throw new Error(`listbox still open after choosing: ${optionLabel}`);
+  }
+}
+
 export function textOf(container: HTMLElement): string {
   return container.textContent ?? "";
 }

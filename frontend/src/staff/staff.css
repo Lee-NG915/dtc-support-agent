@@ -11,6 +11,15 @@
   --staff-danger: #b23b3b;
   --staff-warning: #916011;
   --staff-success: #176b4e;
+  --staff-control-height: 34px;
+  --staff-control-radius: 7px;
+  --staff-control-border: 1px solid var(--staff-border);
+  --staff-control-surface: var(--staff-surface);
+  --staff-control-hover: var(--staff-surface-soft);
+  --staff-control-focus: var(--staff-accent);
+  --staff-control-menu-radius: 10px;
+  --staff-control-shadow: 0 10px 28px rgba(0, 0, 0, .12);
+  --staff-control-menu-max-height: 260px;
   min-height: 100dvh;
   height: 100dvh;
   display: flex;
@@ -82,9 +91,14 @@
 .staff-identity strong { font-size: 12px; }
 .staff-identity span { color: var(--staff-muted); font-size: 10px; }
 .staff-market-select { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--staff-muted); }
-.staff-market-select select {
-  max-width: 150px; padding: 6px 8px; border: 1px solid var(--staff-border);
-  border-radius: 7px; background: var(--staff-surface); color: var(--staff-text); font-size: 12px;
+.staff-market-select .fc-select { width: 150px; min-width: 0; flex: 0 1 auto; }
+.staff-market-select .fc-trigger {
+  min-height: 30px; padding: 5px 8px; font-size: 12px;
+}
+/* The market trigger sits at the right edge of the top bar: anchor its menu
+   to the trigger's right edge so it cannot run off-screen on mid-width views. */
+@media (min-width: 481px) {
+  .staff-market-select .fc-popover { left: auto; right: 0; }
 }
 .staff-read-stamp { color: var(--staff-muted); font-size: 10px; max-width: 200px; }
 .staff-main { flex: 1; min-height: 0; overflow: hidden; }
@@ -490,6 +504,126 @@
 .staff-login-submit { width: 100%; margin-top: 10px; }
 .staff-login-card form { display: grid; gap: 8px; }
 
+/* ---------------------------------------------------------------- form controls */
+.fc-select, .fc-date { position: relative; min-width: 0; width: 100%; }
+.fc-trigger {
+  width: 100%; min-height: var(--staff-control-height); padding: 7px 9px;
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: var(--staff-control-border); border-radius: var(--staff-control-radius);
+  background: var(--staff-control-surface); color: var(--staff-text);
+  font-size: 12px; text-align: left;
+}
+.fc-trigger:not(:disabled) { cursor: pointer; }
+.fc-trigger:not(:disabled):hover { background: var(--staff-control-hover); }
+.fc-trigger[aria-expanded="true"] { border-color: var(--staff-control-focus); }
+.fc-trigger:disabled { opacity: .65; background: var(--staff-surface-soft); cursor: not-allowed; }
+.fc-trigger-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-trigger-placeholder { color: var(--staff-muted); }
+.fc-chevron, .fc-trigger-icon { flex: 0 0 auto; color: var(--staff-muted); }
+.fc-trigger[aria-expanded="true"] .fc-chevron { transform: rotate(180deg); }
+.fc-popover {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
+  width: max-content; min-width: 100%; max-width: min(320px, calc(100vw - 24px));
+  padding: 4px; border: var(--staff-control-border);
+  border-radius: var(--staff-control-menu-radius);
+  background: var(--staff-control-surface); box-shadow: var(--staff-control-shadow);
+}
+.fc-menu {
+  display: grid; gap: 2px; max-height: var(--staff-control-menu-max-height);
+  overflow-y: auto; overscroll-behavior: contain;
+}
+.fc-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 9px; border-radius: 7px;
+  color: var(--staff-text); font-size: 12px; line-height: 1.45; cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.fc-option[data-highlighted="true"] { background: var(--staff-control-hover); }
+.fc-option[aria-selected="true"] { color: var(--staff-accent); font-weight: 650; }
+.fc-option[aria-selected="true"] svg { flex: 0 0 auto; }
+.fc-option-disabled, .fc-option[aria-disabled="true"] {
+  opacity: .5; cursor: not-allowed;
+}
+.fc-option[aria-disabled="true"][data-highlighted="true"] { background: transparent; }
+.fc-option-empty { color: var(--staff-muted); font-size: 11px; cursor: default; }
+.fc-calendar {
+  width: min(288px, calc(100vw - 24px)); min-width: 0; padding: 9px;
+}
+.fc-calendar-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  margin-bottom: 4px;
+}
+.fc-calendar-title { font-size: 12px; font-weight: 650; }
+.fc-calendar-weekdays, .fc-calendar-grid {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px;
+}
+.fc-calendar-weekdays { margin-bottom: 2px; }
+.fc-calendar-weekdays span {
+  padding: 2px 0; color: var(--staff-muted); font-size: 10px; text-align: center;
+}
+.fc-day {
+  min-width: 0; min-height: 31px; padding: 0;
+  border: 0; border-radius: 7px;
+  background: transparent; color: var(--staff-text);
+  font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.fc-day:hover { background: var(--staff-control-hover); }
+.fc-day-outside { color: var(--staff-muted); opacity: .6; }
+.fc-day[aria-current="date"] { box-shadow: inset 0 0 0 1px var(--staff-accent); }
+.fc-day[aria-pressed="true"] {
+  background: var(--staff-accent); color: #fff; font-weight: 650;
+  box-shadow: none;
+}
+.fc-time-field {
+  display: flex; align-items: center; gap: 7px;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--staff-soft-border);
+  color: var(--staff-muted); font-size: 11px;
+}
+.staff-app .fc-time-field .fc-time-input {
+  width: 76px; min-height: 30px; padding: 5px 7px;
+  border: var(--staff-control-border); border-radius: var(--staff-control-radius);
+  background: var(--staff-control-surface); color: var(--staff-text);
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.staff-app .fc-time-field .fc-time-input[aria-invalid="true"] { border-color: var(--staff-danger); }
+.staff-app .fc-time-field .fc-time-input:disabled {
+  opacity: .65; background: var(--staff-surface-soft);
+}
+.fc-time-hint { margin-left: auto; font-size: 10px; }
+.fc-calendar-actions {
+  display: flex; justify-content: space-between; gap: 6px;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--staff-soft-border);
+}
+
+/* Keep native checkbox semantics while drawing the staff design-system mark. */
+.staff-check-row input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 16px; height: 16px; margin: 3px 0 0; flex: 0 0 auto;
+  position: relative; border: var(--staff-control-border); border-radius: 4px;
+  background: var(--staff-control-surface); cursor: pointer;
+}
+.staff-check-row input[type="checkbox"]:hover:not(:disabled) { border-color: var(--staff-accent); }
+.staff-check-row input[type="checkbox"]:checked {
+  border-color: var(--staff-accent); background: var(--staff-accent);
+}
+.staff-check-row input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 4px; top: 1px;
+  width: 5px; height: 9px;
+  border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.staff-check-row input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 480px) {
+  .fc-popover {
+    position: fixed; top: auto; bottom: 12px; left: 12px; right: 12px;
+    width: auto; max-width: none;
+    max-height: min(70vh, calc(100dvh - 24px));
+    overflow-y: auto; box-sizing: border-box;
+  }
+  .fc-calendar { width: auto; }
+}
+
 /* ---------------------------------------------------------------- responsive */
 @media (max-width: 1000px) {
   .staff-app { height: auto; min-height: 100dvh; overflow: visible; }
@@ -525,7 +659,7 @@
   .staff-mode-tabs button { flex: 1; }
   .staff-topbar-right { gap: 6px; }
   .staff-market-select { flex: 1; }
-  .staff-market-select select { width: 100%; }
+  .staff-market-select .fc-select { width: 100%; }
   .staff-read-stamp { flex-basis: 100%; }
   .staff-identity { flex: 1; }
   .staff-login-card { padding: 16px; }

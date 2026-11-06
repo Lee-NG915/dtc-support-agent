@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录已推送`c0ea606`，摘要优先UI为本地未提交候选；真实模型revision2保留集仍有金额单位等质量缺口。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
+更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录已推送`c0ea606`，摘要优先UI已推送`1baaf78`，表单控件统一为本地未提交候选；真实模型revision2保留集仍有金额单位等质量缺口。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
 
 ## 员工工作台演示密码登录（2026-11-06，Codex本地验收）
 
@@ -21,6 +21,18 @@ Claude以auto模式完成实现与测试；Codex独立Review删除折叠状态�
 本地验证：前端**13文件48项通过**，构建通过；Vite保留既有`>500 kB` chunk提示，不宣称性能预算满足。项目专用Chromium实际验证：客服首屏“已送审，等待审批人处理”；审批人首屏“需要你审批”且审批区默认展开、批准按钮可见；1440px与320px均无横向溢出，折叠区动作按钮不可见。审批冻结快照缺失的待审批项另在摘要显示阻断风险，不会落入普通“等待审批”文案。未做完整WCAG、真实客服可用性测试、Firefox/Safari或真实业务试用。
 
 结论：摘要优先 UI 的本地工程/合成浏览器范围通过，功能提交已推送`1baaf78b37caa7ee8526c374616e70f5038ffd92`至`codex/2-epig-after-sales`；远端ref、`CaseOverview`、`CasePanel`与本文关键blob回读一致，草稿PR #4 head已推进到该提交。GitHub在该SHA实际Actions run仍为0，不能写成远端CI通过。不能据此宣称客服处理效率提升或页面已被真实用户接受。
+
+## 员工工作台表单控件统一（2026-11-06，Codex本地验收）
+
+用户截图指出队列原生select/date控件与自定义设计系统不一致。全量盘点员工生产TSX后，确认有8个原生select（演示身份、市场、处理状态、问题类型、材料类型、订单SKU、草稿动作、操作状态）、2个date与1个datetime-local；另有1个未统一外观的checkbox。text/password/textarea和button已复用共享样式。
+
+Claude以auto模式新增`frontend/src/staff/FormControls.tsx`：`SelectControl`使用button trigger、combobox/listbox和aria-activedescendant，支持方向键、Home/End、Enter/Space、Escape、外部点击；`DatePicker`使用周一开头的42格自定义日历，支持roving focus、PageUp/PageDown、今天/清除，date与datetime-local值保持原有本地ISO格式。datetime时间使用HH:mm text input，不调用浏览器time picker。展示固定中文`zh-CN`，示例为`2026年11月6日`/`2026年11月`/`周一`。checkbox保留原生input语义，仅替换视觉。
+
+真实Chromium首次验证发现选择菜单在label包装下会被再次激活、选择后不关闭；已改为所有自定义控件使用非交互字段容器，并在option pointer/click事件阻止冒泡。随后又发现320px固定日历底部超出视口，已将≤480px弹层改为带`bottom:12px`和`100dvh`上限的底部浮层。两个真实回归均保留在本轮过程。
+
+最终独立验证：前端**15文件59项通过**，构建通过；Vite保留既有`>500 kB` chunk提示。生产TSX对`<select`、date/datetime-local/time/radio/range/file的静态审计无命中。项目专用Chromium实测身份与状态select选择后关闭、Escape关闭、日期中文标题与星期、方向键移动、Escape回焦；320px弹层底部不超出viewport、无横向溢出，原生控件查询数0。未做完整WCAG、Firefox/Safari、真实客服试用或效率测量。
+
+结论：控件一致性的本地工程与合成Chromium范围通过，当前为未提交候选；不能据此宣称全浏览器兼容或生产验收。
 
 ## 2026-11-06 Kimi CR 裁决与最小修复计划
 

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { StaffApiError } from "./api";
 import { useStaff } from "./context";
+import { DatePicker, SelectControl } from "./FormControls";
 import {
   APPROVAL_STATUS_LABELS,
   CASE_STATE_LABELS,
@@ -290,14 +291,18 @@ export function MaterialsSection({
             </Notice>
           ) : null}
           <div className="staff-form-row">
-            <label className="staff-field">
+            <div className="staff-field">
               <span className="staff-field-label">材料类型</span>
-              <select value={materialType} onChange={(event) => setMaterialType(event.target.value as MaterialType)}>
-                {(Object.keys(MATERIAL_TYPE_LABELS) as MaterialType[]).map((type) => (
-                  <option value={type} key={type}>{MATERIAL_TYPE_LABELS[type]}</option>
-                ))}
-              </select>
-            </label>
+              <SelectControl
+                ariaLabel="材料类型"
+                value={materialType}
+                onChange={(value) => setMaterialType(value as MaterialType)}
+                options={(Object.keys(MATERIAL_TYPE_LABELS) as MaterialType[]).map((type) => ({
+                  value: type,
+                  label: MATERIAL_TYPE_LABELS[type],
+                }))}
+              />
+            </div>
             <label className="staff-field">
               <span className="staff-field-label">来源（必填）</span>
               <input value={source} onChange={(event) => setSource(event.target.value)} maxLength={500} placeholder="例如：承运商电话核验、工单系统记录" />
@@ -309,22 +314,33 @@ export function MaterialsSection({
           </label>
           {structuredType ? (
             <div className="staff-form-row">
-              <label className="staff-field">
+              <div className="staff-field">
                 <span className="staff-field-label">
                   订单 SKU{materialType === "delivery_verification" ? "（必填）" : "（可选）"}
                 </span>
-                <select value={sku} onChange={(event) => setSku(event.target.value)}>
-                  <option value="">不关联 SKU</option>
-                  {skus.map((item) => <option value={item} key={item}>{item}</option>)}
-                </select>
-              </label>
-              <label className="staff-field">
+                <SelectControl
+                  ariaLabel={`订单 SKU${materialType === "delivery_verification" ? "（必填）" : "（可选）"}`}
+                  value={sku}
+                  onChange={setSku}
+                  options={[
+                    { value: "", label: "不关联 SKU" },
+                    ...skus.map((item) => ({ value: item, label: item })),
+                  ]}
+                />
+              </div>
+              <div className="staff-field">
                 <span className="staff-field-label">
                   签收核验时间{materialType === "delivery_verification" ? "（必填）" : "（可选）"}
                 </span>
-                <input type="datetime-local" value={deliveredAt} onChange={(event) => setDeliveredAt(event.target.value)} />
+                <DatePicker
+                  ariaLabel={`签收核验时间${materialType === "delivery_verification" ? "（必填）" : "（可选）"}`}
+                  mode="datetime-local"
+                  value={deliveredAt}
+                  onChange={setDeliveredAt}
+                  placeholder="选择日期时间"
+                />
                 <span className="staff-field-hint">按当前时区（{TIMEZONE}）录入，提交时转换为带时区时间。</span>
-              </label>
+              </div>
             </div>
           ) : null}
           {conflict ? (

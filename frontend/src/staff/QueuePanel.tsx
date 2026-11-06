@@ -19,6 +19,7 @@ import {
   maskId,
 } from "./format";
 import { sleep } from "./guard";
+import { DatePicker, SelectControl } from "./FormControls";
 import { Badge, EmptyBlock, LoadingBlock, Notice, TimeValue, caseTone } from "./StaffBits";
 import type { CaseListResponse, CaseSummary, CaseState, RequestType } from "./types";
 
@@ -202,32 +203,56 @@ export function QueuePanel({
       )}
 
       <div className="staff-filters" aria-label="队列筛选">
-        <label className="staff-field">
+        <div className="staff-field">
           <span className="staff-field-label">处理状态</span>
-          <select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}>
-            <option value="">全部状态</option>
-            {(Object.keys(CASE_STATE_LABELS) as CaseState[]).map((state) => (
-              <option value={state} key={state}>{CASE_STATE_LABELS[state]}</option>
-            ))}
-          </select>
-        </label>
-        <label className="staff-field">
+          <SelectControl
+            ariaLabel="处理状态"
+            value={filters.status}
+            onChange={(value) => updateFilter("status", value)}
+            options={[
+              { value: "", label: "全部状态" },
+              ...(Object.keys(CASE_STATE_LABELS) as CaseState[]).map((state) => ({
+                value: state,
+                label: CASE_STATE_LABELS[state],
+              })),
+            ]}
+          />
+        </div>
+        <div className="staff-field">
           <span className="staff-field-label">问题类型</span>
-          <select value={filters.request_type} onChange={(event) => updateFilter("request_type", event.target.value)}>
-            <option value="">全部类型</option>
-            {(Object.keys(REQUEST_TYPE_LABELS) as RequestType[]).map((type) => (
-              <option value={type} key={type}>{REQUEST_TYPE_LABELS[type]}</option>
-            ))}
-          </select>
-        </label>
-        <label className="staff-field">
+          <SelectControl
+            ariaLabel="问题类型"
+            value={filters.request_type}
+            onChange={(value) => updateFilter("request_type", value)}
+            options={[
+              { value: "", label: "全部类型" },
+              ...(Object.keys(REQUEST_TYPE_LABELS) as RequestType[]).map((type) => ({
+                value: type,
+                label: REQUEST_TYPE_LABELS[type],
+              })),
+            ]}
+          />
+        </div>
+        <div className="staff-field">
           <span className="staff-field-label">更新起始日期</span>
-          <input type="date" value={filters.from} onChange={(event) => updateFilter("from", event.target.value)} />
-        </label>
-        <label className="staff-field">
+          <DatePicker
+            ariaLabel="更新起始日期"
+            mode="date"
+            value={filters.from}
+            onChange={(value) => updateFilter("from", value)}
+            placeholder="选择日期"
+          />
+        </div>
+        <div className="staff-field">
           <span className="staff-field-label">更新截止日期</span>
-          <input type="date" value={filters.to} onChange={(event) => updateFilter("to", event.target.value)} />
-        </label>
+          <DatePicker
+            ariaLabel="更新截止日期"
+            mode="date"
+            value={filters.to}
+            onChange={(value) => updateFilter("to", value)}
+            placeholder="选择日期"
+          />
+        </div>
         {activeFilters ? (
           <button className="staff-button staff-button-quiet staff-clear-filters" type="button" onClick={() => { setFilters(EMPTY_FILTERS); setOffset(0); }}>
             <RotateCcw size={14} aria-hidden="true" />清除筛选
