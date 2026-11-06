@@ -2,6 +2,7 @@
   "schema_version": 1,
   "owner": "Codex acceptance",
   "state": "frozen_prepared_not_run",
+  "holdout_version": "v1",
   "baseline_commit": "296e7af2f9ed97e68e8216ac22dc6997ec916ce7",
   "dataset_sha256": "ae13159484b31dde3bc6c63db9060169b2b6971b002d8b03e569c62707c256da",
   "count": 12,

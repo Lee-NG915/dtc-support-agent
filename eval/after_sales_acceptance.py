@@ -88,8 +88,33 @@ from eval.runner import (
 from eval.tool_trace import ToolTrace
 
 ROOT = Path(__file__).resolve().parents[1]
-DATASET_PATH = ROOT / "eval/dataset/after_sales_holdout_v1.jsonl"
-MANIFEST_PATH = ROOT / "eval/dataset/after_sales_holdout_v1.manifest.json"
+
+
+@dataclass(frozen=True)
+class HoldoutSpec:
+    """One registered sealed holdout and its protected manifest."""
+
+    version: Literal["v1", "v2"]
+    dataset_path: Path
+    manifest_path: Path
+
+
+HOLDOUT_REGISTRY: dict[str, HoldoutSpec] = {
+    "v1": HoldoutSpec(
+        version="v1",
+        dataset_path=ROOT / "eval/dataset/after_sales_holdout_v1.jsonl",
+        manifest_path=ROOT / "eval/dataset/after_sales_holdout_v1.manifest.json",
+    ),
+    "v2": HoldoutSpec(
+        version="v2",
+        dataset_path=ROOT / "eval/dataset/after_sales_holdout_v2.jsonl",
+        manifest_path=ROOT / "eval/dataset/after_sales_holdout_v2.manifest.json",
+    ),
+}
+HOLDOUT_VERSIONS = tuple(HOLDOUT_REGISTRY)
+DEFAULT_HOLDOUT_VERSION = "v1"
+DATASET_PATH = HOLDOUT_REGISTRY[DEFAULT_HOLDOUT_VERSION].dataset_path
+MANIFEST_PATH = HOLDOUT_REGISTRY[DEFAULT_HOLDOUT_VERSION].manifest_path
 REPORT_DIR = ROOT / "eval/reports"
 KNOWLEDGE_DIR = ROOT / "knowledge"
 DEDICATED_ENV_PATH = ROOT / ".env.eval.local"
@@ -304,6 +329,8 @@ class _GuardProbeLLM:
 class FrozenArtifacts:
     manifest: dict[str, Any] = field(repr=False)
     rows: list[dict[str, Any]] = field(repr=False)
+    holdout_version: str
+    dataset_name: str
     dataset_sha256: str
     manifest_sha256: str
     freeze_revision: int
@@ -315,6 +342,7 @@ class FrozenArtifacts:
     def verification(self) -> dict[str, Any]:
         return {
             "status": "verified",
+            "holdout_version": self.holdout_version,
             "freeze_revision": self.freeze_revision,
             "freeze_count": self.freeze_count,
             "dataset_sha256": self.dataset_sha256,
@@ -325,7 +353,8 @@ class FrozenArtifacts:
 
     def data_meta(self) -> dict[str, Any]:
         return {
-            "source": DATASET_PATH.name,
+            "source": self.dataset_name,
+            "holdout_version": self.holdout_version,
             "n": len(self.rows),
             "sha256": self.dataset_sha256,
             "role": "sealed_human_holdout",
@@ -335,6 +364,8 @@ class FrozenArtifacts:
     def provenance(self) -> dict[str, Any]:
         return {
             "source_candidate": {
+                "holdout_version": self.holdout_version,
+                "dataset": self.dataset_name,
                 "baseline_commit": self.manifest.get("baseline_commit"),
                 "freeze_revision": self.freeze_revision,
                 "freeze_digest": self.freeze_digest,
@@ -419,16 +450,36 @@ def _load_dataset(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def verify_frozen(
-    *,
-    dataset_path: Path = DATASET_PATH,
-    manifest_path: Path = MANIFEST_PATH,
-) -> FrozenArtifacts:
-    """Verify dataset SHA-256 and every frozen app/knowledge hash.
+def holdout_spec(holdout_version: str) -> HoldoutSpec:
+    """Resolve only the registered v1/v2 holdouts; never an arbitrary path."""
+    spec = HOLDOUT_REGISTRY.get(holdout_version)
+    if spec is None:
+        supported = ", ".join(HOLDOUT_VERSIONS)
+        raise FreezeVerificationError(
+            f"unsupported holdout version {holdout_version!r}; expected one of: {supported}"
+        )
+    return spec
+
+
+def verify_frozen(holdout_version: str = DEFAULT_HOLDOUT_VERSION) -> FrozenArtifacts:
+    """Verify the selected holdout's dataset SHA-256 and frozen source hashes.
 
     This runs before any provider is constructed. Any mismatch, missing file,
-    unsafe path or unexpected case shape fails closed.
+    unsafe path or unexpected case shape fails closed. The selected holdout
+    version must match the protected manifest's ``holdout_version``.
     """
+    return _verify_frozen_files(holdout_spec(holdout_version))
+
+
+def _verify_frozen_files(
+    spec: HoldoutSpec,
+    *,
+    dataset_path: Path | None = None,
+    manifest_path: Path | None = None,
+) -> FrozenArtifacts:
+    """Internal path seam used by tests; the CLI accepts only a holdout version."""
+    dataset_path = dataset_path or spec.dataset_path
+    manifest_path = manifest_path or spec.manifest_path
     try:
         manifest_raw = manifest_path.read_bytes()
         manifest = json.loads(manifest_raw)
@@ -436,6 +487,10 @@ def verify_frozen(
         raise FreezeVerificationError("frozen manifest is unreadable") from None
     if not isinstance(manifest, dict):
         raise FreezeVerificationError("frozen manifest is not an object")
+    if manifest.get("holdout_version") != spec.version:
+        raise FreezeVerificationError(
+            "frozen manifest holdout_version does not match the selected holdout"
+        )
 
     try:
         dataset_raw = dataset_path.read_bytes()
@@ -498,6 +553,8 @@ def verify_frozen(
     return FrozenArtifacts(
         manifest=manifest,
         rows=rows,
+        holdout_version=spec.version,
+        dataset_name=spec.dataset_path.name,
         dataset_sha256=dataset_sha256,
         manifest_sha256=_sha256_bytes(manifest_raw),
         freeze_revision=FREEZE_REVISION,
@@ -3346,6 +3403,7 @@ def _base_report(
         "runner": "eval.after_sales_acceptance",
         "status": "running",
         "mode": mode,
+        "holdout_version": artifacts.holdout_version,
         "started_at": datetime.now(UTC).isoformat(),
         "finished_at": None,
         "duration_ms": None,
@@ -3537,13 +3595,17 @@ def _print_summary(outcome: RunOutcome) -> None:
     engineering = summary.get("engineering_guards") or {}
     model_cases = summary.get("model_cases") or {}
     calls = summary.get("model_calls") or {}
-    print(f"after-sales acceptance: status={report.get('status')} mode={report.get('mode')}")
+    print(
+        f"after-sales acceptance: status={report.get('status')} mode={report.get('mode')} "
+        f"holdout={report.get('holdout_version', 'unknown')}"
+    )
     print(f"report: {outcome.report_path}")
     if report.get("freeze_verification", {}).get("status") == "verified":
         freeze = report["freeze_verification"]
         print(
             "freeze: verified "
             f"{freeze.get('freeze_count')} files revision={freeze.get('freeze_revision')} "
+            f"holdout={freeze.get('holdout_version')} "
             f"dataset={str(freeze.get('dataset_sha256'))[:12]}"
         )
     if engineering:
@@ -3581,6 +3643,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m eval.after_sales_acceptance",
         description="Sealed after-sales holdout acceptance runner",
+    )
+    parser.add_argument(
+        "--holdout",
+        choices=HOLDOUT_VERSIONS,
+        default=DEFAULT_HOLDOUT_VERSION,
+        help="registered sealed holdout to verify and run (default: v1)",
     )
     parser.add_argument(
         "--allow-real-model",
@@ -3625,13 +3693,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        artifacts = verify_frozen()
+        artifacts = verify_frozen(args.holdout)
     except FreezeVerificationError as exc:
         report = {
             "schema_version": 1,
             "runner": "eval.after_sales_acceptance",
             "status": "freeze_mismatch",
             "mode": "real" if args.allow_real_model else "offline",
+            "holdout_version": args.holdout,
             "error_type": type(exc).__name__,
             "message": str(exc),
             "cases": [],
@@ -3659,6 +3728,7 @@ def main(argv: list[str] | None = None) -> int:
                 "runner": "eval.after_sales_acceptance",
                 "status": "configuration_error",
                 "mode": "real",
+                "holdout_version": args.holdout,
                 "error_type": type(exc).__name__,
                 "message": str(exc),
                 "cases": [],

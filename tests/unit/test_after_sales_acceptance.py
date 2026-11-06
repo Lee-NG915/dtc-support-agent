@@ -41,6 +41,20 @@ QUALITY_REFREEZE_FILES = {
 }
 
 
+def _verify_frozen_paths(
+    *,
+    dataset_path: Path | None = None,
+    manifest_path: Path | None = None,
+    holdout_version: str = acceptance.DEFAULT_HOLDOUT_VERSION,
+) -> acceptance.FrozenArtifacts:
+    """Exercise the internal file seam without exposing paths on the CLI."""
+    return acceptance._verify_frozen_files(
+        acceptance.holdout_spec(holdout_version),
+        dataset_path=dataset_path,
+        manifest_path=manifest_path,
+    )
+
+
 class _EchoProvider:
     def __init__(self) -> None:
         self.max_tokens: list[int] = []
@@ -130,7 +144,7 @@ def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
     dataset_copy = tmp_path / "after_sales_holdout_v1.jsonl"
     dataset_copy.write_bytes(acceptance.DATASET_PATH.read_bytes() + b"\n")
     with pytest.raises(acceptance.FreezeVerificationError, match="dataset SHA-256"):
-        acceptance.verify_frozen(
+        _verify_frozen_paths(
             dataset_path=dataset_copy,
             manifest_path=acceptance.MANIFEST_PATH,
         )
@@ -141,10 +155,136 @@ def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
     tampered_manifest = tmp_path / "tampered_manifest.json"
     tampered_manifest.write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(acceptance.FreezeVerificationError, match="frozen source changed"):
-        acceptance.verify_frozen(
+        _verify_frozen_paths(
             dataset_path=acceptance.DATASET_PATH,
             manifest_path=tampered_manifest,
         )
+
+
+def test_holdout_registry_is_controlled_and_cli_defaults_to_v1() -> None:
+    assert set(acceptance.HOLDOUT_REGISTRY) == {"v1", "v2"}
+    assert acceptance.HOLDOUT_VERSIONS == ("v1", "v2")
+    assert acceptance.DEFAULT_HOLDOUT_VERSION == "v1"
+    assert acceptance.holdout_spec("v1").dataset_path.name == "after_sales_holdout_v1.jsonl"
+    assert acceptance.holdout_spec("v1").manifest_path.name == (
+        "after_sales_holdout_v1.manifest.json"
+    )
+    assert acceptance.holdout_spec("v2").dataset_path.name == "after_sales_holdout_v2.jsonl"
+    assert acceptance.holdout_spec("v2").manifest_path.name == (
+        "after_sales_holdout_v2.manifest.json"
+    )
+
+    parser = acceptance.build_parser()
+    assert parser.parse_args([]).holdout == "v1"
+    assert parser.parse_args(["--holdout", "v2"]).holdout == "v2"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--holdout", "v3"])
+    with pytest.raises(acceptance.FreezeVerificationError, match="unsupported holdout version"):
+        acceptance.holdout_spec("v3")
+
+
+def test_manifest_holdout_version_must_match_and_be_present(tmp_path: Path) -> None:
+    manifest = json.loads(acceptance.MANIFEST_PATH.read_text(encoding="utf-8"))
+    assert manifest["holdout_version"] == "v1"
+
+    mismatched = dict(manifest, holdout_version="v2")
+    mismatched_path = tmp_path / "mismatched_holdout_manifest.json"
+    mismatched_path.write_text(json.dumps(mismatched), encoding="utf-8")
+    with pytest.raises(acceptance.FreezeVerificationError, match="holdout_version"):
+        _verify_frozen_paths(manifest_path=mismatched_path)
+
+    missing = dict(manifest)
+    del missing["holdout_version"]
+    missing_path = tmp_path / "missing_holdout_manifest.json"
+    missing_path.write_text(json.dumps(missing), encoding="utf-8")
+    with pytest.raises(acceptance.FreezeVerificationError, match="holdout_version"):
+        _verify_frozen_paths(manifest_path=missing_path)
+
+
+def test_v2_selection_verifies_current_protected_manifest() -> None:
+    artifacts = acceptance.verify_frozen("v2")
+    assert artifacts.holdout_version == "v2"
+    assert artifacts.dataset_name == "after_sales_holdout_v2.jsonl"
+    assert artifacts.manifest["holdout_version"] == "v2"
+    assert artifacts.manifest["dataset_sha256"] == artifacts.dataset_sha256
+    assert len(artifacts.rows) == 12
+    assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
+    assert artifacts.freeze_count == 203
+    assert len(artifacts.manifest["freeze_hashes"]) == 203
+    assert artifacts.data_meta()["source"] == "after_sales_holdout_v2.jsonl"
+    assert artifacts.data_meta()["holdout_version"] == "v2"
+    assert artifacts.verification()["holdout_version"] == "v2"
+    provenance = artifacts.provenance()["source_candidate"]
+    assert provenance["holdout_version"] == "v2"
+    assert provenance["dataset"] == "after_sales_holdout_v2.jsonl"
+
+
+def test_v2_selection_uses_v2_dataset_and_manifest_version(tmp_path: Path) -> None:
+    spec = acceptance.holdout_spec("v2")
+    manifest = json.loads(acceptance.MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest["holdout_version"] = "v2"
+    manifest["dataset_sha256"] = hashlib.sha256(spec.dataset_path.read_bytes()).hexdigest()
+    manifest_path = tmp_path / "protected_v2_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    artifacts = _verify_frozen_paths(holdout_version="v2", manifest_path=manifest_path)
+    assert artifacts.holdout_version == "v2"
+    assert artifacts.dataset_name == "after_sales_holdout_v2.jsonl"
+    assert artifacts.data_meta()["source"] == "after_sales_holdout_v2.jsonl"
+    assert artifacts.data_meta()["holdout_version"] == "v2"
+    provenance = artifacts.provenance()["source_candidate"]
+    assert provenance["holdout_version"] == "v2"
+    assert provenance["dataset"] == "after_sales_holdout_v2.jsonl"
+
+    report = acceptance._base_report(
+        "offline", artifacts, model_public={"lane": "not_run", "calls": 0}
+    )
+    assert report["holdout_version"] == "v2"
+    assert report["data"]["source"] == "after_sales_holdout_v2.jsonl"
+    assert report["freeze_verification"]["holdout_version"] == "v2"
+
+
+def test_v2_dataset_keeps_stable_case_ids_and_fixture_ids() -> None:
+    spec = acceptance.holdout_spec("v2")
+    rows = acceptance._load_dataset(spec.dataset_path)
+    assert [row["id"] for row in rows] == acceptance.EXPECTED_CASE_IDS
+    partitions: dict[str, int] = {}
+    for row in rows:
+        partition = str(row["partition"])
+        partitions[partition] = partitions.get(partition, 0) + 1
+    assert partitions == acceptance.EXPECTED_PARTITIONS
+
+    guard_rows = [row for row in rows if row["partition"] == "engineering_guard"]
+    assert {row["id"] for row in guard_rows} <= set(acceptance._FIXTURE_IDENTITIES)
+    for row in guard_rows:
+        fixture = acceptance._build_fixture(row)
+        assert fixture.market == row["market"]
+        assert fixture.category_known is not None
+
+
+def test_cli_summary_reports_holdout_version(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    report = {
+        "status": "completed",
+        "mode": "offline",
+        "holdout_version": "v2",
+        "summary": {},
+        "freeze_verification": {
+            "status": "verified",
+            "holdout_version": "v2",
+            "freeze_count": 203,
+            "freeze_revision": 5,
+            "dataset_sha256": "a" * 64,
+        },
+        "cleanup": {},
+    }
+    outcome = acceptance.RunOutcome(
+        report=report, report_path=tmp_path / "report.json", exit_code=0
+    )
+    acceptance._print_summary(outcome)
+    output = capsys.readouterr().out
+    assert "holdout=v2" in output
 
 
 def test_revision_3_engineering_refreeze_metadata_is_exact(tmp_path: Path) -> None:
@@ -214,7 +354,7 @@ def test_revision_3_engineering_refreeze_metadata_is_exact(tmp_path: Path) -> No
     stale_manifest = tmp_path / "stale_revision_manifest.json"
     stale_manifest.write_text(json.dumps(stale), encoding="utf-8")
     with pytest.raises(acceptance.FreezeVerificationError, match="freeze revision"):
-        acceptance.verify_frozen(
+        _verify_frozen_paths(
             dataset_path=acceptance.DATASET_PATH,
             manifest_path=stale_manifest,
         )
@@ -301,7 +441,7 @@ def test_revision_4_demo_login_refreeze_metadata_is_exact(tmp_path: Path) -> Non
     stale_manifest = tmp_path / "stale_revision_manifest.json"
     stale_manifest.write_text(json.dumps(stale), encoding="utf-8")
     with pytest.raises(acceptance.FreezeVerificationError, match="freeze revision"):
-        acceptance.verify_frozen(
+        _verify_frozen_paths(
             dataset_path=acceptance.DATASET_PATH,
             manifest_path=stale_manifest,
         )
@@ -389,7 +529,7 @@ def test_revision_5_h05_h08_quality_refreeze_metadata_is_exact(tmp_path: Path) -
     stale_manifest = tmp_path / "stale_revision_manifest.json"
     stale_manifest.write_text(json.dumps(stale), encoding="utf-8")
     with pytest.raises(acceptance.FreezeVerificationError, match="freeze revision"):
-        acceptance.verify_frozen(
+        _verify_frozen_paths(
             dataset_path=acceptance.DATASET_PATH,
             manifest_path=stale_manifest,
         )
@@ -402,7 +542,7 @@ def test_verify_frozen_rejects_unsafe_path(tmp_path: Path) -> None:
     tampered_manifest = tmp_path / "unsafe_manifest.json"
     tampered_manifest.write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(acceptance.FreezeVerificationError, match="unsafe path"):
-        acceptance.verify_frozen(
+        _verify_frozen_paths(
             dataset_path=acceptance.DATASET_PATH,
             manifest_path=tampered_manifest,
         )
@@ -411,7 +551,7 @@ def test_verify_frozen_rejects_unsafe_path(tmp_path: Path) -> None:
 def test_freeze_failure_happens_before_credentials_or_provider(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    def _fail_verify(**_kwargs: object) -> object:
+    def _fail_verify(*_args: object, **_kwargs: object) -> object:
         raise acceptance.FreezeVerificationError("forced freeze mismatch")
 
     def _must_not_load() -> object:
