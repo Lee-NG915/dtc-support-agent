@@ -54,6 +54,8 @@ _ALLOWED_MEDIA_TYPES = {
     "application/octet-stream",
 }
 _CONTENT_DISPOSITION_FILENAME = re.compile(r'filename="([^"]{1,255})"')
+_ATTACHMENT_CHUNK_BYTES = 64 * 1024
+_MAX_ERROR_BODY_BYTES = 64 * 1024
 
 
 class EpigConnector:
@@ -116,35 +118,12 @@ class EpigConnector:
     async def get_attachment_content(self, *, market: str, attachment_id: str) -> AttachmentContent:
         self._validate_market(market)
         self._validate_id(attachment_id)
-        response = await self._read(
+        return await self._read_attachment(
             self._url(
                 market,
                 f"service/attachments/{quote(attachment_id, safe='')}/content",
             ),
             headers={"Accept": ", ".join(sorted(_ALLOWED_MEDIA_TYPES))},
-        )
-        if response.status_code != 200:
-            raise self._error(response, create_operation=False)
-        media_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-        if media_type not in _ALLOWED_MEDIA_TYPES:
-            raise ConnectorValidationError(
-                "UNSUPPORTED_MEDIA_TYPE",
-                details={"allowed_media_types": ["image/jpeg", "image/png", "image/webp"]},
-                http_status=415,
-            )
-        content = response.content
-        if len(content) > MAX_ATTACHMENT_BYTES:
-            raise ConnectorValidationError(
-                "ATTACHMENT_TOO_LARGE",
-                details={"max_size_bytes": MAX_ATTACHMENT_BYTES},
-                http_status=413,
-            )
-        disposition = response.headers.get("content-disposition", "")
-        match = _CONTENT_DISPOSITION_FILENAME.search(disposition)
-        return AttachmentContent(
-            content=content,
-            media_type=media_type,
-            file_name=match.group(1) if match else None,
         )
 
     async def list_service_requests(
@@ -316,6 +295,91 @@ class EpigConnector:
                 continue
             return response
         raise ConnectorUnavailable(create_operation=False)
+
+    async def _read_attachment(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+    ) -> AttachmentContent:
+        """Stream one attachment with the same bounded read-retry semantics."""
+        request_headers = {**self._headers(), **headers}
+        for attempt in range(2):
+            retry_delay: float | None = None
+            try:
+                async with self._client.stream(
+                    "GET",
+                    url,
+                    headers=request_headers,
+                ) as response:
+                    self._check_version(response)
+                    if response.status_code in _READ_RETRY_STATUSES and attempt == 0:
+                        retry_delay = self._retry_delay(response.headers.get("retry-after"))
+                    else:
+                        return await self._attachment_response(response)
+            except (httpx.TimeoutException, httpx.TransportError):
+                if attempt == 0:
+                    await self._sleep(self._retry_delay(None))
+                    continue
+                raise ConnectorUnavailable(create_operation=False) from None
+            # The streaming response is closed before waiting and retrying.
+            if retry_delay is None:
+                raise ConnectorUnavailable(create_operation=False)
+            await self._sleep(retry_delay)
+        raise ConnectorUnavailable(create_operation=False)
+
+    async def _attachment_response(self, response: httpx.Response) -> AttachmentContent:
+        if response.status_code != 200:
+            content = await self._read_bounded_body(
+                response,
+                limit=_MAX_ERROR_BODY_BYTES,
+                on_overflow=ConnectorProtocolError,
+            )
+            # Reuse the existing error mapping, but only over the bounded,
+            # already-decoded body. Transport headers (notably
+            # Content-Encoding/Content-Length) no longer describe these bytes,
+            # and _error only needs the status and JSON body.
+            error_response = httpx.Response(response.status_code, content=content)
+            raise self._error(error_response, create_operation=False)
+        media_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if media_type not in _ALLOWED_MEDIA_TYPES:
+            raise ConnectorValidationError(
+                "UNSUPPORTED_MEDIA_TYPE",
+                details={"allowed_media_types": ["image/jpeg", "image/png", "image/webp"]},
+                http_status=415,
+            )
+        content = await self._read_bounded_body(
+            response,
+            limit=MAX_ATTACHMENT_BYTES,
+            on_overflow=lambda: ConnectorValidationError(
+                "ATTACHMENT_TOO_LARGE",
+                details={"max_size_bytes": MAX_ATTACHMENT_BYTES},
+                http_status=413,
+            ),
+        )
+        disposition = response.headers.get("content-disposition", "")
+        match = _CONTENT_DISPOSITION_FILENAME.search(disposition)
+        return AttachmentContent(
+            content=content,
+            media_type=media_type,
+            file_name=match.group(1) if match else None,
+        )
+
+    async def _read_bounded_body(
+        self,
+        response: httpx.Response,
+        *,
+        limit: int,
+        on_overflow: Callable[[], ConnectorError],
+    ) -> bytes:
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in response.aiter_bytes(chunk_size=_ATTACHMENT_CHUNK_BYTES):
+            total += len(chunk)
+            if total > limit:
+                raise on_overflow()
+            chunks.append(chunk)
+        return b"".join(chunks)
 
     async def _write(
         self,

@@ -45,10 +45,10 @@
     "app/config/settings.py": "c2575d68f5a4b684af189e39a11411e0dd770e6d7708e0cf799017e7cb41f822",
     "app/connectors/__init__.py": "b49bf78848611f4dc6c43ccf50efcf4a05b27d1d1ff72c311878f4e4dd6326d9",
     "app/connectors/base.py": "34d89ed3a1753de7f61d886d366d0db5b55b3d23364173518d26181c6745b885",
-    "app/connectors/epig.py": "55619e44c0cc860630638aaac7a7888e3f18b60984372c79c7e7cecf538c1bb3",
+    "app/connectors/epig.py": "6d33d802618f0dcf33a5540968704495b9c1b17ae19cd865a8d13e18a99ae3ce",
     "app/connectors/errors.py": "8a8b41bc56cd6dcf4b63a3791f063df9341ea24c729d85a703edd0dd63c7c05c",
     "app/connectors/factory.py": "57d16d4d068a6dce0f3836228201020657aadddf440a3963c6d05ca0627f6d29",
-    "app/connectors/fake.py": "4705e6a8088ec29c44d40ca8e1fa039968311067f5d354458fc591c111f8765f",
+    "app/connectors/fake.py": "dac7a90ef1882dde32ec3d1715bab05c455f193ab8d46fca3dc21cb31d826f2c",
     "app/connectors/models.py": "5653c79b61f1a82ecbffbbadd297a469ecadeb8eac19625faffcc6cca946afe6",
     "app/core/__init__.py": "8edda9306628ef54930888a3147efce1fe64da9927e3f728cfe36752c41e3874",
     "app/core/constants.py": "e1627cd10de8f676599edbf1a00e8cb92baeca9f218aff66a362906a518bfbe2",
@@ -221,7 +221,7 @@
     "No execution implied by preparation; provider/model/budget and runtime fixture adapter still required.",
     "Actual HTTP/browser/OSrestart evidence must be separate; synthetic_only."
   ],
-  "freeze_revision": 2,
+  "freeze_revision": 3,
   "protocol_refreeze": {
     "reason": "Before first holdout execution: official DeepSeek model alias/thinking toggle compatibility only; no business prompt or knowledge changes and no holdout feedback used.",
     "files": {
@@ -255,5 +255,22 @@
       "H12 actual API subprocess uses Fake default AU ceramic mug, materials through staff API; engineering restart scenario, not mattress quality",
       "Synthetic materials are owned fixture records, never inferred from query or real customer verification"
     ]
+  },
+  "engineering_refreeze": {
+    "parent_revision": 2,
+    "parent_source_commit": "19f1d4550f532a73f56da9e4a4b830a759acc768",
+    "parent_manifest_sha256": "a02646d5b2ec4c4b7c381012e96d618ab87d832b49bc780cbd17b81b1e627ebc",
+    "reason": "CR fix: stream attachment reads with a 5 MiB decoded-byte bound and prioritize FakeConnector idempotent replay before order-version checks. Not derived from or tuned on holdout results; dataset, knowledge, prompts and grading are unchanged.",
+    "files": {
+      "app/connectors/epig.py": {
+        "old_sha256": "55619e44c0cc860630638aaac7a7888e3f18b60984372c79c7e7cecf538c1bb3",
+        "new_sha256": "6d33d802618f0dcf33a5540968704495b9c1b17ae19cd865a8d13e18a99ae3ce"
+      },
+      "app/connectors/fake.py": {
+        "old_sha256": "4705e6a8088ec29c44d40ca8e1fa039968311067f5d354458fc591c111f8765f",
+        "new_sha256": "dac7a90ef1882dde32ec3d1715bab05c455f193ab8d46fca3dc21cb31d826f2c"
+      }
+    },
+    "model_evaluation_status": "not_run_for_revision_3"
   }
 }

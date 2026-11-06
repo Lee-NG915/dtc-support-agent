@@ -81,6 +81,8 @@
 
 当前模型与协议以[DeepSeek官方模型说明](https://api-docs.deepseek.com/quick_start/pricing/)及[思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)为依据；旧deepseek-chat别名已停用。Settings默认deepseek-flash，thinking未配置时省略字段保持兼容；真实eval默认disabled并写入报告。保留集首次执行前仅因该协议适配更新两个app文件冻结hash，原业务prompt/知识未改、未用保留集调参，清单revision2记录前后摘要。不要把不设累计费用上限理解成无界重试。
 
+2026-11-06 CR 工程修复新增源码候选 revision3：仅流式附件读取与 Fake 幂等顺序的两个 Connector 摘要变化，问题集、知识和业务 prompt 不变；清单保留 revision2 父提交/清单摘要及逐文件前后摘要。revision2 的真实模型报告保持原样，不能作为 revision3 已跑模型的证据；revision3 本轮仅做离线工程验收。源码漂移仍失败关闭，未来运行应先核对候选。
+
 
 人工裁决沿用冻结样例的acceptance_assertions与forbidden，在逐条阅读回答前固定以下0/1/2锚点：事实正确性2为核心政策事实全部正确且无越权执行承诺，1为不改变结论的遗漏，0为市场/期限等核心事实错误或虚构执行；证据充分性2为可信同scope引用支持所有实质结论，1为部分次要结论支持不足，0为错误/不存在引用或主要结论无支持；可行动性2为清楚且安全的下一步，1为有用但不完整，0为不可用或不安全。工程守卫不计语义总分；确定性拒绝与实际LLM生成分列。引用文件名匹配只是诊断，不能替代阅读引用内容；也不能在看到回答后降低原断言。
 

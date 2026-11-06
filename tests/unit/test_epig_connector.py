@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import gzip
 import json
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from app.connectors.errors import (
 )
 from app.connectors.factory import build_business_connector
 from app.connectors.models import (
+    MAX_ATTACHMENT_BYTES,
     CreateServiceTicketInput,
     TicketLookupFound,
     TicketLookupInFlight,
@@ -411,6 +413,335 @@ async def test_attachment_over_five_mib_is_rejected() -> None:
     finally:
         await connector.aclose()
     assert error.value.code == "ATTACHMENT_TOO_LARGE"
+
+
+class _CountingStream(httpx.AsyncByteStream):
+    """A finite async body that records how much was consumed and whether it closed."""
+
+    def __init__(self, chunks: list[bytes], *, error: Exception | None = None) -> None:
+        self._chunks = chunks
+        self._error = error
+        self.consumed = 0
+        self.closed = False
+
+    async def __aiter__(self):  # type: ignore[no-untyped-def]
+        for chunk in self._chunks:
+            self.consumed += len(chunk)
+            yield chunk
+        if self._error is not None:
+            raise self._error
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+def _chunks(total: int, size: int = 64 * 1024) -> list[bytes]:
+    full, remainder = divmod(total, size)
+    chunks = [b"\0" * size] * full
+    if remainder:
+        chunks.append(b"\0" * remainder)
+    return chunks
+
+
+@pytest.mark.asyncio
+async def test_attachment_at_the_limit_streams_the_complete_body() -> None:
+    stream = _CountingStream(_chunks(MAX_ATTACHMENT_BYTES))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                **HEADERS,
+                "Content-Type": "image/png",
+                "Content-Disposition": 'attachment; filename="synthetic.png"',
+            },
+            stream=stream,
+        )
+
+    connector = _connector(handler)
+    try:
+        content = await connector.get_attachment_content(
+            market="au",
+            attachment_id="att_0000000000a1",
+        )
+    finally:
+        await connector.aclose()
+
+    assert len(content.content) == MAX_ATTACHMENT_BYTES
+    assert content.media_type == "image/png"
+    assert content.file_name == "synthetic.png"
+    assert stream.consumed == MAX_ATTACHMENT_BYTES
+    assert stream.closed is True
+
+
+@pytest.mark.asyncio
+async def test_attachment_over_the_limit_stops_streaming_early_and_closes() -> None:
+    oversized = MAX_ATTACHMENT_BYTES + (3 * 1024 * 1024)
+    stream = _CountingStream(_chunks(oversized))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={**HEADERS, "Content-Type": "image/png"},
+            stream=stream,
+        )
+
+    connector = _connector(handler)
+    try:
+        with pytest.raises(ConnectorValidationError) as error:
+            await connector.get_attachment_content(
+                market="au",
+                attachment_id="att_0000000000a1",
+            )
+    finally:
+        await connector.aclose()
+
+    assert error.value.code == "ATTACHMENT_TOO_LARGE"
+    assert error.value.http_status == 413
+    # One fixed-size chunk past the limit is the most a streaming reader may take.
+    assert stream.consumed <= MAX_ATTACHMENT_BYTES + (64 * 1024)
+    assert stream.consumed < oversized
+    assert stream.closed is True
+
+
+@pytest.mark.asyncio
+async def test_attachment_rejects_a_bad_media_type_before_reading_the_body() -> None:
+    stream = _CountingStream(_chunks(1024 * 1024))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={**HEADERS, "Content-Type": "text/html"},
+            stream=stream,
+        )
+
+    connector = _connector(handler)
+    try:
+        with pytest.raises(ConnectorValidationError) as error:
+            await connector.get_attachment_content(
+                market="au",
+                attachment_id="att_0000000000a1",
+            )
+    finally:
+        await connector.aclose()
+
+    assert error.value.code == "UNSUPPORTED_MEDIA_TYPE"
+    assert stream.consumed == 0
+    assert stream.closed is True
+
+
+@pytest.mark.asyncio
+async def test_attachment_rejects_a_wrong_contract_version_before_reading_the_body() -> None:
+    stream = _CountingStream(_chunks(1024 * 1024))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"X-After-Sales-Contract-Version": "2", "Content-Type": "image/png"},
+            stream=stream,
+        )
+
+    connector = _connector(handler)
+    try:
+        with pytest.raises(ConnectorProtocolError):
+            await connector.get_attachment_content(
+                market="au",
+                attachment_id="att_0000000000a1",
+            )
+    finally:
+        await connector.aclose()
+
+    assert stream.consumed == 0
+    assert stream.closed is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [429, 503])
+async def test_attachment_read_retries_retryable_statuses_with_retry_after(status: int) -> None:
+    failed = _CountingStream([b"ignored error body"])
+    succeeded = _CountingStream([b"\x89PNG\r\n\x1a\n"])
+    responses = [
+        httpx.Response(status, headers={**HEADERS, "Retry-After": "1"}, stream=failed),
+        httpx.Response(
+            200,
+            headers={**HEADERS, "Content-Type": "image/png"},
+            stream=succeeded,
+        ),
+    ]
+    calls = 0
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return responses.pop(0)
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    connector = _connector(handler, sleep=fake_sleep)
+    try:
+        content = await connector.get_attachment_content(
+            market="au",
+            attachment_id="att_0000000000a1",
+        )
+    finally:
+        await connector.aclose()
+
+    assert content.content == b"\x89PNG\r\n\x1a\n"
+    assert calls == 2
+    assert sleeps == [1.0]
+    assert failed.consumed == 0
+    assert failed.closed is True
+    assert succeeded.closed is True
+
+
+@pytest.mark.asyncio
+async def test_attachment_maps_a_valid_bounded_error_body() -> None:
+    stream = _CountingStream(
+        [json.dumps(_fixture("responses/get_attachment_content.unauthorized.json")).encode()]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, headers=HEADERS, stream=stream)
+
+    connector = _connector(handler)
+    try:
+        with pytest.raises(ConnectorPermissionError) as error:
+            await connector.get_attachment_content(
+                market="au",
+                attachment_id="att_0000000000a1",
+            )
+    finally:
+        await connector.aclose()
+
+    assert error.value.code == "UNAUTHORIZED"
+    assert error.value.http_status == 401
+    assert stream.consumed > 0
+    assert stream.closed is True
+
+
+@pytest.mark.asyncio
+async def test_attachment_gzip_error_body_is_decoded_once_and_mapped() -> None:
+    payload = json.dumps(_fixture("responses/get_attachment_content.unauthorized.json")).encode()
+    compressed = gzip.compress(payload)
+    stream = _CountingStream([compressed])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            401,
+            headers={
+                **HEADERS,
+                "Content-Type": "application/json",
+                "Content-Encoding": "gzip",
+            },
+            stream=stream,
+        )
+
+    connector = _connector(handler)
+    try:
+        with pytest.raises(ConnectorPermissionError) as error:
+            await connector.get_attachment_content(
+                market="au",
+                attachment_id="att_0000000000a1",
+            )
+    finally:
+        await connector.aclose()
+
+    assert error.value.code == "UNAUTHORIZED"
+    assert error.value.http_status == 401
+    assert stream.consumed == len(compressed)
+    assert stream.closed is True
+
+
+@pytest.mark.asyncio
+async def test_attachment_oversized_error_body_fails_closed_with_bounded_reads() -> None:
+    oversized_error = b'{"error":' + (b" " * (2 * 1024 * 1024))
+    stream = _CountingStream(_chunks(len(oversized_error)))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, headers=HEADERS, stream=stream)
+
+    connector = _connector(handler)
+    try:
+        with pytest.raises(ConnectorProtocolError):
+            await connector.get_attachment_content(
+                market="au",
+                attachment_id="att_0000000000a1",
+            )
+    finally:
+        await connector.aclose()
+
+    assert stream.consumed <= 1024 * 1024
+    assert stream.consumed < len(oversized_error)
+    assert stream.closed is True
+
+
+@pytest.mark.asyncio
+async def test_attachment_midstream_transport_failure_retries_without_mixing_bytes() -> None:
+    first = _CountingStream(
+        [b"first-attempt-bytes"],
+        error=httpx.ReadError("synthetic midstream failure"),
+    )
+    second = _CountingStream([b"second-attempt"])
+    responses = [
+        httpx.Response(200, headers={**HEADERS, "Content-Type": "image/png"}, stream=first),
+        httpx.Response(200, headers={**HEADERS, "Content-Type": "image/png"}, stream=second),
+    ]
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return responses.pop(0)
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    connector = _connector(handler, sleep=fake_sleep)
+    try:
+        content = await connector.get_attachment_content(
+            market="au",
+            attachment_id="att_0000000000a1",
+        )
+    finally:
+        await connector.aclose()
+
+    assert content.content == b"second-attempt"
+    assert sleeps == [0.1]
+    assert first.closed is True
+    assert second.closed is True
+
+
+@pytest.mark.asyncio
+async def test_attachment_midstream_transport_failure_on_retry_is_safe_unavailable() -> None:
+    first = _CountingStream([b"first"], error=httpx.ReadError("synthetic first failure"))
+    second = _CountingStream([b"second"], error=httpx.ReadError("synthetic second failure"))
+    responses = [
+        httpx.Response(200, headers={**HEADERS, "Content-Type": "image/png"}, stream=first),
+        httpx.Response(200, headers={**HEADERS, "Content-Type": "image/png"}, stream=second),
+    ]
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return responses.pop(0)
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    connector = _connector(handler, sleep=fake_sleep)
+    try:
+        with pytest.raises(ConnectorUnavailable) as error:
+            await connector.get_attachment_content(
+                market="au",
+                attachment_id="att_0000000000a1",
+            )
+    finally:
+        await connector.aclose()
+
+    assert error.value.outcome_unknown is False
+    assert error.value.retryable is True
+    assert sleeps == [0.1]
+    assert first.closed is True
+    assert second.closed is True
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ separate, explicitly authorized operator action.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import sys
@@ -103,7 +104,7 @@ class _ValidSuggestionProvider:
 def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
     artifacts = acceptance.verify_frozen()
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 2
+    assert artifacts.freeze_revision == 3
     assert len(artifacts.rows) == 12
 
     dataset_copy = tmp_path / "after_sales_holdout_v1.jsonl"
@@ -123,6 +124,76 @@ def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
         acceptance.verify_frozen(
             dataset_path=acceptance.DATASET_PATH,
             manifest_path=tampered_manifest,
+        )
+
+
+def test_revision_3_engineering_refreeze_metadata_is_exact(tmp_path: Path) -> None:
+    artifacts = acceptance.verify_frozen()
+    manifest = artifacts.manifest
+
+    assert artifacts.freeze_revision == 3
+    assert manifest["freeze_revision"] == 3
+    assert manifest["state"] == "frozen_prepared_not_run"
+    assert artifacts.freeze_count == 203
+    assert len(manifest["freeze_hashes"]) == 203
+
+    # The engineering re-freeze must not touch the frozen dataset.
+    assert manifest["dataset_sha256"] == (
+        "ae13159484b31dde3bc6c63db9060169b2b6971b002d8b03e569c62707c256da"
+    )
+    assert artifacts.dataset_sha256 == manifest["dataset_sha256"]
+
+    refreeze = manifest["engineering_refreeze"]
+    assert refreeze["parent_revision"] == 2
+    assert refreeze["parent_source_commit"] == "19f1d4550f532a73f56da9e4a4b830a759acc768"
+    assert refreeze["parent_manifest_sha256"] == (
+        "a02646d5b2ec4c4b7c381012e96d618ab87d832b49bc780cbd17b81b1e627ebc"
+    )
+    assert refreeze["model_evaluation_status"] == "not_run_for_revision_3"
+    assert set(refreeze["files"]) == {"app/connectors/epig.py", "app/connectors/fake.py"}
+
+    expected = {
+        "app/connectors/epig.py": (
+            "55619e44c0cc860630638aaac7a7888e3f18b60984372c79c7e7cecf538c1bb3",
+            "6d33d802618f0dcf33a5540968704495b9c1b17ae19cd865a8d13e18a99ae3ce",
+        ),
+        "app/connectors/fake.py": (
+            "4705e6a8088ec29c44d40ca8e1fa039968311067f5d354458fc591c111f8765f",
+            "dac7a90ef1882dde32ec3d1715bab05c455f193ab8d46fca3dc21cb31d826f2c",
+        ),
+    }
+    for relative, (old_sha256, new_sha256) in expected.items():
+        assert refreeze["files"][relative] == {
+            "old_sha256": old_sha256,
+            "new_sha256": new_sha256,
+        }
+        assert manifest["freeze_hashes"][relative] == new_sha256
+
+    # Every other frozen entry stays byte-identical to revision 2.
+    unchanged = sorted(
+        (path, digest) for path, digest in manifest["freeze_hashes"].items() if path not in expected
+    )
+    unchanged_digest = hashlib.sha256(
+        json.dumps(unchanged, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    assert unchanged_digest == ("f259875fc875a5385d86c4c0e43b1b0f2b7b7fb5572a99ae2e3f9caecebdbc8c")
+
+    # Prior re-freeze history remains available rather than being rewritten.
+    assert manifest["protocol_refreeze"]["files"]
+    assert manifest["fixture_protocol_refreeze"]["prior_fixture_invalid_cases"] == [
+        "H07",
+        "H08",
+    ]
+
+    # The stricter guard is not weakened: revision 2 is now rejected.
+    stale = json.loads(json.dumps(manifest))
+    stale["freeze_revision"] = 2
+    stale_manifest = tmp_path / "stale_revision_manifest.json"
+    stale_manifest.write_text(json.dumps(stale), encoding="utf-8")
+    with pytest.raises(acceptance.FreezeVerificationError, match="freeze revision"):
+        acceptance.verify_frozen(
+            dataset_path=acceptance.DATASET_PATH,
+            manifest_path=stale_manifest,
         )
 
 

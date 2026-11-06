@@ -267,10 +267,6 @@ class FakeConnector:
             order = self._state.orders.get((market, state.request.order_id))
             if order is None:
                 raise ConnectorNotFound()
-            if payload.order_version != order.order_version:
-                raise ConnectorConflict(
-                    "ORDER_VERSION_CONFLICT", details={"field": "order_version"}
-                )
 
             fingerprint = self._fingerprint(payload)
             existing = self._state.idempotency.get((market, idempotency_key))
@@ -284,6 +280,14 @@ class FakeConnector:
                 return TicketCreationResult(
                     ticket=self._state.tickets[(market, ticket_id)],
                     replayed=True,
+                )
+
+            # A replay of the original request is settled above even if the
+            # order version has advanced. Only new creations require the
+            # caller to hold the current version.
+            if payload.order_version != order.order_version:
+                raise ConnectorConflict(
+                    "ORDER_VERSION_CONFLICT", details={"field": "order_version"}
                 )
 
             if state.ticket_id is not None:

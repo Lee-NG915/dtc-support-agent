@@ -218,6 +218,125 @@ def test_docker_commands_use_loopback_random_port_and_never_prune(runner: Any) -
     assert "prune" not in calls[0]
 
 
+def _port_docker(
+    runner: Any, results: list[tuple[int, str, str]]
+) -> tuple[Any, list[tuple[str, ...]]]:
+    docker = runner.DockerOps("docker")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(*args: str, timeout: float) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        returncode, stdout, stderr = results.pop(0)
+        return subprocess.CompletedProcess(["docker", *args], returncode, stdout, stderr)
+
+    docker._run = fake_run  # type: ignore[method-assign]
+    return docker, calls
+
+
+def test_published_port_retries_a_successful_but_empty_binding(
+    runner: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker, calls = _port_docker(
+        runner,
+        [
+            (0, "", ""),
+            (0, "127.0.0.1:55432\n", ""),
+        ],
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(runner.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    assert docker.published_port("dtc-pgtest-test") == 55432
+    assert len(calls) == 2
+    assert sleeps == [runner.PORT_RETRY_INTERVAL]
+
+
+def test_published_port_persistent_empty_binding_fails_after_bounded_attempts(
+    runner: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker, calls = _port_docker(
+        runner,
+        [(0, "", "")] * runner.PORT_RETRY_ATTEMPTS,
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(runner.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    with pytest.raises(runner.RunnerError, match="not bound"):
+        docker.published_port("dtc-pgtest-test")
+    assert len(calls) == runner.PORT_RETRY_ATTEMPTS
+    assert sleeps == [runner.PORT_RETRY_INTERVAL] * (runner.PORT_RETRY_ATTEMPTS - 1)
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "0.0.0.0:55432\n",
+        "127.0.0.1:55432\n0.0.0.0:55432\n",
+        "127.0.0.1:55432\n[::]:55432\n",
+    ],
+)
+def test_published_port_rejects_any_non_loopback_binding_without_retry(
+    runner: Any, monkeypatch: pytest.MonkeyPatch, output: str
+) -> None:
+    docker, calls = _port_docker(runner, [(0, output, "")])
+    sleeps: list[float] = []
+    monkeypatch.setattr(runner.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    with pytest.raises(runner.RunnerError, match="loopback"):
+        docker.published_port("dtc-pgtest-test")
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+@pytest.mark.parametrize(
+    "output",
+    ["127.0.0.1:notaport", "127.0.0.1:0", "127.0.0.1:70000", "127.0.0.1:"],
+)
+def test_published_port_rejects_an_invalid_port_without_retry(
+    runner: Any, monkeypatch: pytest.MonkeyPatch, output: str
+) -> None:
+    docker, calls = _port_docker(runner, [(0, output + "\n", "")])
+    sleeps: list[float] = []
+    monkeypatch.setattr(runner.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    with pytest.raises(runner.RunnerError, match="invalid"):
+        docker.published_port("dtc-pgtest-test")
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+def test_published_port_command_failure_is_immediate_and_never_echoes_output(
+    runner: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker, calls = _port_docker(
+        runner,
+        [(1, "127.0.0.1:55432", "raw docker failure text")],
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(runner.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    with pytest.raises(runner.RunnerError, match="could not read") as error:
+        docker.published_port("dtc-pgtest-test")
+    assert len(calls) == 1
+    assert sleeps == []
+    assert "raw docker failure text" not in str(error.value)
+
+
+def test_published_port_keeps_a_valid_multi_line_binding(
+    runner: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker, calls = _port_docker(
+        runner,
+        [(0, "127.0.0.1:55432\nlocalhost:55433\n", "")],
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(runner.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    assert docker.published_port("dtc-pgtest-test") == 55432
+    assert len(calls) == 1
+    assert sleeps == []
+
+
 def test_missing_docker_fails_instead_of_skipping(runner: Any) -> None:
     class MissingDocker(_FakeDocker):
         def require_available(self) -> None:

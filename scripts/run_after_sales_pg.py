@@ -79,6 +79,8 @@ MIN_SQLITE_MIGRATION_PASSES = 3
 
 CREATE_TIMEOUT = 120.0
 PORT_TIMEOUT = 15.0
+PORT_RETRY_ATTEMPTS = 3
+PORT_RETRY_INTERVAL = 0.1
 PROBE_TIMEOUT = 3.0
 PROBE_RETRY_INTERVAL = 0.25
 PROBE_HOST = "127.0.0.1"
@@ -543,13 +545,30 @@ class DockerOps:
             raise RunnerError("dedicated container creation failed")
 
     def published_port(self, name: str) -> int:
-        result = self._run("port", name, "5432/tcp", timeout=PORT_TIMEOUT)
-        if result.returncode != 0:
-            raise RunnerError("could not read the published PostgreSQL port")
-        text = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
-        host, _, port_text = text.rpartition(":")
-        if host not in {"127.0.0.1", "localhost"} or not port_text.isdigit():
+        for attempt in range(PORT_RETRY_ATTEMPTS):
+            result = self._run("port", name, "5432/tcp", timeout=PORT_TIMEOUT)
+            if result.returncode != 0:
+                raise RunnerError("could not read the published PostgreSQL port")
+            lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            if not lines:
+                if attempt + 1 < PORT_RETRY_ATTEMPTS:
+                    time.sleep(PORT_RETRY_INTERVAL)
+                    continue
+                raise RunnerError("the published PostgreSQL port is not bound yet")
+            # Docker may print one binding per address family. Every line must
+            # stay on loopback; never accept a valid first line and ignore a
+            # later unsafe one.
+            ports = [self._published_port_line(line) for line in lines]
+            return ports[0]
+        raise RunnerError("the published PostgreSQL port is not bound yet")
+
+    @staticmethod
+    def _published_port_line(line: str) -> int:
+        host, _, port_text = line.rpartition(":")
+        if host not in {"127.0.0.1", "localhost"}:
             raise RunnerError("published port is not bound to loopback")
+        if not port_text.isdigit():
+            raise RunnerError("published port is invalid")
         port = int(port_text)
         if not (1 <= port <= 65535):
             raise RunnerError("published port is invalid")

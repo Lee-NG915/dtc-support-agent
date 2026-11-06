@@ -137,6 +137,52 @@ async def test_fake_replays_same_fingerprint_and_conflicts_on_different_fingerpr
 
 
 @pytest.mark.asyncio
+async def test_fake_replay_wins_over_order_version_drift_for_the_same_key_and_payload() -> None:
+    connector = FakeConnector()
+    try:
+        first = await connector.create_ticket(
+            market="au",
+            idempotency_key="ticket-key-drift",
+            payload=_payload(),
+        )
+        assert first.replayed is False
+
+        order_key = ("au", "ord_au_00000042")
+        order = connector._state.orders[order_key]
+        connector._state.orders[order_key] = order.model_copy(
+            update={"order_version": "ov_000000000008"}
+        )
+
+        replay = await connector.create_ticket(
+            market="au",
+            idempotency_key="ticket-key-drift",
+            payload=_payload(),
+        )
+        assert replay.replayed is True
+        assert replay.ticket.ticket_id == first.ticket.ticket_id
+        assert list(connector._state.tickets) == [("au", first.ticket.ticket_id)]
+
+        with pytest.raises(ConnectorConflict) as changed_payload:
+            await connector.create_ticket(
+                market="au",
+                idempotency_key="ticket-key-drift",
+                payload=_payload(reply="A different synthetic reply."),
+            )
+        assert changed_payload.value.code == "IDEMPOTENCY_CONFLICT"
+
+        with pytest.raises(ConnectorConflict) as stale_new_key:
+            await connector.create_ticket(
+                market="au",
+                idempotency_key="ticket-key-new-after-drift",
+                payload=_payload(),
+            )
+        assert stale_new_key.value.code == "ORDER_VERSION_CONFLICT"
+        assert list(connector._state.tickets) == [("au", first.ticket.ticket_id)]
+    finally:
+        await connector.aclose()
+
+
+@pytest.mark.asyncio
 async def test_fake_guards_order_version_and_tracks_request_state() -> None:
     connector = FakeConnector()
     try:

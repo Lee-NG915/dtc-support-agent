@@ -1,6 +1,38 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：DTC-2a员工身份/Connector已验收推送d3cab38，关键文件/远端SHA回读一致；DTC-2b已验收推送8d68686，Worker核心已验收推送b01513b，远端SHA/关键文件字节回读一致，真实HTTP恢复片段已通过，员工证据/建议后端已验收推送d9e97ff，远端SHA/关键文件回读一致，完整旅程仍待验收，E-pig5d已完成本地/CI验收并推送，消费者组件已推送72f1621，服务层八场景与备份恢复已独立验证；两仓Compose空feed启动已独立验证，独立Chromium页面已通过合成完整旅程；真实模型保留集已实测并保留金额等质量缺口。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行的命令和精简结果。
+更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；真实模型revision2保留集仍有金额单位等质量缺口。当前Kimi CR最小工程修复已通过独立本地验收，跨仓交付以两仓Issue最新回读为准，裁决及最新结果见下一节，不以历史阶段计数代表当前候选。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
+
+## 2026-11-06 Kimi CR 裁决与最小修复计划
+
+用户要求采纳必要审查建议。原始审查固定 DTC `19f1d455`、E-pig `0a84e5ba`，结论及覆盖范围已发布于 [DTC CR](https://github.com/Lee-NG915/dtc-support-agent/issues/2#issuecomment-6676472791) 和 [E-pig CR](https://github.com/Lee-NG915/E-pig/issues/2#issuecomment-6676532361)。本节是后续修复记录，不能将原始有条件验收改写为无问题。
+
+Codex 采纳以下最小方案，Claude 以 `--permission-mode auto` 实现源码与必要单测，Codex 独立 Review 和验收：
+
+| 发现 | 裁决与边界 | 验收重点 |
+| --- | --- | --- |
+| DTC 附件完整缓冲后才检查上限 | 采纳：附件专用流式读取，版本/类型先验，正文及错误响应均有界；保留现有错误映射和有限重试，不改写入路径 | 超限提前停止并关闭流、合法边界、错误 JSON、重试不混入旧字节、所有退出路径释放响应 |
+| Fake 历史键重放受新订单版本影响 | 采纳：历史同键同指纹重放优先，真正创建仍检查版本 | 订单变化后返回原票据、同键改参冲突、新键陈旧版本拒绝 |
+| PG runner 偶发端口探测失败 | 有限采纳：根因仍未知；区分空输出与非法绑定，仅空输出有限等待，不记录原始 Docker 输出 | 空后可读、持续空有界失败、真实非回环/非法端口立即失败，容器精确清理 |
+| E-pig 契约长度按 UTF-16 计数 | 采纳：按 Unicode 码点计数，不修改 schema/vendor 语义 | 真实检查器接受合法 5000 emoji、拒绝 5001，并覆盖最短长度 |
+| E-pig mock 未重验过期附件 | 采纳：仅新建时复用附件归属/有效性检查，对齐 PG；历史幂等重放不重新拒绝 | 过期拒绝无副作用、有效创建、失败键可恢复、已建单重放不受后来过期影响 |
+| 文档旧状态及 adapter 配置范围 | 采纳：收敛原文档摘要/状态表；说明 mock 固定合成主体不能替代真实订单 adapter | 12 例真实模型子集与计划 80/40 全集分开，页面/HTTP 已测与生产未测分开 |
+
+不采纳本轮扩大改造：基线既有 vector store/embedder 生命周期缺口没有新增回归证据；冗余默认表达式无行为影响；只读路由校验错误映射观察项尚无可达业务失败复现，保留为观察而非扩大本轮路由改造；不引入框架、依赖、消息队列或额外抽象。H05/H08 模型质量、DTC 无远端 CI run、真实用户试用与容量目标继续开放，不通过本轮工程修复冒充关闭。
+
+测试计划：Claude 保存实际回归 RED/GREEN；Codex 独立运行受影响单测、静态与文档检查，再执行两仓完整工程门禁和隔离 PG；E-pig 以候选源码加未修改的原始测试复核旧功能。UI 本轮不改，不重复截图套件。DTC 源提交推进后由 E-pig 官方 sync 更新不可变源锁，回读双方最新交接并验证 freshness/逐文件摘要；无线上契约字段变化不改 fixtures。状态：**本批最小工程修复已实现并通过Codex独立本地验收**；提交/远端与源锁交接状态在两仓Issue追加并回读，不外推整体产品无条件通过。
+
+### 本批修复实际结果（2026-11-06）
+
+DTC 候选为包含本节的修复提交，基线 `19f1d455`；E-pig 功能验收候选为 `0a84e5ba` 加本批 mock/检查器 diff，最终提交与源锁交接在 E-pig 记录和两仓 Issue 追踪。
+
+- Codex 全量 `pytest --cov=app --cov=eval --cov-fail-under=70`：**665 passed / 5 skipped，82.06%**；5 个门控跳过与显式 PG/浏览器层分列。聚焦三文件 108 项通过；Ruff 229 文件、mypy 150 文件、文档/契约/政策检查与 diff 空白检查通过。
+- 专用 DTC PG16：120 项通过（112 适配 + 3 多进程并发 + 1 PG 迁移 + 4 SQLite 迁移），container_removed=True。空绑定有限重试不证明原始偶发失败根因已查明；真实非回环绑定仍立即拒绝。
+- E-pig 完整 `pnpm verify`：708 主测试、19 契约、22 组件、8 harness 和 doctor 通过；专用 PG runner 53 项/10 文件、真实 HTTP/重启与精确清理通过；生产构建与 SG 运行时市场冒烟通过。独立副本以当前候选生产源码叠加原始 64 测试文件，476 项通过；152 个 src 文件及原测试逐字节核对，未削弱旧断言。
+- 本轮无 UI 改动，未重跑浏览器截图/完整 WCAG；未调用应用真实模型，旧模型报告保留。冻结清单 revision3 仅更新两个 Connector 摘要，其余201个摘要/问题集/prompt/知识及旧冻结历史不变；父 revision2 清单可从 `19f1d455` 回取。revision3 的真实模型状态为 not_run，不冒用 revision2 的质量成绩。
+
+失败历史：Claude 最初回归 13 failed/94 passed 后修复；Codex Review 发现 gzip 错误 JSON 重复解压，补真实 RED/GREEN（1 failed→1 passed）后纠正。Codex 首次全量 17 failed/647 passed：10 项由冻结旧源码摘要失败关闭，7 项由宿主沙箱禁止 socket 引起；登记新工程候选并在获准 loopback 环境重跑后达到上述结果。uv 缓存权限、系统 Python 解包参数与外部技能符号链接导致的回归副本准备失败也保留，均未冒称执行测试成功。
+
+本机私有证据根目录按任务标识 `dtc-cr-fixes-20261106` 保存：`dtc/codex-full.log`（初败）、`dtc/codex-full-final.log`、`dtc/codex-focused.log`、`dtc/codex-pg.log`、Claude RED/GREEN 与重冻结日志；`epig/codex-verify.log`、`codex-pg.log`、`codex-build.log`、`codex-smoke.log`、`codex-legacy.log` 和 `legacy-integrity.json`。原始日志不入 Git；未改用户已有学习/政策记录及 E-pig README diff。
 
 ## 2a首轮与独立核验
 
