@@ -85,6 +85,6 @@ H05/H08质量与CI增量（2026-11-06，本地验收并推送`e7cd20e`）：`app
 
 独立holdout v2增量（2026-11-06，本地验收并推送`6784f9e`）：受控`--holdout v1|v2`、独立manifest/SHA/版本校验；v2为运行前新写12例。唯一真实运行38/64 calls、26567 tokens，生成6/6满足冻结断言，H05/H06确定性转人工1/2/1，工程4/4。v2结果未回改v2；未来优化需新建v3。
 
-Review handoff与v3增量（2026-11-06，本地候选）：代码按实际review topic生成偏远配送、特殊入户、费用/支付、意外损坏、定制/部分变更等核对清单；revision6只更新generate/policy两个源摘要。v3真实运行34/64 calls、23419 tokens，工程4/4，模型生成H05-H08为4/4满足；review H01-H03通过，H04“原卡又注销”未命中连续字面“原卡注销”，遗漏支付路径，保留1/2/1。v3未回改，需规则归一化后建v4。
+Review handoff、revision7与v4增量（2026-11-06，已验收并推送功能/冻结提交`1323c19`、`31bdda7`）：review术语按字符保序，允许有界显式中文虚词/标点插入，覆盖“原卡又/已经/被注销”，保留`all_of`、scope和模型无关分支。v3 H04失败保留；v4 H01标明该失败回归，H02-H12运行前新写。真实v4报告`eval/reports/after_sales_acceptance_20261106T102547Z.json`，dataset SHA`59301e92…`、37/64 calls、24527 tokens、模型H01-H08均2/2/2、工程4/4。
 
-当前验收进度（2026-11-06）：六故事服务层与跨系统丢响应备份恢复已独立验证；两仓Compose空feed独立通过。真实模型revision5、独立v2和v3均已执行；v2生成6/6，v3生成4/4但确定性H04保留部分失败。80/40全集、Faithfulness固定集、容量和真实试用仍未验收。独立Chromium页面四组与精确清理已独立验收，默认单测不需Node/engine；操作入口见部署指南。最新有效计数与失败保留在[流程记录](../docs/records/after-sales/dtc-workflow.md)，不以本档案历史计数代替当前成绩。
+当前验收进度（2026-11-06）：六故事服务层与跨系统丢响应备份恢复已独立验证；两仓Compose空feed独立通过。真实模型revision5、独立v2/v3和revision7 v4均已执行；v4模型H01-H08满足冻结断言、工程4/4，其中H01为回归、H02-H12为新题。80/40全集、独立Faithfulness固定集、容量和真实试用仍未验收。独立Chromium页面四组与精确清理已独立验收，默认单测不需Node/engine；操作入口见部署指南。最新有效计数与失败保留在[流程记录](../docs/records/after-sales/dtc-workflow.md)，不以本档案历史计数代替当前成绩。

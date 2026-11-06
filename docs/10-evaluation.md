@@ -120,3 +120,16 @@ v3继续在运行前独立编写并冻结，新增4条确定性review场景（�
 v3 dataset SHA-256为`4025006dcfcd481be52423fd1c727154b245d87232358933ddf2f5c1bede12cd`，源冻结revision6。报告`eval/reports/after_sales_acceptance_20261106T095847Z.json`（SHA-256 `ff80f653ae6bcfff22ea6efdfedfdbb2fa3db2816869f73f50e27c0057ea6d53`）：34/64次调用、23419 tokens，工程守卫4/4。
 
 人工复核4条实际模型生成案例H05-H08全部2/2/2；确定性review H01-H03通过，H04为1/2/1。H04查询写“原卡又注销”，现有规则要求连续文本“原卡注销”，因此只命中配送费，遗漏支付方式失效和替代退款路径。该失败保留，不回改v3；下一步需要把规则归一化扩展到常见插入语气词/虚词后，另建v4验证。
+
+## revision 7与独立holdout v4
+
+v3 H04失败转为回归后，review术语匹配改为“字符保序+有界插入词/标点”，覆盖`又/已经/被`等常见表达，同时保留`all_of`、来源范围和模型无关分支。三份已有manifest推进到revision7，只更新`app/retrieval/policy.py`摘要；全量本地结果为717 passed、5 skipped。
+
+v4 dataset SHA-256为`59301e92282513d6ed48c48f4a0dadedd74a05611f881aa0d9c1313cdab92a0c`。H01明确标记为v3 H04回归，H02-H12在v4运行前新写，不能把整个v4称为完全未见数据。先完成离线工程守卫4/4和0模型调用，再执行唯一一次真实DeepSeek运行：
+
+- 报告：`eval/reports/after_sales_acceptance_20261106T102547Z.json`
+- 报告SHA-256：`08b94915870928aa09ceb25b64a7ac9d2a820e1c934702474b3c92c38ea750ba`
+- 37/64次调用；20375 prompt + 4152 completion = 24527 tokens
+- 8个模型分区observed；H09-H12工程守卫4/4
+
+人工按冻结断言复核H01-H08均为2/2/2：费用/支付异常、偏远+吊装、意外损坏、定制+部分变更都给出具体核对项和结果边界；普通保修/退款事实正确；两条员工注入只保存editing、引用限于对应市场且无审批/操作/业务写入。该结果是当前v4冻结子集成绩，不是80/40全集、独立Faithfulness固定集、生产准确率、容量SLA或真实客服试用。
