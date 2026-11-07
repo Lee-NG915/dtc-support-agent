@@ -371,7 +371,7 @@ Codex按冻结断言及预定0/1/2锚点人工复核，独立审查再次核对�
 - 起始提交与 upstream 均为 `fcd3d90c2c48b7ee3cd5e560ff1eab995c359e0a`，工作区只有未跟踪 `.work/`。push CI `42233742189` 与 PR CI `42233751742` 已实际成功。
 - Netlify 站点 `https://e-pig-au-sandbox.netlify.app/` 的生产售后接口仍为404；Deploy Preview 已有路由，但带正确契约头且缺少 service token 时曾返回`500 INTERNAL_ERROR`，预期为`401 UNAUTHORIZED`。因此当前不能通过 E-pig 发布闸门。
 - DTC 本地已有锁定依赖镜像、独立售后 Compose、显式迁移、持续 Worker、健康/就绪/指标入口和一次特定丢响应备份恢复证据；这些不等于生产环境验收。
-- 生产 Compose、Tailscale 入口、生产配置预检、PostgreSQL员工凭证管理、生产备份调度、告警和回滚演练尚未实现。
+- 当时生产 Compose、Tailscale 入口与配置预检尚未实现；截至本记录末尾的新增验收章节，这几项已完成本地实现和验收，PostgreSQL员工凭证管理、生产备份调度、告警和回滚演练仍未实现。
 - `oci` CLI 3.96.0、Codex/Claude 的 Oracle MCP 注册存在，但本机无`~/.oci/config`；最近浏览器登录落在风控/注册页面并已停止，没有写凭据。Oracle租户、主区域和免费配额均未确认。
 
 ### 上线前实施顺序
@@ -383,3 +383,17 @@ Codex按冻结断言及预定0/1/2锚点人工复核，独立审查再次核对�
 5. 先完成配置预检、迁移和恢复演练，再启动API/Worker；执行合成跨系统冒烟、监控、日志、备份年龄和紧急停用验收。
 
 任何一步失败都不发布。当前没有云资源创建、主分支合并、生产secret、真实客户数据、实际部署或真实试用。下一步是实现生产配置基线；Claude Code流空闲阻塞恢复前不由Codex静默接管实现。
+
+## 生产配置基线实现与独立验收（2026-11-07，本地范围通过）
+
+Claude按拆分任务实际生成`docker-compose.production.yml`、`deploy/dtc.production.env.example`、`deploy/tailscale-serve.md`、`scripts/check_production_settings.py`、生产部署测试、`.dockerignore`增量与CI `container-build` job。实现初稿达到轮次上限但文件完整写入；Codex Review发现并下发四项返工：错误的市场范围测试预期、Ruff未通过、未替换模板可错误通过预检、Tailscale未代理前端根静态资源。返工后模板会因占位secret、`.invalid`域名、占位SKU与BM25未确认而失败；Tailscale只增加`/assets`与`/favicon.svg`精确挂载，仍不开放根路径或`/metrics`。
+
+独立验证：
+
+- `uv run pytest -q tests/unit/test_after_sales_production_deployment.py`：**68 passed**。
+- `uv run pytest -q`：**785 passed、5 skipped、1 warning**（LangGraph既有弃用提示）。
+- `uv run mypy`：150个源文件无问题；`uv lock --check`、Ruff格式/静态、文档结构、`git diff --check`通过。
+- `DTC_ENV_FILE=deploy/dtc.production.env.example docker compose --env-file /dev/null -f docker-compose.production.yml config --quiet`成功；Compose与CI YAML解析成功。
+- 首次本地`docker build`因Docker Hub匿名token网络超时失败，失败保留。改用相同官方版本的ECR基础镜像后构建成功，image ID `sha256:59e497cd5291366684cbeb0a51bd54cb00929c32809b402724fb8b820a66374e`，`USER=appuser`，revision标签`production-config-candidate`，默认production与本地模型加载关闭。镜像未启动、未推送registry、未部署。
+
+边界：这不是Oracle/Netlify/Neon联调，不含真实secret、员工凭证CLI、备份调度、告警、恢复演练或生产发布。`docker-compose.production.yml`尚不能被现有一键流程直接上线，因为P1/P3/P6/P7闸门未关闭；CI只在推送后实际回读结果。下一步继续员工凭证、备份与告警实现，并保留Oracle风控阻塞。

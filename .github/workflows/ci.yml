@@ -91,6 +91,36 @@ jobs:
       - name: Frontend build
         run: npm --prefix frontend run build
 
+  container-build:
+    name: container build (no registry push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only. This job never logs in to a registry, pushes, tags a
+      # release, or deploys. A build failure is a real gate and must stay.
+      - name: Build production image with commit revision
+        env:
+          IMAGE_REVISION: ${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg "IMAGE_REVISION=${IMAGE_REVISION}" \
+            --tag "dtc-support-agent:ci-${GITHUB_SHA}" \
+            .
+
+      - name: Verify revision label and non-root runtime
+        run: |
+          revision="$(docker image inspect \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            "dtc-support-agent:ci-${GITHUB_SHA}")"
+          test "${revision}" = "${GITHUB_SHA}"
+          test "$(docker image inspect --format '{{.Config.User}}' \
+            "dtc-support-agent:ci-${GITHUB_SHA}")" = "appuser"
+
   after-sales-postgres:
     name: after-sales PostgreSQL acceptance (py3.12)
     runs-on: ubuntu-latest

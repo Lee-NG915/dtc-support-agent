@@ -25,6 +25,21 @@ credentials.json
 secrets/
 deploy/secrets/
 
+# Production deployment env files and credentials, including nested paths.
+**/.env
+**/.env.*
+deploy/dtc.production.env
+deploy/dtc.production.env.*
+deploy/*.env
+deploy/**/*.env
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.pfx
+**/credentials.json
+**/secrets/
+
 # Local runtimes, caches and coverage
 .venv
 venv
