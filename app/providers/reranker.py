@@ -7,6 +7,8 @@ import logging
 from threading import Lock
 from typing import Any
 
+import jieba
+
 from app.config.settings import Settings
 from app.providers.device import resolve_torch_device
 
@@ -14,9 +16,17 @@ logger = logging.getLogger(__name__)
 
 
 class LexicalRerankProvider:
-    """Token-overlap fallback. CI / missing weights only — not a Cross-Encoder."""
+    """Weighted token/title overlap fallback. CI only — not a Cross-Encoder."""
 
     backend = "lexical"
+
+    @staticmethod
+    def _coverage(terms: list[str], text: str) -> float:
+        total = sum(len(term) for term in terms)
+        if not total:
+            return 0.0
+        lowered = text.lower()
+        return sum(len(term) for term in terms if term in lowered) / total
 
     async def rerank(
         self,
@@ -25,14 +35,19 @@ class LexicalRerankProvider:
         *,
         top_n: int,
     ) -> list[tuple[int, float]]:
-        query_tokens = set(query.lower())
+        terms = list(
+            dict.fromkeys(
+                token.strip().lower()
+                for token in jieba.lcut_for_search(query)
+                if any(char.isalnum() for char in token)
+            )
+        )
         scored: list[tuple[int, float]] = []
         for index, document in enumerate(documents):
-            doc_tokens = set(document.lower())
-            if not query_tokens:
-                score = 0.0
-            else:
-                score = len(query_tokens & doc_tokens) / len(query_tokens)
+            title, separator, content = document.partition("\n")
+            if not separator:
+                title, content = "", document
+            score = 0.5 * self._coverage(terms, content) + 0.5 * self._coverage(terms, title)
             scored.append((index, score))
         scored.sort(key=lambda item: item[1], reverse=True)
         return scored[:top_n]

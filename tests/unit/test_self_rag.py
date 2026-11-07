@@ -11,7 +11,7 @@ from app.config.settings import Settings
 from app.core.exceptions import LLMProviderError
 from app.providers.fake import FakeLLMProvider
 from app.retrieval.self_rag import SelfRAGLoop
-from app.schemas.retrieval import RetrievedChunk
+from app.schemas.retrieval import PolicyScope, RetrievedChunk
 
 _SUFFICIENT = '{"relevant": true, "sufficient": true, "missing_aspect": "", "rationale": "ok"}'
 _NOT_SUFFICIENT = (
@@ -35,9 +35,13 @@ class _StubRetriever:
     def __init__(self, per_query: dict[str, list[RetrievedChunk]]) -> None:
         self._per_query = per_query
         self.calls: list[str] = []
+        self.scopes: list[PolicyScope | None] = []
 
-    async def retrieve(self, query: str, *, top_k: int) -> list[RetrievedChunk]:
+    async def retrieve(
+        self, query: str, *, top_k: int, scope: PolicyScope | None = None
+    ) -> list[RetrievedChunk]:
         self.calls.append(query)
+        self.scopes.append(scope)
         return list(self._per_query.get(query, []))
 
 
@@ -88,6 +92,18 @@ async def test_loop_stops_when_first_grade_is_sufficient() -> None:
     assert [c.chunk_id for c in chunks] == ["c1"]
     assert len(retriever.calls) == 1
     assert len(llm.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_loop_propagates_policy_scope_to_every_retrieval() -> None:
+    llm = FakeLLMProvider(canned={"": _SUFFICIENT})
+    retriever = _StubRetriever({"退货": [_chunk("c1")]})
+    loop = _loop(llm=llm, retriever=retriever)
+    scope = PolicyScope(brand="epig", market="au")
+
+    await loop.retrieve("退货", top_k=3, scope=scope)
+
+    assert retriever.scopes == [scope]
 
 
 @pytest.mark.asyncio

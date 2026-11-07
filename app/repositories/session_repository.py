@@ -3,6 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.core.time import utcnow
 from app.repositories.models import MessageRow, SessionRow
 from app.schemas.chat import ChatMessage
@@ -18,6 +19,17 @@ class SessionRepository:
             row = SessionRow(session_id=session_id, user_id=user_id)
             self._session.add(row)
             await self._session.flush()
+        return row
+
+    async def get_or_create_owned(self, session_id: str, user_id: str) -> SessionRow:
+        """Create a session for this actor, or show another actor's session as not found."""
+        row = await self._session.get(SessionRow, session_id)
+        if row is None:
+            row = SessionRow(session_id=session_id, user_id=user_id)
+            self._session.add(row)
+            await self._session.flush()
+        elif row.user_id != user_id:
+            raise NotFoundError("session not found")
         return row
 
     async def recent_messages(self, session_id: str, *, limit: int = 20) -> list[ChatMessage]:

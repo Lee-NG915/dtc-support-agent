@@ -1,0 +1,22 @@
+{
+  "shipment_id": "shp_000000000042",
+  "order_id": "ord_au_00000042",
+  "status": "delivered",
+  "carrier": "Synthetic Parcel Carrier",
+  "events": [
+    {
+      "event_id": "she_000000000041",
+      "status": "in_transit",
+      "description": "The synthetic parcel departed the local depot.",
+      "occurred_at": "2026-01-13T01:15:00Z",
+      "location_summary": "NSW"
+    },
+    {
+      "event_id": "she_000000000042",
+      "status": "delivered",
+      "description": "The synthetic parcel was recorded as delivered.",
+      "occurred_at": "2026-01-14T06:45:00Z",
+      "location_summary": "NSW"
+    }
+  ]
+}

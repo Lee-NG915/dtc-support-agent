@@ -1,0 +1,118 @@
+# Dedicated local after-sales deployment: PostgreSQL 16 + explicit migration
+# gate + API + worker. Invoke with an explicit --env-file so a developer .env
+# in the repository is never read by Compose, for example:
+#
+#   POSTGRES_PASSWORD="$(openssl rand -hex 24)" \
+#     docker compose --env-file /dev/null -f docker-compose.after-sales.yml \
+#     -p "dtc-after-sales-$(openssl rand -hex 4)" up -d --build
+#
+# The password and any staff token are supplied by the operator outside
+# tracked source. This file only references them.
+
+x-app-image: &app-image "${APP_IMAGE:-dtc-after-sales-app:local}"
+
+x-app-env: &app-env
+  APP_ENV: development
+  LOG_LEVEL: INFO
+  DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-dtc}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied outside tracked source}@postgres:5432/${POSTGRES_DB:-dtc_after_sales}"
+  AFTER_SALES_ENABLED: "true"
+  BUSINESS_CONNECTOR: fake
+  DEEPSEEK_API_KEY: ""
+  EMBEDDING_API_KEY: ""
+  EMBEDDING_BASE_URL: ""
+  REDIS_URL: ""
+  QDRANT_URL: ""
+  LOCAL_EMBEDDING_ENABLED: "false"
+  CROSS_ENCODER_ENABLED: "false"
+  UNSTRUCTURED_ENABLED: "false"
+  MCP_ENABLED: "false"
+  MCP_REMOTE_URL: ""
+  EPIG_BASE_URL: ""
+  EPIG_SERVICE_TOKEN: ""
+  EPIG_ALLOWED_MARKETS: ""
+  ADMIN_API_TOKEN: ""
+  AFTER_SALES_WORKER_MARKETS: "au,us,sg"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dtc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied outside tracked source}
+      POSTGRES_DB: ${POSTGRES_DB:-dtc_after_sales}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - after-sales
+
+  migrate:
+    image: *app-image
+    build:
+      context: .
+      args:
+        IMAGE_REVISION: ${IMAGE_REVISION:-}
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      # Alembic reads this explicit target; it never reads the app .env.
+      ALEMBIC_DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-dtc}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied outside tracked source}@postgres:5432/${POSTGRES_DB:-dtc_after_sales}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - after-sales
+
+  api:
+    image: *app-image
+    pull_policy: never
+    command: ["uvicorn", "app.asgi:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    restart: "no"
+    networks:
+      - after-sales
+
+  worker:
+    image: *app-image
+    pull_policy: never
+    command: ["python", "-m", "app.worker"]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - after-sales
+
+volumes:
+  postgres-data:
+
+networks:
+  after-sales:
+    driver: bridge

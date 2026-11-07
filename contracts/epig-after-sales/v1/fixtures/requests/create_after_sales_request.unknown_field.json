@@ -1,0 +1,9 @@
+{
+  "order_id": "ord_au_00000042",
+  "type": "damaged",
+  "description": "The synthetic parcel arrived damaged.",
+  "attachment_ids": [
+    "att_0000000000a1"
+  ],
+  "internal_note": "Unknown boundary fields must be rejected."
+}

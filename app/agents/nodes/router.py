@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import time
 
-from app.agents.nodes.intent import IntentClassifier
+from app.agents.nodes.intent import IntentClassifier, is_social_query
 from app.agents.state import AgentState
-from app.core.enums import QueryComplexity, RetrievalStrategy
+from app.config.policy_profiles import get_policy_profile
+from app.core.enums import IntentLabel, QueryComplexity, RetrievalStrategy
 from app.retrieval.adaptive import AdaptiveRouter
 from app.schemas.agent import ComplexityResult
 from app.schemas.common import LatencyBreakdown
@@ -38,6 +39,23 @@ async def router_node(state: AgentState, router: AdaptiveRouter) -> dict:
         if state.get("confirmed_action")
         else await router.route(state["user_query"], intent)
     )
+    scope = state.get("policy_scope")
+    if (
+        scope is not None
+        and get_policy_profile(scope.brand).force_retrieval
+        and complexity.strategy == RetrievalStrategy.DIRECT
+        and not (
+            intent.label in {IntentLabel.GREETING, IntentLabel.CHITCHAT}
+            and is_social_query(state["user_query"])
+        )
+    ):
+        complexity = complexity.model_copy(
+            update={
+                "complexity": QueryComplexity.SINGLE_HOP,
+                "strategy": RetrievalStrategy.SINGLE,
+                "rationale": f"{complexity.rationale}; {scope.brand}_policy_requires_evidence",
+            }
+        )
     latency = _latency(state)
     latency.routing_ms = (time.perf_counter() - started) * 1000
     return {

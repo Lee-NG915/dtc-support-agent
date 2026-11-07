@@ -1,0 +1,4 @@
+interface:
+  display_name: "故障分析与学习"
+  short_description: "沿实际请求链排查接口、数据、模型与任务故障，解释证据和验证边界"
+  default_prompt: "请使用 $dtc-troubleshooting，定位当前异常，用实际证据说明原因、修复与尚未验证部分。"

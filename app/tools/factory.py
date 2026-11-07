@@ -25,7 +25,11 @@ from app.tools.product_tools import (
 from app.tools.registry import ToolRegistry
 
 
-def build_tool_registry(retriever: HybridRetriever) -> ToolRegistry:
+def build_tool_registry(
+    retriever: HybridRetriever,
+    *,
+    include_demo_writes: bool = True,
+) -> ToolRegistry:
     """Process-scoped registry. DB-backed tools resolve the request session lazily."""
     registry = ToolRegistry()
     # Explicit annotation: the concrete classes mix RepositoryBackedTool with Tool,
@@ -35,9 +39,6 @@ def build_tool_registry(retriever: HybridRetriever) -> ToolRegistry:
         GetOrderItemsTool(),
         TrackShipmentTool(),
         GetRefundStatusTool(),
-        CreateRefundRequestTool(),
-        CreateReturnRequestTool(),
-        CancelOrderTool(),
         SearchProductsTool(),
         GetProductDetailTool(),
         RecommendProductsTool(),
@@ -47,6 +48,16 @@ def build_tool_registry(retriever: HybridRetriever) -> ToolRegistry:
         SearchKnowledgeTool(retriever),
         EscalateToHumanTool(),
     ]
+    if include_demo_writes:
+        # Upstream demo only. An enabled staff flow must not be able to reach
+        # generic local refund, return or cancellation writes.
+        tools.extend(
+            [
+                CreateRefundRequestTool(),
+                CreateReturnRequestTool(),
+                CancelOrderTool(),
+            ]
+        )
     for tool in tools:
         registry.register(tool)
     return registry

@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "ATTACHMENT_TOO_LARGE",
+    "message": "The attachment exceeds the 5 MiB size limit.",
+    "request_id": "req_err_000000000007",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "max_size_bytes": 5242880
+    }
+  }
+}

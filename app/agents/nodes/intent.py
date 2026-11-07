@@ -14,6 +14,17 @@ from app.providers.fake import OfflineLLMProvider
 from app.providers.json_parser import parse_model
 from app.schemas.agent import IntentResult
 
+_SOCIAL_QUERY = re.compile(
+    r"(?:你好|您好|hi|hello|谢谢|谢谢你|感谢|再见|拜拜|bye)[!！。．.\s~～]*",
+    re.IGNORECASE,
+)
+
+
+def is_social_query(query: str) -> bool:
+    """Only deterministic, content-free social turns may bypass policy retrieval."""
+    return _SOCIAL_QUERY.fullmatch(query.strip()) is not None
+
+
 _KEYWORD_RULES: list[tuple[tuple[str, ...], IntentLabel]] = [
     (("转人工", "人工客服"), IntentLabel.HUMAN_HANDOFF),
     (("你好", "您好", "hi", "hello"), IntentLabel.GREETING),

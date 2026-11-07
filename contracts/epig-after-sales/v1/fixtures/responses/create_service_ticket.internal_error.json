@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "INTERNAL_ERROR",
+    "message": "Ticket creation outcome is unknown; use the idempotency lookup before retrying.",
+    "request_id": "req_err_000000000012",
+    "retryable": false,
+    "recovery_action": "LOOKUP_FIRST"
+  }
+}

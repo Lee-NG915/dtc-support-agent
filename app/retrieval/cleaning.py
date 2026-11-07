@@ -75,12 +75,27 @@ def dedupe_chunks(
     *,
     near_dup_bits: int = NEAR_DUP_HAMMING,
 ) -> list[RetrievedChunk]:
-    """Drop exact content duplicates; log cross-document near-duplicates without dropping."""
+    """Drop duplicates only within the same policy scope; retain market-specific wording."""
     kept: list[RetrievedChunk] = []
-    seen: dict[str, str] = {}
+    seen: dict[tuple[object, ...], str] = {}
     for chunk in chunks:
         digest = content_sha1(chunk.content)
-        prior = seen.get(digest)
+        scope_key = (
+            digest,
+            chunk.brand,
+            chunk.market,
+            chunk.policy_version,
+            tuple(sorted(chunk.product_categories)),
+            chunk.retrieved_at,
+            chunk.effective_from,
+            chunk.effective_to,
+            chunk.requires_human_review,
+            tuple(rule.model_dump_json() for rule in chunk.review_query_rules),
+            chunk.source_type,
+            chunk.source_label,
+            chunk.source_path,
+        )
+        prior = seen.get(scope_key)
         if prior is not None:
             logger.info(
                 "ingest_exact_duplicate_dropped",
@@ -91,7 +106,7 @@ def dedupe_chunks(
                 },
             )
             continue
-        seen[digest] = chunk.chunk_id
+        seen[scope_key] = chunk.chunk_id
         kept.append(chunk)
 
     fingerprints = [(chunk.document_id, chunk.chunk_id, simhash64(chunk.content)) for chunk in kept]

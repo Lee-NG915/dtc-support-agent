@@ -6,12 +6,14 @@ import asyncio
 import logging
 from pathlib import Path
 
+from app.config.policy_profiles import MANAGED_POLICY_PREFIXES
 from app.config.settings import Settings, get_settings
 from app.core.enums import DocumentCategory
 from app.providers.base import EmbeddingProvider
 from app.retrieval.bm25 import BM25Retriever
 from app.retrieval.chunking import document_id_from_path
 from app.retrieval.cleaning import dedupe_chunks
+from app.retrieval.policy import load_policy_manifest
 from app.retrieval.unstructured_parser import list_knowledge_files, parse_path
 from app.retrieval.vector import (
     InMemoryVectorStore,
@@ -78,11 +80,21 @@ class KnowledgeIngestor:
 
     async def load(self) -> tuple[list[RetrievedChunk], list[VectorRecord]]:
         files = list_knowledge_files(self._knowledge_dir)
+        policy_documents = load_policy_manifest(self._knowledge_dir)
+        matched_manifest_paths: set[str] = set()
         chunks: list[RetrievedChunk] = []
         for path in files:
-            category = category_for_stem(path.stem)
+            relative_path = path.relative_to(self._knowledge_dir).as_posix()
+            policy = policy_documents.get(relative_path)
+            if policy is None and relative_path.startswith(MANAGED_POLICY_PREFIXES):
+                raise ValueError(
+                    f"managed policy document lacks manifest metadata: {relative_path}"
+                )
+            if policy is not None:
+                matched_manifest_paths.add(relative_path)
+            category = policy.category if policy else category_for_stem(path.stem)
             document_id = document_id_from_path(path, root=self._knowledge_dir)
-            title = path.stem
+            title = policy.title if policy else path.stem
             file_chunks = await asyncio.to_thread(
                 parse_path,
                 path,
@@ -90,8 +102,27 @@ class KnowledgeIngestor:
                 title=title,
                 category=category,
                 settings=self._settings,
+                policy_version=policy.policy_version if policy else "v1",
             )
+            if policy is not None:
+                if policy.requires_human_review:
+                    sections = {chunk.section for chunk in file_chunks}
+                    missing_sections = [
+                        section for section in policy.review_sections if section not in sections
+                    ]
+                    if missing_sections:
+                        raise ValueError(
+                            f"policy review sections not found in {relative_path}: "
+                            f"{missing_sections}"
+                        )
+                file_chunks = [
+                    chunk.model_copy(update=policy.chunk_fields(chunk.section))
+                    for chunk in file_chunks
+                ]
             chunks.extend(file_chunks)
+        missing = sorted(set(policy_documents) - matched_manifest_paths)
+        if missing:
+            raise ValueError(f"policy manifest references missing documents: {missing}")
         chunks = dedupe_chunks(chunks)
         if not chunks:
             return [], []
@@ -127,12 +158,15 @@ async def ingest_knowledge(
     resolved = settings or get_settings()
     ingestor = KnowledgeIngestor(knowledge_dir, embedder, settings=resolved)
     chunks, records = await ingestor.load()
+    if not chunks:
+        raise ValueError("refusing to ingest an empty knowledge corpus")
     bm25 = BM25Retriever(chunks)
     if qdrant_url:
         store = QdrantVectorStore(qdrant_url, qdrant_collection, embedding_dim)
         try:
             await asyncio.to_thread(store.ensure_collection)
             await asyncio.to_thread(store.upsert, records)
+            await asyncio.to_thread(store.remove_stale, {chunk.chunk_id for chunk in chunks})
             return bm25, store, chunks
         except Exception:
             logger.warning("qdrant_ingest_failed_using_memory")

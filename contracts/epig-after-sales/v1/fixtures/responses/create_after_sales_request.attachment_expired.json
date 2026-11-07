@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "ATTACHMENT_EXPIRED",
+    "message": "The attachment has expired and can no longer be used.",
+    "request_id": "req_err_000000000009",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "attachment_id": "att_0000000000e1"
+    }
+  }
+}

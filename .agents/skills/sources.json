@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "installed_on": "2026-11-03",
+  "mode": "repository-local-adapted-copy",
+  "scope": "development-assistant-only",
+  "upstream": {
+    "repository": "https://github.com/Lee-NG915/DTC-skills",
+    "commit": "019d8f16ee06b0857362a09fafb2acbe3bf5d89e",
+    "license": "LICENSE-DTC-skills",
+    "reference_files": [
+      {
+        "path": "skills/dtc-scoped-validation/references/independent-review.md",
+        "sha256": "1a1e362d1ac29e857cbb9cf0cea94d8f6149713b6460beb922c9822a2e539a89"
+      }
+    ]
+  },
+  "skills": [
+    {
+      "name": "dtc-context",
+      "path": "dtc-context/SKILL.md",
+      "adaptation": "repository-specific; no external skill dependencies",
+      "source_path": "skills/dtc-context/SKILL.md",
+      "source_sha256": "8e1211489227473752d72de1514b5feb80420f10e73de339debc72bbd60cece5"
+    },
+    {
+      "name": "dtc-requirements-analysis",
+      "path": "dtc-requirements-analysis/SKILL.md",
+      "adaptation": "repository-specific; no external skill dependencies",
+      "source_path": "skills/dtc-requirements-analysis/SKILL.md",
+      "source_sha256": "553757c7cae5780cce685ededbf4847704b4ab26730db4ce0ffbb65e0579dbc8"
+    },
+    {
+      "name": "dtc-technical-design",
+      "path": "dtc-technical-design/SKILL.md",
+      "adaptation": "repository-specific; no external skill dependencies",
+      "source_path": "skills/dtc-technical-design/SKILL.md",
+      "source_sha256": "ee974ef4e15178c5068f293ea4d328f6e6a6afa50def3227632a46ab1711395a"
+    },
+    {
+      "name": "dtc-implementation",
+      "path": "dtc-implementation/SKILL.md",
+      "adaptation": "repository-specific; no external skill dependencies",
+      "source_path": "skills/dtc-implementation/SKILL.md",
+      "source_sha256": "be4512bae4c4b74f149e39a47b9810726f4ccb0c7004a370c7eddfa575e4251c"
+    },
+    {
+      "name": "dtc-scoped-validation",
+      "path": "dtc-scoped-validation/SKILL.md",
+      "adaptation": "repository-specific; no external skill dependencies",
+      "source_path": "skills/dtc-scoped-validation/SKILL.md",
+      "source_sha256": "d203578ed72cdbd21fe9630e4bde69e482d054e8604a4637b96d00670f7262c5"
+    },
+    {
+      "name": "dtc-evidence-log",
+      "path": "dtc-evidence-log/SKILL.md",
+      "adaptation": "repository-specific; no external skill dependencies",
+      "source_path": "skills/dtc-evidence-log/SKILL.md",
+      "source_sha256": "db2ddf1b825ecff9c22969e736719a52836733eb645e3085424b4e36dcb826a3"
+    },
+    {
+      "name": "dtc-delivery",
+      "path": "dtc-delivery/SKILL.md",
+      "adaptation": "repository-specific; no external skill dependencies",
+      "source_path": "skills/dtc-delivery/SKILL.md",
+      "source_sha256": "6c28c20cdc75c12868b97ce47df0c1e2a1131d0ebd892206a72760584bd047c2"
+    },
+    {
+      "name": "dtc-documentation",
+      "path": "dtc-documentation/SKILL.md",
+      "adaptation": "repository-specific; no external skill dependencies",
+      "source": "local monorepo documentation rules, rewritten for this project; source identities under documentation_rules"
+    },
+    {
+      "name": "dtc-troubleshooting",
+      "path": "dtc-troubleshooting/SKILL.md",
+      "source_path": "skills/observability/root-cause-analysis/SKILL.md",
+      "source_sha256": "00d039d28c8ef5366edcb90c3b3dcfce4e6ceeac4845c7db339b5ef9d41cd7aa",
+      "source_group": "local_skill_library",
+      "adaptation": "rewritten for the current Python/Agent project; self-contained"
+    }
+  ],
+  "documentation_rules": {
+    "commit": "ac0ca35e4123821d6a59f8c94de30006fae3a6de",
+    "files": {
+      "docs/README.md": "7b3667bbf16d9b1a0211d056321c2da80ccc20243672710c7017dd2ec43a3c06",
+      ".skills/product-design-tech-spec/SKILL.md": "327b944487d3aa75267ccfd7e8e1b6a4020a1e55f922d7ba3bb2dc712877415e",
+      ".skills/product-design-tech-spec/references/document-contract.md": "28b21c7246bafedf9d29ea93664c405dc91e4923ffb6bd07a4d576e86f08ed37",
+      ".skills/product-design-tech-spec/references/decision-review.md": "ac1e6d7d75fbbe11bd74088e15feacd4cc95603c2cf49f902bdaeae184bb0794"
+    },
+    "selected_files_dirty": ""
+  },
+  "local_skill_library": {
+    "commit": "6444dfefe0e6a2fb9df6b852f066b224736f0757",
+    "files": {
+      "skills/observability/root-cause-analysis/SKILL.md": "00d039d28c8ef5366edcb90c3b3dcfce4e6ceeac4845c7db339b5ef9d41cd7aa",
+      "skills/quality/testing-strategy/SKILL.md": "afc026c9b69da32f8cc60ddfd9e6d12aeeaa97da25105a59c09697715c3019d0",
+      "skills/development/design-doc-style/SKILL.md": "a5698f8ad22ab3e47f531863d1b8f6229a2e617438834ad431aa617317d35a6a",
+      "skills/development/architect/SKILL.md": "8c4d9da9ece1abaf0aa3a3776da6a61f5ca3e939b33fade2835de8498b7590f0",
+      "skills/development/local-fullstack-debug/SKILL.md": "4816192ee7348dd7515a0b8cc5977f11a737c7ee27a4348ba25004d2f64df070",
+      "skills/agent-harness/agent-capability-delivery/SKILL.md": "c5802161a6b4d972abb4c9fe5270dd11f456bdb103e39c33c3c7026d501ca354"
+    },
+    "selected_files_dirty": "",
+    "use": "generic principles only; rewritten; no private platform scripts, data, or operational gates copied"
+  },
+  "supplemental_references": [
+    {
+      "path": "dtc-scoped-validation/references/test-design.md",
+      "source_group": "local_skill_library",
+      "source_path": "skills/quality/testing-strategy/SKILL.md",
+      "adaptation": "test-layer and failure-evidence principles rewritten; project-specific evaluation guidance added"
+    }
+  ]
+}

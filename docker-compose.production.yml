@@ -1,0 +1,193 @@
+# Production pilot for one Linux host with a local PostgreSQL service.
+#
+# The protected environment file is the only source of runtime configuration:
+#
+#   export DTC_ENV_FILE=/etc/dtc/production.env
+#   docker compose --env-file /dev/null -f docker-compose.production.yml \
+#     up -d --build
+#
+# The file MUST be root-owned with mode 0400 or 0600. It is never copied into
+# the image, and `--env-file /dev/null` suppresses Compose's default project
+# dotenv lookup so no repository dotenv file can supply values implicitly.
+#
+# `DATABASE_URL` in that file must use `postgresql+asyncpg://` and point at the
+# Compose host `postgres`. Percent-encode reserved characters in the password.
+# The named volume below is the single persistent datastore: Docker's data-root
+# MUST be placed on the dedicated, encrypted block-storage mount before the
+# first start. Backup scripts take `pg_dump` copies from this volume.
+#
+# Tailscale Serve is the only ingress. The API publishes on host loopback only;
+# Tailscale Serve terminates private HTTPS and proxies to 127.0.0.1:8000.
+# PostgreSQL publishes on host loopback only (127.0.0.1:5432) so host-local
+# backup/restore/operations scripts can connect. It is never bound to 0.0.0.0,
+# a Tailscale interface or a public address, is not reachable from the tailnet,
+# and must not be added to the Tailscale ACL. There is no public edge proxy in
+# this topology.
+#
+# The app image already sets APP_ENV=production and runs as the non-root
+# `appuser` (UID 1000). The overrides below add container-level hardening.
+# Do not add local cache/vector/search services to this file: the pilot uses
+# PostgreSQL plus in-process fallbacks unless an external backend URL is set
+# explicitly in the protected environment file.
+
+name: dtc-production
+
+x-app-image: &app-image "${DTC_IMAGE:-dtc-support-agent:production}"
+
+x-app-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    IMAGE_REVISION: "${DTC_IMAGE_REVISION:-unknown}"
+
+x-app-hardening: &app-hardening
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+x-app-logging: &app-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-app-common: &app-common
+  image: *app-image
+  build: *app-build
+  env_file:
+    - ${DTC_ENV_FILE:?DTC_ENV_FILE is required}
+  networks:
+    - dtc
+  user: "1000:1000"
+  <<: *app-hardening
+  logging: *app-logging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    stop_grace_period: 60s
+    # The official image reads POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB
+    # from the protected file. No database password is written in this file.
+    env_file:
+      - ${DTC_ENV_FILE:?DTC_ENV_FILE is required}
+    # Loopback-only host publication for host-local backup/restore/operations
+    # scripts. Never change this to 0.0.0.0, a Tailscale interface or a public
+    # address; the tailnet and public must not reach PostgreSQL.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - dtc-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging: *app-logging
+    networks:
+      - dtc
+
+  # One-shot schema gate. Alembic gets its target from the already-injected
+  # container DATABASE_URL, so the URL is defined in exactly one place.
+  # The API and worker start only after this service exits successfully.
+  migrate:
+    <<: *app-common
+    command:
+      - /bin/sh
+      - -c
+      - |
+        exec env ALEMBIC_DATABASE_URL="$$DATABASE_URL" alembic upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    stop_grace_period: 60s
+
+  api:
+    <<: *app-common
+    # Bind all interfaces inside the container; Docker publishes the port on
+    # host loopback only, which is what Tailscale Serve proxies to.
+    command: ["uvicorn", "app.asgi:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import json
+          import urllib.request
+
+          with urllib.request.urlopen(
+              "http://127.0.0.1:8000/api/v1/ready", timeout=5
+          ) as response:
+              if response.status != 200 or not json.load(response).get("ready"):
+                  raise SystemExit(1)
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Continuous worker: no --once and no cycle limit. It exits only on a fatal
+  # error or signal; `restart: unless-stopped` brings it back after a crash.
+  worker:
+    <<: *app-common
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import os
+          import pathlib
+          import sys
+
+          # Exclude this healthcheck process itself: its command line also
+          # contains the "app.worker" needle.
+          needle = b"app.worker"
+          for entry in pathlib.Path("/proc").iterdir():
+              if not entry.name.isdigit() or int(entry.name) == os.getpid():
+                  continue
+              try:
+                  if needle in (entry / "cmdline").read_bytes():
+                      sys.exit(0)
+              except OSError:
+                  continue
+          sys.exit(1)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  dtc-postgres-data:
+    name: dtc-postgres-data
+
+networks:
+  dtc:
+    driver: bridge

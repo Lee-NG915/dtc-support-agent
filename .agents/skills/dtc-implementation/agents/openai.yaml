@@ -1,0 +1,4 @@
+interface:
+  display_name: "业务功能实现"
+  short_description: "在已有售后需求和设计范围内实现 Python 服务、数据接口或 React 交互，同步源码讲解与受影响验证。"
+  default_prompt: "请使用 $dtc-implementation，结合本项目现有代码和文档完成当前任务，解释依据并标明未验证部分。"

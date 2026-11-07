@@ -250,7 +250,7 @@ else:
 
 未装 `.[rerank]`、权重加载失败、或 testing 未 `CROSS_ENCODER_FORCE` → 词面 overlap。**那不是 Cross-Encoder**。
 
-加载成功后，`python -m eval.runner --task retrieval` 应出现 `hybrid+cross-encoder`。
+当前`python -m eval.runner --task retrieval`固定离线Hash/词法，不因安装依赖自动装载CE；CE架构与历史成绩另记，当前入口见[评测指南](10-evaluation.md)。
 
 ### 代码摘要
 

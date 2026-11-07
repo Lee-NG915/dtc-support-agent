@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "request_id": "asr_000000000042",
+      "sequence": "00000000000000000042",
+      "order_id": "ord_au_00000042",
+      "market": "au",
+      "type": "damaged",
+      "description": "The synthetic parcel arrived with a crushed corner and the item inside is cracked.",
+      "attachments": [
+        {
+          "attachment_id": "att_0000000000a1",
+          "file_name": "synthetic-damage.png",
+          "media_type": "image/png",
+          "size_bytes": 184320,
+          "status": "active",
+          "created_at": "2026-01-15T03:03:30Z",
+          "expires_at": "2026-01-22T03:03:30Z"
+        }
+      ],
+      "status": "ticket_created",
+      "ticket_id": "tic_000000000042",
+      "created_at": "2026-01-15T03:04:05Z",
+      "updated_at": "2026-01-15T04:00:00Z"
+    }
+  ],
+  "high_watermark": "00000000000000000043",
+  "next_cursor": "Y3Vyc29yX2F1XzAwMDAwMDAwMDAwMDAwMDAwMDA0Mg",
+  "has_more": true
+}

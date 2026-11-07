@@ -10,7 +10,7 @@ from app.retrieval.bm25 import BM25Retriever
 from app.retrieval.cache import RetrievalCache
 from app.retrieval.fusion import reciprocal_rank_fusion
 from app.retrieval.vector import VectorRetriever
-from app.schemas.retrieval import RetrievedChunk
+from app.schemas.retrieval import PolicyScope, RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +28,52 @@ class HybridRetriever:
         *,
         rrf_k: int,
         cache: RetrievalCache | None = None,
+        corpus_revision: str = "",
     ) -> None:
         self._bm25 = bm25
         self._vector = vector
         self._rrf_k = rrf_k
         self._cache = cache
+        self._corpus_revision = corpus_revision
 
-    async def retrieve(self, query: str, *, top_k: int) -> list[RetrievedChunk]:
+    @property
+    def corpus(self) -> list[RetrievedChunk]:
+        return self._bm25.corpus
+
+    @property
+    def corpus_revision(self) -> str:
+        return self._corpus_revision
+
+    def matching_review_chunks(
+        self, query: str, *, scope: PolicyScope | None = None
+    ) -> list[RetrievedChunk]:
+        """Evaluate structured exception rules before result-size truncation."""
+        return self._bm25.matching_review_chunks(query, scope=scope)
+
+    def matching_topic_chunks(
+        self,
+        query: str,
+        *,
+        document_topic: str,
+        scope: PolicyScope | None = None,
+        limit: int = 2,
+    ) -> list[RetrievedChunk]:
+        """Bounded, scope-filtered recall for one policy document topic."""
+        return self._bm25.matching_topic_chunks(
+            query,
+            document_topic=document_topic,
+            scope=scope,
+            limit=limit,
+        )
+
+    async def retrieve(
+        self, query: str, *, top_k: int, scope: PolicyScope | None = None
+    ) -> list[RetrievedChunk]:
+        resolved_scope = scope or PolicyScope()
         if self._cache is not None:
-            cached = await self._cache.get(query, top_k)
+            cached = await self._cache.get(
+                query, top_k, scope=resolved_scope, revision=self._corpus_revision
+            )
             if cached is not None:
                 return cached
         started = time.perf_counter()
@@ -45,17 +82,20 @@ class HybridRetriever:
         lexical_error: Exception | None = None
         dense_error: Exception | None = None
         try:
-            lexical = self._bm25.search(query, top_k=top_k)
+            lexical = self._bm25.search(query, top_k=top_k, scope=resolved_scope)
         except Exception as exc:  # BM25 is in-process; unexpected errors still isolated
             lexical_error = exc
             logger.exception("bm25_failed")
         try:
-            dense = await self._vector.search(query, top_k=top_k)
+            dense = await self._vector.search(query, top_k=top_k, scope=resolved_scope)
         except Exception as exc:
             dense_error = exc
             logger.exception("vector_search_failed")
-        if not lexical and not dense:
-            raise RetrievalError("both lexical and dense retrievers failed") from (
+        if lexical_error is not None and dense_error is not None:
+            raise RetrievalError("both lexical and dense retrievers failed") from dense_error
+        degraded = lexical_error is not None or dense_error is not None
+        if degraded and not lexical and not dense:
+            raise RetrievalError("degraded retrieval produced no evidence") from (
                 dense_error or lexical_error
             )
         fused = reciprocal_rank_fusion([lexical, dense], k=self._rrf_k)
@@ -71,6 +111,12 @@ class HybridRetriever:
             },
         )
         trimmed = fused[:top_k]
-        if self._cache is not None:
-            await self._cache.set(query, top_k, trimmed)
+        if self._cache is not None and not degraded:
+            await self._cache.set(
+                query,
+                top_k,
+                trimmed,
+                scope=resolved_scope,
+                revision=self._corpus_revision,
+            )
         return trimmed

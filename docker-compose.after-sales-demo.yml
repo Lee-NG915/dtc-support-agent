@@ -1,0 +1,267 @@
+# Synthetic, two-repository after-sales demo (DTC + E-pig).
+#
+# This file is intentionally not self-contained. Prepare the immutable source
+# contexts and the protected env file first:
+#
+#   python scripts/prepare_after_sales_demo.py prepare \
+#     --dtc-ref <full-dtc-commit-sha> \
+#     --epig-repo /path/to/E-pig \
+#     --epig-ref <full-epig-commit-sha>
+#
+# The helper prints the exact `docker compose` command. Never run this file
+# against production data, a developer .env, or a mutable working tree.
+#
+# Topology note: DTC API/worker share the E-pig network namespace through
+# `network_mode: service:epig`. That makes `http://127.0.0.1:3000` a true
+# loopback address for the existing, unmodified EpigConnector while E-pig
+# publishes both app ports to 127.0.0.1 on the host. Both databases stay
+# network-only with independent names, credentials and volumes.
+
+name: ${COMPOSE_PROJECT_NAME:?run scripts/prepare_after_sales_demo.py prepare first}
+
+x-demo-labels: &demo-labels
+  com.dtc.after-sales.demo: "1"
+  com.dtc.after-sales.demo.run: ${DEMO_RUN_NONCE:?run scripts/prepare_after_sales_demo.py prepare first}
+
+x-dtc-image: &dtc-image
+  image: ${DTC_IMAGE:?run scripts/prepare_after_sales_demo.py prepare first}
+  build:
+    context: ${DTC_CONTEXT:?run scripts/prepare_after_sales_demo.py prepare first}
+    dockerfile: Dockerfile
+    args:
+      NODE_IMAGE: ${DTC_NODE_IMAGE:-node:24-alpine}
+      PYTHON_IMAGE: ${DTC_PYTHON_IMAGE:-python:3.11-slim}
+      IMAGE_REVISION: ${DTC_REVISION:?run scripts/prepare_after_sales_demo.py prepare first}
+
+# Every paid/remote backend is disabled explicitly. The only network traffic
+# leaves DTC for the E-pig service inside the shared namespace.
+x-dtc-environment: &dtc-environment
+  APP_ENV: development
+  LOG_LEVEL: INFO
+  DATABASE_URL: "postgresql+asyncpg://${DTC_POSTGRES_USER:?}:${DTC_POSTGRES_PASSWORD:?}@dtc-postgres:5432/${DTC_POSTGRES_DB:?}"
+  AFTER_SALES_ENABLED: "true"
+  BUSINESS_CONNECTOR: epig
+  EPIG_BASE_URL: "http://127.0.0.1:3000"
+  EPIG_SERVICE_TOKEN: ${AFTER_SALES_SERVICE_TOKEN:?run scripts/prepare_after_sales_demo.py prepare first}
+  EPIG_ALLOWED_MARKETS: au
+  AFTER_SALES_WORKER_MARKETS: au
+  DEEPSEEK_API_KEY: ""
+  DEEPSEEK_BASE_URL: ""
+  EMBEDDING_API_KEY: ""
+  EMBEDDING_BASE_URL: ""
+  REDIS_URL: ""
+  QDRANT_URL: ""
+  LOCAL_EMBEDDING_ENABLED: "false"
+  LOCAL_EMBEDDING_FORCE: "false"
+  CROSS_ENCODER_ENABLED: "false"
+  CROSS_ENCODER_FORCE: "false"
+  UNSTRUCTURED_ENABLED: "false"
+  UNSTRUCTURED_FORCE: "false"
+  MCP_ENABLED: "false"
+  MCP_REMOTE_URL: ""
+  ADMIN_API_TOKEN: ""
+
+services:
+  epig-postgres:
+    image: postgres:16-alpine
+    restart: "no"
+    labels: *demo-labels
+    environment:
+      POSTGRES_USER: ${EPIG_POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${EPIG_POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${EPIG_POSTGRES_DB:?}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - epig-postgres-data:/var/lib/postgresql/data
+    networks:
+      - after-sales-demo
+
+  dtc-postgres:
+    image: postgres:16-alpine
+    restart: "no"
+    labels: *demo-labels
+    environment:
+      POSTGRES_USER: ${DTC_POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${DTC_POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${DTC_POSTGRES_DB:?}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - dtc-postgres-data:/var/lib/postgresql/data
+    networks:
+      - after-sales-demo
+
+  # E-pig's existing build stage already contains node_modules and the fixed
+  # migration allowlist; the runner stage is the normal standalone image.
+  epig-migrate:
+    image: ${EPIG_MIGRATE_IMAGE:?run scripts/prepare_after_sales_demo.py prepare first}
+    pull_policy: never
+    build:
+      context: ${EPIG_CONTEXT:?run scripts/prepare_after_sales_demo.py prepare first}
+      dockerfile: ${EPIG_DOCKERFILE:?run scripts/prepare_after_sales_demo.py prepare first}
+      target: build
+      args:
+        NODE_IMAGE: ${EPIG_NODE_IMAGE:-node:24-alpine}
+    command: ["pnpm", "database:migrate:all"]
+    environment:
+      NODE_ENV: production
+      DATABASE_DRIVER: tcp
+      DATABASE_URL: "postgresql://${EPIG_POSTGRES_USER:?}:${EPIG_POSTGRES_PASSWORD:?}@epig-postgres:5432/${EPIG_POSTGRES_DB:?}"
+    depends_on:
+      epig-postgres:
+        condition: service_healthy
+    labels: *demo-labels
+    restart: "no"
+    networks:
+      - after-sales-demo
+
+  epig:
+    image: ${EPIG_IMAGE:?run scripts/prepare_after_sales_demo.py prepare first}
+    pull_policy: never
+    build:
+      context: ${EPIG_CONTEXT:?run scripts/prepare_after_sales_demo.py prepare first}
+      dockerfile: ${EPIG_DOCKERFILE:?run scripts/prepare_after_sales_demo.py prepare first}
+      target: runner
+      args:
+        NODE_IMAGE: ${EPIG_NODE_IMAGE:-node:24-alpine}
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      MARKET: au
+      COMMERCE_ADAPTER: postgres
+      AFTER_SALES_ADAPTER: postgres
+      DATABASE_DRIVER: tcp
+      DATABASE_URL: "postgresql://${EPIG_POSTGRES_USER:?}:${EPIG_POSTGRES_PASSWORD:?}@epig-postgres:5432/${EPIG_POSTGRES_DB:?}"
+      CART_COOKIE_SECRET: ${CART_COOKIE_SECRET:?run scripts/prepare_after_sales_demo.py prepare first}
+      APP_ORIGIN: "http://localhost:${EPIG_HOST_PORT:?run scripts/prepare_after_sales_demo.py prepare first}"
+      AFTER_SALES_SERVICE_TOKEN: ${AFTER_SALES_SERVICE_TOKEN:?run scripts/prepare_after_sales_demo.py prepare first}
+      AFTER_SALES_SERVICE_MARKETS: au
+      LOG_LEVEL: info
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    depends_on:
+      epig-postgres:
+        condition: service_healthy
+      epig-migrate:
+        condition: service_completed_successfully
+    # This service owns the host's loopback mappings for both application
+    # ports. Port 8000 is served by dtc-api in the shared namespace.
+    ports:
+      - "127.0.0.1:${EPIG_HOST_PORT:?run scripts/prepare_after_sales_demo.py prepare first}:3000"
+      - "127.0.0.1:${DTC_HOST_PORT:?run scripts/prepare_after_sales_demo.py prepare first}:8000"
+    healthcheck:
+      # Real authenticated service feed request. The token is read from the
+      # process environment and never printed.
+      test:
+        - CMD-SHELL
+        - |
+          node -e "
+          const token = process.env.AFTER_SALES_SERVICE_TOKEN || '';
+          const market = process.env.MARKET || '';
+          const url = 'http://127.0.0.1:3000/api/' + market + '/after-sales/service/requests?limit=1';
+          fetch(url, {
+            headers: {
+              Authorization: 'Bearer ' + token,
+              'X-After-Sales-Contract-Version': '1',
+            },
+          })
+            .then((response) => process.exit(response.status === 200 ? 0 : 1))
+            .catch(() => process.exit(1));
+          "
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    labels: *demo-labels
+    restart: "no"
+    networks:
+      - after-sales-demo
+
+  dtc-migrate:
+    <<: *dtc-image
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      # Alembic reads this explicit target and never the application .env.
+      ALEMBIC_DATABASE_URL: "postgresql+asyncpg://${DTC_POSTGRES_USER:?}:${DTC_POSTGRES_PASSWORD:?}@dtc-postgres:5432/${DTC_POSTGRES_DB:?}"
+    depends_on:
+      dtc-postgres:
+        condition: service_healthy
+    labels: *demo-labels
+    restart: "no"
+    networks:
+      - after-sales-demo
+
+  dtc-api:
+    image: ${DTC_IMAGE:?run scripts/prepare_after_sales_demo.py prepare first}
+    pull_policy: never
+    network_mode: "service:epig"
+    command: ["uvicorn", "app.asgi:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *dtc-environment
+    depends_on:
+      dtc-postgres:
+        condition: service_healthy
+      dtc-migrate:
+        condition: service_completed_successfully
+      epig:
+        condition: service_healthy
+    healthcheck:
+      # Ready must be true and the staff identity endpoint must reject an
+      # anonymous request with 401.
+      test:
+        - CMD-SHELL
+        - |
+          python -c "
+          import json
+          import urllib.error
+          import urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=5) as response:
+              if response.status != 200 or not json.load(response).get('ready'):
+                  raise SystemExit(1)
+          try:
+              urllib.request.urlopen('http://127.0.0.1:8000/api/v1/after-sales/me', timeout=5)
+          except urllib.error.HTTPError as exc:
+              raise SystemExit(0 if exc.code == 401 else 1)
+          raise SystemExit(1)
+          "
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    labels: *demo-labels
+    restart: "no"
+
+  # One bounded poll/reconcile pass, then exit. With an empty synthetic feed
+  # this proves the real EpigConnector HTTP path without any external POST.
+  dtc-worker:
+    image: ${DTC_IMAGE:?run scripts/prepare_after_sales_demo.py prepare first}
+    pull_policy: never
+    network_mode: "service:epig"
+    command: ["python", "-m", "app.worker", "--once", "--markets", "au"]
+    environment: *dtc-environment
+    depends_on:
+      dtc-postgres:
+        condition: service_healthy
+      dtc-migrate:
+        condition: service_completed_successfully
+      epig:
+        condition: service_healthy
+    labels: *demo-labels
+    restart: "no"
+
+volumes:
+  dtc-postgres-data:
+    labels: *demo-labels
+  epig-postgres-data:
+    labels: *demo-labels
+
+networks:
+  after-sales-demo:
+    driver: bridge
+    labels: *demo-labels

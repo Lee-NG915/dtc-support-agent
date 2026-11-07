@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "UNSUPPORTED_CONTRACT_VERSION",
+    "message": "The requested wire contract major is unsupported; use major 1.",
+    "request_id": "req_err_000000000017",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "supported_major": "1"
+    }
+  }
+}

@@ -16,7 +16,7 @@ from app.providers.json_parser import parse_model
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.query_rewrite import QueryRewriter
 from app.retrieval.reranker import DocumentReranker
-from app.schemas.retrieval import RetrievedChunk
+from app.schemas.retrieval import PolicyScope, RetrievedChunk
 
 
 class GradeResult(BaseModel):
@@ -46,6 +46,7 @@ class SelfRAGLoop:
         query: str,
         *,
         top_k: int,
+        scope: PolicyScope | None = None,
     ) -> list[RetrievedChunk]:
         accumulated: dict[str, RetrievedChunk] = {}
         current_query = query
@@ -55,7 +56,9 @@ class SelfRAGLoop:
             queries = list(dict.fromkeys([query, *rewritten]))[:2]
             candidates_by_id: dict[str, RetrievedChunk] = {}
             for search_query in queries:
-                for candidate in await self._retriever.retrieve(search_query, top_k=top_k):
+                for candidate in await self._retriever.retrieve(
+                    search_query, top_k=top_k, scope=scope
+                ):
                     candidates_by_id.setdefault(candidate.chunk_id, candidate)
             reranked = await self._reranker.rerank(
                 query, list(candidates_by_id.values()), top_n=self._settings.rerank_top_n

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app.core.enums import ToolRisk
 from app.core.exceptions import InvalidRequestError, ToolExecutionError
 from app.schemas.agent import ToolResult
+from app.schemas.retrieval import PolicyScope
 
 
 class ToolContext(BaseModel):
@@ -27,6 +28,7 @@ class ToolContext(BaseModel):
     trace_id: str
     confirmed_action_id: str | None = None
     idempotency_key: str | None = None
+    policy_scope: PolicyScope = Field(default_factory=PolicyScope)
 
 
 class BaseTool(Protocol):

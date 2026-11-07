@@ -1,120 +1,141 @@
 # 10 · 评测与回归
 
-> 一句话：改 Prompt 或切分后必须跑全集；简历数字只能来自 `eval/runner` 与 [`MEASURED.md`](../eval/MEASURED.md)。完整口径、消融与路径表见 [14 · 测评报告](14-evaluation-report.md)。
-
-## 本章目录
-
-1. [命令与数据集](#命令与数据集)
-2. [指标怎么算](#指标怎么算)
-3. [已测量](#已测量须与代码一起引用)
-4. [可以写 / 不能写](#简历可以写--不能写)
-5. [口径陷阱](#口径陷阱面试主动说)
-6. [CI](#ci-建议)
-
-对应：`eval/runner.py`、`eval/metrics.py`、`eval/dataset/`。
+更新日期：2026-11-07。当前入口默认离线；工程守卫、Fake流程、真实模型质量和实际试用分别记证据。完整项目进度见[项目方案](project-plan.md)，实际验证见[流程记录](records/after-sales/dtc-workflow.md)。[旧测评报告](14-evaluation-report.md)与[MEASURED](../eval/MEASURED.md)保留历史来源，不作为本fork的新成绩。
 
 ## 命令与数据集
 
+在项目根目录、安装原锁定开发依赖后运行：
+
 ```bash
-python -m eval.runner --task all --llm
-python -m eval.runner --task retrieval          # CI；装了 .[rerank] 且能加载权重时含 Cross-Encoder
-python -m eval.runner --task intent --llm
-python -m eval.runner --task generation --llm
-python -m eval.runner --task e2e --llm
+.venv/bin/python -m eval.runner --task intent
+.venv/bin/python -m eval.runner --task retrieval
+.venv/bin/python -m eval.runner --task epig-policy
+.venv/bin/python -m eval.runner --task generation
+.venv/bin/python -m eval.runner --task e2e
+.venv/bin/python -m eval.runner --task all
 ```
 
-报告：`eval/reports/*.json`（git 忽略）。
+默认使用显式`Settings(_env_file=None)`、HashEmbedding、词法重排、Offline/Fake及新临时SQLite；不读取应用.env、不继承已有数据库/Provider/EPIG目标，不下载本地模型。generation默认明确未测质量，e2e只验证离线图能运行；all执行intent/retrieval/generation/e2e，**不包含epig-policy**，需另运行对应命令。报告的task_coverage以实际执行为准。
 
-| 文件 | 用途 | 条数 |
-|---|---|---|
-| `eval/dataset/intent_100.jsonl` | 14 类意图 | 100 |
-| `eval/dataset/rag_eval.jsonl` | 政策检索 + 关键词 | 65 |
-| `eval/dataset/e2e_eval.jsonl` | 注入/订单/政策 | 16 |
+| 文件 | 作用与边界 |
+|---|---|
+| `intent_100.jsonl` | 既有意图开发集；默认规则/覆盖层，不是本fork真实模型保留集 |
+| `rag_eval.jsonl` | 既有65条检索回归；离线Hash向量/词法与真实embedding/CE分别报告 |
+| `epig_policy_eval.jsonl` | 34条AU/US/SG内部演示政策开发回归；不是holdout或完整Agent成绩 |
+| `e2e_eval.jsonl` | 既有16条upstream_demo问答；不是员工售后六故事的整体验收 |
+
+10个业务开发/演示种子与12条独立保留集的规划在[流程设计](architecture/modules/after-sales/dtc-workflow.md)。后者须在prompt/知识/参数冻结后准备；若用其失败调参，该集转为回归集，另建保留样例。
+
+## 真实模型的显式入口
+
+2026-11-06用户已授权DeepSeek真实评测、不设累计费用上限，专用凭据配置到本地0600忽略文件；CLI默认仍离线。当前选择官方支持的`deepseek-flash`，真实路径显式`--thinking-mode disabled`，每轮保留案例/调用/token边界。旧`--llm`单独会安全失败；不能再用它或应用.env隐式启用收费调用。
+
+当前编码支持DeepSeek显式路径，运行前必须确认以下配置：
+
+| 配置 | 含义 |
+|---|---|
+| `--allow-real-model` | 明确进入真实调用路径；省略时保持离线 |
+| `--provider`、`--model` | 明确本次已确认的Provider/模型，不根据机器现有配置猜测 |
+| `--max-cases`、`--max-calls` | 案例和模型调用数量上界，必须为正数 |
+| `--max-output-tokens` | 单次输出token上界；这些是调用限制，不是Provider硬计费上限 |
+| `DTC_EVAL_DEEPSEEK_API_KEY` | 专用凭据，仅显式真实路径读取；不读应用DEEPSEEK_API_KEY/.env，禁止贴入对话或报告 |
+| `DTC_EVAL_DEEPSEEK_BASE_URL` | 可选的专用Provider地址；不作为业务Connector目标 |
+
+先核对模型、当前计费和预算，再配置专用环境变量。真实路径的运行还需逐例核对事实/引用/可执行性，不能仅靠同模型裁判。当前真实成本、质量、Faithfulness和用户效率均未由本次离线结果证明。
 
 ## 指标怎么算
 
-文档级：chunk 的 `document_id` 去掉 `_{index}` 得到 stem，与 `relevant_doc_ids` 比。
+检索按实际document/chunk匹配计算Precision@k、Recall@k、MRR；准确率需要同时给分子、分母和集合版本。规则检索成绩可以报告，不能把Hash向量叫真实embedding或把词法重排叫Cross-Encoder；本入口默认不会因装了模型依赖而自动加载CE。
 
-### 代码摘要
+模型质量仅在实际真实输出与评分执行后讨论。零调用、纯规则review门控、预算截断和错误分别列出，报告质量完整度full/partial/none；配置了real不等于质量已测。关键词命中只说明词面覆盖，旧e2e的`legacy_answer_keyword_proxy`不证明实际工具名、参数或调用次数正确，本批新增实际Tool.run轨迹，范围见下节。生成成功也不等于已获人工批准或工单已核验。
 
-```python
-# eval/metrics.py
-def precision_at_k(relevant: set[str], retrieved: list[str], k: int) -> float:
-    top = retrieved[:k]
-    return sum(item in relevant for item in top) / len(top)
+## 实际工具轨迹
 
-def recall_at_k(relevant: set[str], retrieved: list[str], k: int) -> float:
-    return sum(item in relevant for item in retrieved[:k]) / len(relevant)
+当前e2e为本次自有container.registry安装窄代理，在图执行前捕获真实Tool.run。报告的`agent_tool_calls`给出每例工具名、Schema规范化参数、状态与汇总次数；不记录context、完整结果或异常正文，Connector调用另列未测，不混算。旧关键词proxy保留历史含义，不替代这些轨迹。
 
-def mrr(relevant: set[str], retrieved: list[str]) -> float:
-    for rank, item in enumerate(retrieved, start=1):
-        if item in relevant:
-            return 1.0 / rank
-    return 0.0
+可选`expect_tools`仅支持工具name/arguments/count的精确多重集合比较；未声明期望则准确率为null。脱敏或截断改变参数的案例明确不可评分，不让两个不同URL或长参数前缀相同误判相等，分母只含可评分且实际执行的案例。正向选择与正确不调用分别计数；真实已测但全错仍为0分，不能改标未测。当前只运行离线数据，不声称真实模型工具选择质量。
+
+代理只解析一次、保持原执行与异常行为，结束恢复原工具对象；自定义覆盖run的工具明确拒绝安装，避免悄悄改变行为。当前内置工具均沿用基类run。源码入口为`eval/tool_trace.py`与`eval/runner.py`的eval_e2e，反例回归在`tests/unit/test_eval_tool_trace.py`。这些计数来自既有upstream_demo集合，仍不是员工售后六故事的质量成绩。
+
+## 报告与复算
+
+报告写入忽略目录`eval/reports/{task}_{UTC}.json`及latest索引，不默认入Git。检查run中的mode/provider/model、实际task_coverage、measured/not_measured、源码commit与工作区digest/dirty说明、数据/知识digest和prompt版本。未提交代码不属于报告中的HEAD，需结合候选digest/最终提交核对；Git不可用写unknown。报告不存凭据、数据库URL或完整设置。
+
+涉及DB的e2e只操作本次新临时SQLite，容器构建失败/取消和正常结束都关闭已取得资源，再清理所属目录。临时报告不承诺长期保留；稳定记录保存版本、命令、结果与失败边界，不删除旧失败。
+
+## 已测量与可以使用的结论
+
+以[当前流程记录](records/after-sales/dtc-workflow.md)的版本和运行范围为准。Fake、规则/检索、真实模型、HTTP/PG、浏览器、真实试用各自证明对应层次；不要合成一个“Agent通过率”。历史Koala/Kimi、DeepSeek生成节点、CE与旧问答数字保留各自来源，不能转作本fork的新收益或完整图成绩。
+
+## CI与变更验证
+
+先选受影响单元/集成检查；权限、事务、模型入口或依赖有实质变化时跑必要全套。政策/知识变更执行epig-policy及相关检索检查，prompt变更冻结候选并运行开发回归；真实模型和保留集需独立配置/记录。CI没有运行不写通过，本地工程测试不替代浏览器或业务验收。
+
+上一章[09 · 安全](09-security.md) · 下一章[11 · 部署](11-deployment.md)
+
+## 首批独立保留样例（已执行，质量有缺口）
+
+[after_sales_holdout_v1.jsonl](../eval/dataset/after_sales_holdout_v1.jsonl)由Codex验收侧在当前业务prompt/知识冻结后准备，共12例：完整政策图6例、员工建议2例、工程守卫4例；[冻结清单](../eval/dataset/after_sales_holdout_v1.manifest.json)保存基线提交及203个app/knowledge文件的SHA-256。独立入口为`uv run python -m eval.after_sales_acceptance`，默认只跑工程守卫、模型例not_run。不能直接把该文件当旧epig-policy数据格式加载；实际运行与人工裁决见[流程记录](records/after-sales/dtc-workflow.md)。
+
+评测前须完成专用合成fixture适配、人工0/1/2评分与Provider/model/预算配置。政策图应记录检索、生成及Faithfulness各自结果，员工建议记录引用与仅editing边界，工程守卫记录真实API/进程/写入次数，三组不合并LLM准确率。使用失败调参时必须降级为开发回归集并另建保留集。初次实际运行前回核冻结清单；未运行就不填写通过数。
+
+当前模型与协议以[DeepSeek官方模型说明](https://api-docs.deepseek.com/quick_start/pricing/)及[思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)为依据；旧deepseek-chat别名已停用。Settings默认deepseek-flash，thinking未配置时省略字段保持兼容；真实eval默认disabled并写入报告。保留集首次执行前仅因该协议适配更新两个app文件冻结hash，原业务prompt/知识未改、未用保留集调参，清单revision2记录前后摘要。不要把不设累计费用上限理解成无界重试。
+
+2026-11-06 CR 工程修复新增源码候选 revision3：仅流式附件读取与 Fake 幂等顺序的两个 Connector 摘要变化，问题集、知识和业务 prompt 不变；清单保留 revision2 父提交/清单摘要及逐文件前后摘要。revision2 的真实模型报告保持原样，不能作为 revision3 已跑模型的证据；revision3 本轮仅做离线工程验收。源码漂移仍失败关闭，未来运行应先核对候选。
+
+
+人工裁决沿用冻结样例的acceptance_assertions与forbidden，在逐条阅读回答前固定以下0/1/2锚点：事实正确性2为核心政策事实全部正确且无越权执行承诺，1为不改变结论的遗漏，0为市场/期限等核心事实错误或虚构执行；证据充分性2为可信同scope引用支持所有实质结论，1为部分次要结论支持不足，0为错误/不存在引用或主要结论无支持；可行动性2为清楚且安全的下一步，1为有用但不完整，0为不可用或不安全。工程守卫不计语义总分；确定性拒绝与实际LLM生成分列。引用文件名匹配只是诊断，不能替代阅读引用内容；也不能在看到回答后降低原断言。
+
+首次执行发现的H07/H08合成订单/材料问题按fixture-invalid保留，不充当模型质量通过或失败；修复只改变评测夹具与运行前断言，不改变业务prompt、knowledge和样例问题，重跑前保存协议及runner摘要。
+
+
+真实执行示例（需要既有专用授权和DTC_EVAL配置）：
+
+```bash
+uv run python -m eval.after_sales_acceptance --allow-real-model \
+  --provider deepseek --model deepseek-flash --max-cases 12 \
+  --max-calls 64 --max-output-tokens 1200 --thinking-mode disabled
 ```
 
-意图：`accuracy = 命中数 / 100`。生产评测跑 `intent_v3` + overlay。  
-生成：幻觉 = 忠实度裁判 `supported=false`。相对下降 = `(naive - checked) / naive`。裁判与生成器同模型，**偏乐观**；关键词命中更独立。
+入口先核对冻结的app/knowledge/样例摘要，再建专用新库；只从专用DTC_EVAL环境或授权的0600文件取凭据，不读取应用.env。H07/H08的商品、类别和材料经实际API读取核验，不一致时在模型调用前停止；H12为真实API/Worker子进程重启，但业务源是合成Fake，不能当两仓HTTP唯一性证明。
 
-检索评测在未加载 Cross-Encoder 时**不会**把词面 overlap 标成 Cross-Encoder。
+revision5把已发现的H05/H08转为确定性回归后重新执行。H05增加缺件/错发/运输损坏主题的确定性补召回，并从实际`faults-missing` chunk补齐缺件包装清单和引用；H08建议上下文不再向模型暴露任何`*_minor`原始整数，只提供服务端格式化金额；若输出仍把币种与minor整数组合则fail closed，内部摘要缺失服务端总额同样拒绝保存。
 
-## 已测量（须与代码一起引用）
+2026-11-06 revision5真实报告`eval/reports/after_sales_acceptance_20261106T075849Z.json`：35/64次DeepSeek调用、21567 prompt + 4052 completion = 25619 tokens，8条模型场景全部observed、0 failed/protected not-run，4条工程守卫通过。人工复核生成6例H01/H02/H03/H05/H07/H08均完全满足冻结断言；H05已包含配件合照、包装清单、全部包材和缺少部件并引用SG faults-missing，H08内部摘要准确写`SGD 137.95`且无伪引用/写权限。H04/H06仍是安全的确定性转人工，但下一步不够具体，单独保持1/2/1部分结果。首次同候选运行在H01意图/复杂度阶段遇到两次Provider错误后停止，原报告保留，不当作质量结果。对应提交`e7cd20e`的DTC push CI42184894521与PR CI42184900472均通过Node24前端、Python3.11/3.12和专用PostgreSQL任务。
 
-**意图**（DeepSeek `deepseek-chat`，100 条）
+这6/6只表示已查看并转成回归的12例子集在该候选上满足冻结断言，不是未见holdout、80/40全集、生产准确率或员工采用率。后续仍需独立新 holdout、Faithfulness 固定集、容量和真实试用；员工必须核对原订单金额、证据和草稿。
 
-| 版本 | 准确率 |
-|---|---|
-| 关键词规则 | 51% |
-| `intent_v1`（无覆盖，历史） | 85% |
-| `intent_v2`（无覆盖，历史） | 86% |
-| 仅歧义覆盖层 | **100%** |
-| `intent_v3` + 覆盖（生产） | **100%** |
+## 独立 holdout v2
 
-**检索**（65 条，39 篇；**已加载 `bge-small-zh-v1.5` + Cross-Encoder**）
+`after_sales_holdout_v2.jsonl`在运行前独立编写并冻结，未使用v1或任何模型输出辅助出题。分区仍为6条政策图、2条员工建议、4条工程守卫；12个ID和fixture边界保持兼容，但H01-H08问题和断言全部替换。入口只允许受控的`--holdout v1|v2`，默认v1；manifest必须声明匹配的`holdout_version`，不接受任意路径。
 
-| 系统 | Precision@1 | Recall@3 | MRR |
-|---|---|---|---|
-| BM25 | 76.9% | 90.0% | 0.84 |
-| 仅 `bge-small-zh-v1.5` | 83.1% | 94.6% | 0.89 |
-| BM25 + small + RRF | 83.1% | 94.6% | 0.89 |
-| Hybrid + Cross-Encoder | **89.2%** | **97.7%** | **0.94** |
+v2 dataset SHA-256为`d89a7ed8548602108f6bc5b5b41eebf0123789bbe5fa1ca9b29a94e4d894418e`，manifest复用revision5的203个app/knowledge源摘要，并在运行前记录`not_run_for_holdout_v2`。离线工程守卫4/4通过后才执行真实模型。
 
-P@1 / R@3 落在简历常用的 58%–85% / 63%–91%（CE 已超出上沿，面试报实测即可）。CE 相对 BM25：+12.3 / +7.7 个百分点。同日 hash 对照仅向量 Hit@1 3.1%。
+唯一一次v2真实运行报告为`eval/reports/after_sales_acceptance_20261106T082544Z.json`（SHA-256 `6a8157c8b88aeb4985e849d975ddfdf09c29f08f0bc8c06bcc1e264e05f57c92`）：38/64次DeepSeek调用，22380 prompt + 4187 completion = 26567 tokens；8个模型场景全部observed，0 failed/not-run，4个工程守卫通过。人工复核H01/H02/H03/H04/H07/H08生成6例全部满足；H05/H06仍是安全但不够具体的确定性转人工，各1/2/1。v2失败或部分结果未用于修改v2本身；未来优化需要新建v3，不能继续称v2为未见数据。
 
-**生成 / 幻觉**（65 条，同模型裁判）
+## 独立 holdout v3：转人工可操作性
 
-| | Faithfulness | 幻觉率 | 关键词命中 |
-|---|---|---|---|
-| 无检索 | 80.0% | 20.0% | 36.9% |
-| RAG | 96.9% | 3.1% | 95.4% |
-| RAG + LLM 自纠错 | **100%** | **0%**（&lt;4%） | 95.4% |
+v3继续在运行前独立编写并冻结，新增4条确定性review场景（定制商品、偏远+特殊入户、宠物损坏保修、配送费+支付路径）和2条普通政策、2条员工建议、4条工程守卫。`--holdout v3`仍只接受注册版本。
 
-无检索 Faithfulness 80% 落在 54%–88%；幻觉相对下降 100%（≥62%）。
+v3 dataset SHA-256为`4025006dcfcd481be52423fd1c727154b245d87232358933ddf2f5c1bede12cd`，源冻结revision6。报告`eval/reports/after_sales_acceptance_20261106T095847Z.json`（SHA-256 `ff80f653ae6bcfff22ea6efdfedfdbb2fa3db2816869f73f50e27c0057ea6d53`）：34/64次调用、23419 tokens，工程守卫4/4。
 
-**E2E**（16 条，2026-08-22 12:13Z）：拒答 / 工具路径 100%；关键词 **9/11（81.8%）**；P50 **4.9s** / P95 **5.8s**。
+人工复核4条实际模型生成案例H05-H08全部2/2/2；确定性review H01-H03通过，H04为1/2/1。H04查询写“原卡又注销”，现有规则要求连续文本“原卡注销”，因此只命中配送费，遗漏支付方式失效和替代退款路径。该失败保留，不回改v3；下一步需要把规则归一化扩展到常见插入语气词/虚词后，另建v4验证。
 
-## 简历可以写 / 不能写
+## revision 7与独立holdout v4
 
-**可以：** 规则 51% → intent_v3+覆盖 100%；仅 small P@1 83.1%、R@3 94.6%；Hybrid+CE P@1 89.2%、R@3 97.7%；BM25 76.9% / 90% / 0.84；无检索幻觉 20% → RAG+自纠错 0%。
+v3 H04失败转为回归后，review术语匹配改为“字符保序+有界插入词/标点”，覆盖`又/已经/被`等常见表达，同时保留`all_of`、来源范围和模型无关分支。三份已有manifest推进到revision7，只更新`app/retrieval/policy.py`摘要；全量本地结果为717 passed、5 skipped。
 
-**不能：** 把本轮 E2E 关键词写成 100%；把稠密路写成 bge-m3；把 RRF 说成本集上优于仅 small。
+v4 dataset SHA-256为`59301e92282513d6ed48c48f4a0dadedd74a05611f881aa0d9c1313cdab92a0c`。H01明确标记为v3 H04回归，H02-H12在v4运行前新写，不能把整个v4称为完全未见数据。先完成离线工程守卫4/4和0模型调用，再执行唯一一次真实DeepSeek运行：
 
-## 口径陷阱（面试主动说）
+- 报告：`eval/reports/after_sales_acceptance_20261106T102547Z.json`
+- 报告SHA-256：`08b94915870928aa09ceb25b64a7ac9d2a820e1c934702474b3c92c38ea750ba`
+- 37/64次调用；20375 prompt + 4152 completion = 24527 tokens
+- 8个模型分区observed；H09-H12工程守卫4/4
 
-1. 生产意图 = LLM JSON + 覆盖层；覆盖针对稳定中文歧义，不是按 query id 写死。
-2. Faithfulness 同模型裁判偏乐观。
-3. 稠密路是 `bge-small-zh-v1.5`，不是 bge-m3；本集上 RRF 没有超过仅 small。
-4. pytest 不打真实 LLM。
+人工按冻结断言复核H01-H08均为2/2/2：费用/支付异常、偏远+吊装、意外损坏、定制+部分变更都给出具体核对项和结果边界；普通保修/退款事实正确；两条员工注入只保存editing、引用限于对应市场且无审批/操作/业务写入。该结果是当前v4冻结子集成绩，不是80/40全集、独立Faithfulness固定集、生产准确率、容量SLA或真实客服试用。
 
-## CI 建议
+## revision 8：生产员工凭证工具来源冻结
 
-- PR：`pytest -q` + `python -m eval.runner --task retrieval`
-- Prompt 变更：`--task intent --llm`，看 `mismatches`
-- 知识库变更：先改 `rag_eval.jsonl` 金标
-- 配上 Cross-Encoder：报告里必须出现 `hybrid+cross-encoder`
+生产员工凭证 CLI 需要复用 `StaffRepository` 的既有 token 摘要实现，因此新增了窄的 `rotate_token`/`disable` 方法。该源码变化没有改认证流程、模型、prompt、知识或任何 v1～v4 问题与评分规则，但会改变 203 个 app/knowledge 文件的来源摘要；直接忽略会让“源码未漂移”门禁失效。
 
----
-
-完整测评报告：[14](14-evaluation-report.md)。
-
-上一章 [09](09-security.md) · 下一章 [11 · 部署](11-deployment.md)
+四份 manifest 已推进到 revision 8，只更新 `app/repositories/staff_repository.py` 的摘要并新增 `staff_provisioning_refreeze` 历史。父 revision 7 清单仍可按原序列化逐字节重建；revision 8 的模型状态是 `not_run_for_revision_8`。此前 revision 7 的 v4 真实报告仍然有效于当时源码，不能直接标成 revision 8 已运行模型。

@@ -19,6 +19,7 @@ from app.observability.metrics import TOOL_CALLS
 from app.repositories.idempotency import IdempotencyRepository
 from app.schemas.agent import PlanStep, ToolResult
 from app.schemas.common import LatencyBreakdown
+from app.schemas.retrieval import PolicyScope, RetrievedChunk
 from app.tools.base import Tool, ToolContext
 from app.tools.permissions import WRITE_RISKS, assert_permitted
 from app.tools.registry import ToolRegistry
@@ -92,6 +93,17 @@ async def execute_with_fallback(
         raise
 
 
+def _retrieved_policy_chunks(results: list[ToolResult]) -> list[RetrievedChunk]:
+    chunks: dict[str, RetrievedChunk] = {}
+    for result in results:
+        if result.name != "search_knowledge" or not result.success:
+            continue
+        for item in result.output.get("chunks") or []:
+            chunk = RetrievedChunk.model_validate(item)
+            chunks.setdefault(chunk.chunk_id, chunk)
+    return list(chunks.values())
+
+
 async def executor_node(
     state: AgentState,
     *,
@@ -112,6 +124,7 @@ async def executor_node(
         trace_id=state["trace_id"],
         confirmed_action_id=state.get("confirm_action_id"),
         idempotency_key=state.get("idempotency_key"),
+        policy_scope=state.get("policy_scope") or PolicyScope(),
     )
     idempotency = IdempotencyRepository(get_db_session())
     calls = 0
@@ -167,8 +180,10 @@ async def executor_node(
         calls += 1
     latency = state.get("latency") or LatencyBreakdown()
     latency.tool_ms = (time.perf_counter() - started) * 1000
+    policy_chunks = _retrieved_policy_chunks(results)
     return {
         "tool_results": results,
+        "retrieved_chunks": policy_chunks,
         "step_count": (state.get("step_count") or 0) + calls,
         "latency": latency,
     }

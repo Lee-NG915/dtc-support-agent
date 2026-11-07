@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "The requested resource was not found.",
+    "request_id": "req_err_000000000003",
+    "retryable": false,
+    "recovery_action": "NONE"
+  }
+}

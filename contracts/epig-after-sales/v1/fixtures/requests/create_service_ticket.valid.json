@@ -1,0 +1,9 @@
+{
+  "request_id": "asr_000000000042",
+  "action": "reship",
+  "reply": "We will send a replacement for the damaged synthetic item. No return is required.",
+  "draft_version": "drv_000000000003",
+  "approval_id": "appr_dtc_00000042",
+  "policy_version": "policy_after_sales_2026_01",
+  "order_version": "ov_000000000007"
+}

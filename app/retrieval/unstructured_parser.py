@@ -68,9 +68,9 @@ def list_knowledge_files(directory: Path) -> list[Path]:
         return []
     files = [
         path
-        for path in directory.iterdir()
+        for path in directory.rglob("*")
         if path.is_file()
-        and not path.name.startswith(".")
+        and not any(part.startswith(".") for part in path.relative_to(directory).parts)
         and path.suffix.lower() in SUPPORTED_SUFFIXES
     ]
     return sorted(files)

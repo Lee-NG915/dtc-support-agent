@@ -1,0 +1,11 @@
+{
+  "order_id": "ord_au_00000042",
+  "type": "damaged",
+  "description": "The synthetic parcel arrived damaged, with too many attachment references.",
+  "attachment_ids": [
+    "att_0000000000a1",
+    "att_0000000000a2",
+    "att_0000000000a3",
+    "att_0000000000a4"
+  ]
+}

@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 
 from app.config.settings import Settings
+from app.connectors.base import BusinessConnector
+from app.connectors.factory import build_business_connector
 from app.infra.rate_limit import InMemoryRateLimiter, RedisRateLimiter
 from app.infra.redis_client import connect_redis
 from app.mcp.adapter import merge_mcp_tools
@@ -18,8 +20,11 @@ from app.repositories.db import create_engine, create_session_factory, init_sche
 from app.retrieval.cache import MemoryRetrievalCache, RedisRetrievalCache
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.ingest import ingest_knowledge
+from app.retrieval.policy import corpus_fingerprint
 from app.retrieval.reranker import DocumentReranker
 from app.retrieval.vector import VectorRetriever
+from app.services.after_sales.execution import AfterSalesExecution
+from app.services.after_sales.service import AfterSalesWorkflow
 from app.services.chat_service import ChatService
 from app.services.seed import seed_demo_data
 from app.tools.factory import build_tool_registry
@@ -38,6 +43,9 @@ class AppContainer:
         retriever: HybridRetriever,
         redis=None,
         vector_store=None,
+        business_connector: BusinessConnector | None = None,
+        after_sales_workflow: AfterSalesWorkflow | None = None,
+        after_sales_execution: AfterSalesExecution | None = None,
     ) -> None:
         self.settings = settings
         self.llm = llm
@@ -47,8 +55,15 @@ class AppContainer:
         self.retriever = retriever
         self.redis = redis
         self.vector_store = vector_store
+        self.business_connector = business_connector
+        self.after_sales_workflow = after_sales_workflow
+        self.after_sales_execution = after_sales_execution
 
     async def aclose(self) -> None:
+        if self.business_connector is not None:
+            closer = getattr(self.business_connector, "aclose", None)
+            if closer:
+                await closer()
         closer = getattr(self.llm, "aclose", None)
         if closer:
             await closer()
@@ -59,12 +74,61 @@ class AppContainer:
         await self.engine.dispose()
 
 
+async def _close_quietly(resource: object) -> None:
+    """Best-effort close used only while unwinding a failed build."""
+    if resource is None:
+        return
+    closer = getattr(resource, "aclose", None)
+    if closer is None:
+        return
+    try:
+        await closer()
+    except BaseException as exc:
+        # Log only fixed text plus types: exception details may carry DSNs,
+        # credentials, response bodies, or arguments from arbitrary closers.
+        logger.warning(
+            "container_build_cleanup_failed resource=%s error_type=%s",
+            type(resource).__name__,
+            type(exc).__name__,
+        )
+
+
+async def _dispose_quietly(engine) -> None:
+    if engine is None:
+        return
+    try:
+        await engine.dispose()
+    except BaseException as exc:
+        logger.warning(
+            "container_build_cleanup_failed resource=engine error_type=%s",
+            type(exc).__name__,
+        )
+
+
+async def _release_build_resources(*, llm=None, engine=None, redis=None, connector=None) -> None:
+    """Release acquired resources after a build failure without masking it.
+
+    Each closer is isolated so one failure still attempts the rest. The
+    caller re-raises the original exception or cancellation afterwards.
+    """
+    await _close_quietly(connector)
+    await _close_quietly(redis)
+    await _dispose_quietly(engine)
+    await _close_quietly(llm)
+
+
 async def build_infrastructure(settings: Settings):
     """Create the database session factory and optional Redis connection."""
     engine = create_engine(settings)
-    await init_schema(engine)
-    session_factory = create_session_factory(engine)
-    redis = await connect_redis(settings)
+    redis = None
+    try:
+        await init_schema(engine)
+        session_factory = create_session_factory(engine)
+        redis = await connect_redis(settings)
+    except BaseException:
+        await _close_quietly(redis)
+        await _dispose_quietly(engine)
+        raise
     return engine, session_factory, redis
 
 
@@ -76,7 +140,7 @@ async def build_retrieval(settings: Settings, redis):
         if redis is not None
         else MemoryRetrievalCache(ttl_seconds=settings.retrieval_cache_ttl_seconds)
     )
-    bm25, store, _ = await ingest_knowledge(
+    bm25, store, chunks = await ingest_knowledge(
         settings.knowledge_dir,
         embedder,
         settings=settings,
@@ -85,7 +149,11 @@ async def build_retrieval(settings: Settings, redis):
         embedding_dim=getattr(embedder, "dim", settings.embedding_dim),
     )
     retriever = HybridRetriever(
-        bm25, VectorRetriever(store, embedder), rrf_k=settings.rrf_k, cache=cache
+        bm25,
+        VectorRetriever(store, embedder),
+        rrf_k=settings.rrf_k,
+        cache=cache,
+        corpus_revision=corpus_fingerprint(chunks),
     )
     reranker = DocumentReranker(CrossEncoderRerankProvider(settings))
     return retriever, reranker, store
@@ -96,55 +164,99 @@ async def build_container(settings: Settings, seed: bool = False) -> AppContaine
     llm: LLMProvider = (
         DeepSeekProvider(settings) if settings.llm_configured else OfflineLLMProvider()
     )
-    engine, session_factory, redis = await build_infrastructure(settings)
-    rate_limiter = (
-        RedisRateLimiter(redis, limit=settings.rate_limit_per_minute)
-        if redis is not None
-        else InMemoryRateLimiter(limit=settings.rate_limit_per_minute)
-    )
-    retriever, reranker, store = await build_retrieval(settings, redis)
-    registry = build_tool_registry(retriever)
-    if settings.mcp_enabled:
-        specs = list(LOCAL_CATALOG)
-        if settings.mcp_remote_url:
-            specs.append(
-                {
-                    "name": "mcp_remote_echo",
-                    "description": "Remote MCP tool via HTTP (same Function Calling schema)",
-                    "transport": "http",
-                    "endpoint": settings.mcp_remote_url.rstrip("/") + "/mcp/call",
-                }
+    engine = None
+    redis = None
+    business_connector = None
+    try:
+        engine, session_factory, redis = await build_infrastructure(settings)
+        rate_limiter = (
+            RedisRateLimiter(redis, limit=settings.rate_limit_per_minute)
+            if redis is not None
+            else InMemoryRateLimiter(limit=settings.rate_limit_per_minute)
+        )
+        retriever, reranker, store = await build_retrieval(settings, redis)
+        registry = build_tool_registry(
+            retriever,
+            include_demo_writes=not settings.after_sales_enabled,
+        )
+        business_connector = (
+            build_business_connector(settings) if settings.after_sales_enabled else None
+        )
+        after_sales_workflow = (
+            AfterSalesWorkflow(
+                settings=settings,
+                session_factory=session_factory,
+                connector=business_connector,
+                retriever=retriever,
+                llm=llm,
             )
-        merge_mcp_tools(registry, specs)
-    chat_service = ChatService(
-        settings=settings,
-        llm=llm,
-        retriever=retriever,
-        reranker=reranker,
-        session_factory=session_factory,
-        rate_limiter=rate_limiter,
-        registry=registry,
-    )
-    if seed:
-        async with session_factory() as session:
-            await seed_demo_data(session)
-            await session.commit()
-    logger.info(
-        "runtime_ready database=%s cache=%s vector_store=%s llm=%s local_embedding=%s cross_encoder=%s",
-        "sqlite" if settings.use_sqlite else "postgresql",
-        "redis" if redis is not None else "memory",
-        type(store).__name__,
-        "deepseek" if settings.llm_configured else "offline",
-        settings.local_embedding_configured,
-        settings.cross_encoder_configured,
-    )
-    return AppContainer(
-        settings=settings,
-        llm=llm,
-        chat_service=chat_service,
-        engine=engine,
-        session_factory=session_factory,
-        retriever=retriever,
-        redis=redis,
-        vector_store=store,
-    )
+            if settings.after_sales_enabled and business_connector is not None
+            else None
+        )
+        after_sales_execution = (
+            AfterSalesExecution(
+                settings=settings,
+                session_factory=session_factory,
+                connector=business_connector,
+                workflow=after_sales_workflow,
+            )
+            if after_sales_workflow is not None and business_connector is not None
+            else None
+        )
+        if settings.mcp_enabled:
+            specs = list(LOCAL_CATALOG)
+            if settings.mcp_remote_url:
+                specs.append(
+                    {
+                        "name": "mcp_remote_echo",
+                        "description": "Remote MCP tool via HTTP (same Function Calling schema)",
+                        "transport": "http",
+                        "endpoint": settings.mcp_remote_url.rstrip("/") + "/mcp/call",
+                    }
+                )
+            merge_mcp_tools(registry, specs)
+        chat_service = ChatService(
+            settings=settings,
+            llm=llm,
+            retriever=retriever,
+            reranker=reranker,
+            session_factory=session_factory,
+            rate_limiter=rate_limiter,
+            registry=registry,
+            staff_mode=settings.after_sales_enabled,
+        )
+        if seed:
+            async with session_factory() as session:
+                await seed_demo_data(session)
+                await session.commit()
+        logger.info(
+            "runtime_ready database=%s cache=%s vector_store=%s llm=%s "
+            "local_embedding=%s cross_encoder=%s",
+            "sqlite" if settings.use_sqlite else "postgresql",
+            "redis" if redis is not None else "memory",
+            type(store).__name__,
+            "deepseek" if settings.llm_configured else "offline",
+            settings.local_embedding_configured,
+            settings.cross_encoder_configured,
+        )
+        return AppContainer(
+            settings=settings,
+            llm=llm,
+            chat_service=chat_service,
+            engine=engine,
+            session_factory=session_factory,
+            retriever=retriever,
+            redis=redis,
+            vector_store=store,
+            business_connector=business_connector,
+            after_sales_workflow=after_sales_workflow,
+            after_sales_execution=after_sales_execution,
+        )
+    except BaseException:
+        await _release_build_resources(
+            llm=llm,
+            engine=engine,
+            redis=redis,
+            connector=business_connector,
+        )
+        raise

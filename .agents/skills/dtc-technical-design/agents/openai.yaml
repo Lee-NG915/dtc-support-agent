@@ -1,0 +1,4 @@
+interface:
+  display_name: "技术方案比较"
+  short_description: "基于真实代码比较复用、扩展与新增方案，定义 API、数据、审批和恢复契约，解释取舍与验证方式。"
+  default_prompt: "请使用 $dtc-technical-design，结合本项目现有代码和文档完成当前任务，解释依据并标明未验证部分。"

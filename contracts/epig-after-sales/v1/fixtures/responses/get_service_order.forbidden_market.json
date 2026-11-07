@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "FORBIDDEN_MARKET",
+    "message": "The authenticated actor is not authorized for the requested market.",
+    "request_id": "req_err_000000000002",
+    "retryable": false,
+    "recovery_action": "NONE",
+    "details": {
+      "market": "sg"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "验证与评测"
+  short_description: "根据变更选择文档、API、数据库、前端或 Agent 评测范围，核对实际候选及未测边界。"
+  default_prompt: "请使用 $dtc-scoped-validation，结合本项目现有代码和文档完成当前任务，解释依据并标明未验证部分。"

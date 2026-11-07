@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "A valid signed, unexpired consumer cart cookie for this exact market is required.",
+    "request_id": "req_err_000000000014",
+    "retryable": false,
+    "recovery_action": "NONE"
+  }
+}

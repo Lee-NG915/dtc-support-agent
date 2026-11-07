@@ -1,4 +1,23 @@
+# DTC Support Agent｜电商售后智能工作台
 
+基于 [Adaptive-rag](https://github.com/JEen-wang/Adaptive-rag) 扩展的 DTC 电商售后 Agent。首期计划围绕订单查询、政策检索、工单草稿、人工审批与工单创建，完善身份权限、持久任务、幂等执行和效果评测。
+
+**当前状态（2026-11-07）：E-pig持久运行时、DTC员工身份/证据/草稿/持久审批、Worker与真实HTTP提交后崩溃恢复已阶段验收；员工前端摘要、登录与控件已通过合成Chromium。生产试点已确定为 E-pig 使用 Netlify + Neon、DTC 使用 Oracle 单机 + Tailscale；生产 Compose、配置预检、容器构建门禁、员工凭证以及备份/恢复/运维检查脚本已本地验收，但 Oracle 认证仍受风控阻塞，生产调度、对象存储、告警、发布闸门、真实试用与容量验收尚未完成。**
+
+- 当前政策为AU/US/SG内部自编演示条款，非官方或生产批准；历史生成节点与本轮规则/检索、Fake、真实PG/HTTP分别报告，不外推完整Agent质量或业务收益。现状见[流程记录](docs/records/after-sales/dtc-workflow.md)，历史政策验证见[政策记录](docs/records/after-sales/epig-policy-v1.md)。
+- v1线路契约含13个操作、49个共享fixtures；E-pig持久HTTP运行时已有阶段验收。不可变vendor源锁与跨仓最新交付状态见[对接规范](docs/architecture/modules/after-sales/epig-contract.md)及对应Issue，不以本仓包存在代替freshness。
+- 员工入口为`/staff`，仅公开登录shell，业务API继续按员工角色/市场授权。development/testing可显式启用固定演示密码并选择合成员工，生产禁用该模式；详情首屏现以下一步、客户原话和关键事实优先，审计证据与技术字段渐进展开。员工端select、date/datetime-local已统一为自定义可访问控件，checkbox、文本、密码、textarea和button使用同一设计系统样式。独立Chromium已复验客服、审批人和320px页面，但真实客服试用未执行。评测默认离线，显式真实模型配置与边界见[评测指南](docs/10-evaluation.md)。[生产试点方案与上线闸门](docs/11-deployment.md#生产试点方案)已确认，尚无生产部署或真实试用。
+- DTC CI已实际通过：push [42184894521](https://github.com/Lee-NG915/dtc-support-agent/actions/runs/42184894521) 与PR [42184900472](https://github.com/Lee-NG915/dtc-support-agent/actions/runs/42184900472) 的Node24前端、Python3.11/3.12和专用PostgreSQL任务全部success。
+
+- [项目背景、MVP 范围与实施方案](docs/project-plan.md)
+- [Issue #2：当前跨仓售后开发与验收](https://github.com/Lee-NG915/dtc-support-agent/issues/2) · [Issue #1：原方案规划](https://github.com/Lee-NG915/dtc-support-agent/issues/1)
+- [学习路线：从前端经验理解售后 Agent](docs/learning/README.md)
+- [文档规范](docs/guides/documentation.md) · [开发技能用法与选择](docs/guides/skills.md) · [Claude / Codex 协作规范](docs/guides/ai-collaboration.md)
+- [技术文档目录](docs/README.md)
+
+以下保留上游项目说明、截图与历史评测材料；其中能力和数字不代表本 fork 新增成果或验证结果。复用与改造边界见项目方案，原 [MIT 许可及版权声明](LICENSE) 保留。
+
+---
 
 <h1 align="center">Adaptive RAG · 电商客服工作流</h1>
 

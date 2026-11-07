@@ -10,10 +10,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 from starlette.staticfiles import StaticFiles
 
-from app.api.routes import admin, chat, health
+from app.api.routes import admin, after_sales, after_sales_workflow, chat, health
 from app.config.settings import Settings, get_settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
@@ -25,11 +25,17 @@ from app.services.container import build_container
 
 logger = logging.getLogger(__name__)
 
+# A built frontend is optional for local API-only development. Docker builds it.
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Build the container on startup and release it on shutdown."""
-    settings = get_settings()
+    # Use the settings resolved by create_app. Calling get_settings() here
+    # would discard explicit test/embedded settings and reintroduce cached
+    # environment values.
+    settings = app.state.settings
     configure_logging(settings)
     container = await build_container(settings)
     app.state.container = container
@@ -63,10 +69,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    app.state.settings = resolved
     prefix = resolved.api_v1_prefix
     app.include_router(health.router, prefix=prefix)
     app.include_router(chat.router, prefix=prefix)
     app.include_router(admin.router, prefix=prefix)
+    app.include_router(after_sales.router, prefix=prefix)
+    app.include_router(after_sales_workflow.router, prefix=prefix)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
@@ -94,7 +103,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        details = exc.errors() if resolved.app_env != "production" else None
+        # Expose only stable diagnostics. Pydantic's ``input`` (and custom
+        # ``ctx``/``url`` values) can contain the user's message or secrets.
+        details = (
+            [
+                {
+                    "type": error.get("type", "validation_error"),
+                    "loc": list(error.get("loc", ())),
+                    "msg": "invalid value",
+                }
+                for error in exc.errors()
+            ]
+            if resolved.app_env != "production"
+            else None
+        )
         body = APIErrorBody(
             error_code=ErrorCode.INVALID_REQUEST,
             message="invalid request",
@@ -121,9 +143,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def metrics() -> Response:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-    # A built frontend is optional for local API-only development. Docker builds it.
-    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-    if frontend_dist.is_dir():
-        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+    # StaticFiles(html=True) only resolves directory indexes, so "/staff" would
+    # 404 even when the SPA is built. Serve the confirmed staff entry explicitly;
+    # do not fall back other paths, which would turn API typos into HTML.
+    frontend_index = FRONTEND_DIST / "index.html"
+    if frontend_index.is_file():
+
+        async def staff_shell() -> FileResponse:
+            return FileResponse(frontend_index)
+
+        app.add_api_route("/staff", staff_shell, methods=["GET"], include_in_schema=False)
+        app.add_api_route("/staff/", staff_shell, methods=["GET"], include_in_schema=False)
+
+    if FRONTEND_DIST.is_dir():
+        app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
 
     return app

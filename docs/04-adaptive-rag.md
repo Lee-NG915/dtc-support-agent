@@ -207,7 +207,7 @@ uuid4 每次 ingest 全变，引用对不上、Qdrant 无法覆盖旧点。Unstr
 
 生产路径是 **本地 Cross-Encoder**（`CrossEncoderRerankProvider`，默认 `BAAI/bge-reranker-base`）。未安装 `sentence-transformers` 或权重加载失败时才词面 overlap，**那不是 Cross-Encoder，不要写进简历**。
 
-加载成功后：`python -m eval.runner --task retrieval` 应出现 `hybrid+cross-encoder`。
+当前`python -m eval.runner --task retrieval`固定离线Hash/词法，不自动装载CE；本节CE架构说明与历史成绩分开，当前评测入口见[评测指南](10-evaluation.md)。
 
 ```python
 # app/providers/reranker.py
