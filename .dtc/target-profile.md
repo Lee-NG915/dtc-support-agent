@@ -58,6 +58,7 @@ CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前
 - DTC 计划运行在 Oracle Always Free 单机，Compose 管理 API、持续 Worker、本机 PostgreSQL 和显式迁移；员工入口只通过 Tailscale 私网访问，数据库不发布主机端口。
 - 每日 `pg_dump --format=custom` 计划写入 Oracle Object Storage，并在上线前完成新库恢复演练；当前只有一次隔离环境恢复证据，没有生产备份调度。
 - 生产配置基线已本地实现：`docker-compose.production.yml`、`deploy/`模板与Tailscale说明、`scripts/check_production_settings.py`及CI `container-build`。完整测试785通过/5跳过、mypy150文件通过，镜像从锁定依赖构建成功；仍无实际云部署。
+- 生产员工凭证工具`scripts/manage_after_sales_staff.py`已实现，支持受限URL文件、create/rotate/disable和0600 token交付；完整测试826通过/5跳过，并在一次性合成PostgreSQL完成真实迁移/生命周期验收后精确清理。评测来源冻结推进revision8，未重跑真实模型。
 - `oci` CLI 为 3.96.0；Codex 注册了 `oracle-oci` MCP，Claude 用户范围也注册了同名 MCP。本机没有 `~/.oci/config`，Claude MCP 健康检查失败；最近 Oracle 浏览器登录进入风控/注册页面，未取得凭据。这是当前外部阻塞，不重试认证。
 - Netlify MCP 与 OCI Cloud MCP 的安装不授予云资源、域名、secret、部署或生产数据权限。外部付费、资源创建、生产发布仍按用户实际授权执行。
 

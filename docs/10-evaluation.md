@@ -1,6 +1,6 @@
 # 10 · 评测与回归
 
-更新日期：2026-11-06。当前入口默认离线；工程守卫、Fake流程、真实模型质量和实际试用分别记证据。完整项目进度见[项目方案](project-plan.md)，实际验证见[流程记录](records/after-sales/dtc-workflow.md)。[旧测评报告](14-evaluation-report.md)与[MEASURED](../eval/MEASURED.md)保留历史来源，不作为本fork的新成绩。
+更新日期：2026-11-07。当前入口默认离线；工程守卫、Fake流程、真实模型质量和实际试用分别记证据。完整项目进度见[项目方案](project-plan.md)，实际验证见[流程记录](records/after-sales/dtc-workflow.md)。[旧测评报告](14-evaluation-report.md)与[MEASURED](../eval/MEASURED.md)保留历史来源，不作为本fork的新成绩。
 
 ## 命令与数据集
 
@@ -133,3 +133,9 @@ v4 dataset SHA-256为`59301e92282513d6ed48c48f4a0dadedd74a05611f881aa0d9c1313cda
 - 8个模型分区observed；H09-H12工程守卫4/4
 
 人工按冻结断言复核H01-H08均为2/2/2：费用/支付异常、偏远+吊装、意外损坏、定制+部分变更都给出具体核对项和结果边界；普通保修/退款事实正确；两条员工注入只保存editing、引用限于对应市场且无审批/操作/业务写入。该结果是当前v4冻结子集成绩，不是80/40全集、独立Faithfulness固定集、生产准确率、容量SLA或真实客服试用。
+
+## revision 8：生产员工凭证工具来源冻结
+
+生产员工凭证 CLI 需要复用 `StaffRepository` 的既有 token 摘要实现，因此新增了窄的 `rotate_token`/`disable` 方法。该源码变化没有改认证流程、模型、prompt、知识或任何 v1～v4 问题与评分规则，但会改变 203 个 app/knowledge 文件的来源摘要；直接忽略会让“源码未漂移”门禁失效。
+
+四份 manifest 已推进到 revision 8，只更新 `app/repositories/staff_repository.py` 的摘要并新增 `staff_provisioning_refreeze` 历史。父 revision 7 清单仍可按原序列化逐字节重建；revision 8 的模型状态是 `not_run_for_revision_8`。此前 revision 7 的 v4 真实报告仍然有效于当时源码，不能直接标成 revision 8 已运行模型。

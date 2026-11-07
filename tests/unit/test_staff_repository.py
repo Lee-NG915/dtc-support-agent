@@ -313,6 +313,69 @@ async def test_role_and_market_revocation_applies_to_the_next_request(session_fa
         assert not actor.may_read_market("au")
 
 
+@pytest.mark.asyncio
+async def test_rotate_token_replaces_the_hash_and_invalidates_the_old_token(
+    session_factory,
+) -> None:
+    old_token = generate_staff_token()
+    new_token = generate_staff_token()
+    async with session_factory() as session:
+        await StaffRepository(session).create(
+            staff_id="staff_support_au",
+            display_name="Synthetic Support",
+            token=old_token,
+            roles=("support",),
+            allowed_markets=("au",),
+            expires_at=utcnow() + timedelta(days=1),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        row = await StaffRepository(session).rotate_token("staff_support_au", new_token)
+        assert row is not None
+        assert row.token_sha256 == hash_staff_token(new_token)
+        assert row.token_sha256 != hash_staff_token(old_token)
+        await session.commit()
+
+    async with session_factory() as session:
+        repository = StaffRepository(session)
+        assert await repository.authenticate(old_token) is None
+        actor = await repository.authenticate(new_token)
+        assert actor is not None
+        assert actor.staff_id == "staff_support_au"
+
+
+@pytest.mark.asyncio
+async def test_disable_takes_effect_on_the_next_request_and_missing_ids_return_none(
+    session_factory,
+) -> None:
+    token = generate_staff_token()
+    async with session_factory() as session:
+        await StaffRepository(session).create(
+            staff_id="staff_support_au",
+            display_name="Synthetic Support",
+            token=token,
+            roles=("support",),
+            allowed_markets=("au",),
+            expires_at=utcnow() + timedelta(days=1),
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        assert await StaffRepository(session).authenticate(token) is not None
+        assert await StaffRepository(session).disable("staff_missing") is None
+        assert await StaffRepository(session).rotate_token("staff_missing", token) is None
+
+    async with session_factory() as session:
+        row = await StaffRepository(session).disable("staff_support_au")
+        assert row is not None
+        assert row.enabled is False
+        await session.commit()
+
+    async with session_factory() as session:
+        assert await StaffRepository(session).authenticate(token) is None
+
+
 def test_bearer_parser_rejects_malformed_headers() -> None:
     assert parse_bearer_token("Bearer dtc_staff_abc") == "dtc_staff_abc"
     assert parse_bearer_token("bearer dtc_staff_abc") == "dtc_staff_abc"

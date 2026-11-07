@@ -112,3 +112,31 @@ class StaffRepository:
         self._session.add(row)
         await self._session.flush()
         return row
+
+    async def rotate_token(self, staff_id: str, token: str) -> AfterSalesStaffRow | None:
+        """Replace the persisted token digest for an existing identity.
+
+        Only the existing SHA-256 representation is written. Authentication is
+        never cached, so the previous token fails on the next request.
+        """
+        try:
+            row = await self._session.get(AfterSalesStaffRow, staff_id)
+            if row is None:
+                return None
+            row.token_sha256 = hash_staff_token(token)
+            await self._session.flush()
+        except SQLAlchemyError as exc:
+            raise DatabaseError("failed to rotate staff token") from exc
+        return row
+
+    async def disable(self, staff_id: str) -> AfterSalesStaffRow | None:
+        """Disable an existing identity; the next request re-reads ``enabled``."""
+        try:
+            row = await self._session.get(AfterSalesStaffRow, staff_id)
+            if row is None:
+                return None
+            row.enabled = False
+            await self._session.flush()
+        except SQLAlchemyError as exc:
+            raise DatabaseError("failed to disable staff identity") from exc
+        return row

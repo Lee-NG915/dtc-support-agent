@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-06。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录、摘要优先UI、表单控件统一及H05/H08修复均已推送。review规则已推进到revision7，能容忍“又/已经/被”等有界中文插入词；独立holdout v4真实运行中H01-H08模型分区均满足冻结断言、H09-H12工程守卫4/4。v4的H01明确是v3 H04回归，H02-H12为运行前新写，不能把整个v4称为完全未见数据。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
+更新日期：2026-11-07。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录、摘要优先UI、表单控件统一及H05/H08修复均已推送。生产部署前已完成方案、生产Compose/预检/Tailscale入口/容器构建CI和员工凭证CLI本地验收；来源冻结推进到revision8但不重跑模型。review规则revision7能容忍“又/已经/被”等有界中文插入词；独立holdout v4真实运行中H01-H08模型分区均满足冻结断言、H09-H12工程守卫4/4。v4的H01明确是v3 H04回归，H02-H12为运行前新写，不能把整个v4称为完全未见数据。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
 
 ## 员工工作台演示密码登录（2026-11-06，Codex本地验收）
 
@@ -371,7 +371,7 @@ Codex按冻结断言及预定0/1/2锚点人工复核，独立审查再次核对�
 - 起始提交与 upstream 均为 `fcd3d90c2c48b7ee3cd5e560ff1eab995c359e0a`，工作区只有未跟踪 `.work/`。push CI `42233742189` 与 PR CI `42233751742` 已实际成功。
 - Netlify 站点 `https://e-pig-au-sandbox.netlify.app/` 的生产售后接口仍为404；Deploy Preview 已有路由，但带正确契约头且缺少 service token 时曾返回`500 INTERNAL_ERROR`，预期为`401 UNAUTHORIZED`。因此当前不能通过 E-pig 发布闸门。
 - DTC 本地已有锁定依赖镜像、独立售后 Compose、显式迁移、持续 Worker、健康/就绪/指标入口和一次特定丢响应备份恢复证据；这些不等于生产环境验收。
-- 当时生产 Compose、Tailscale 入口与配置预检尚未实现；截至本记录末尾的新增验收章节，这几项已完成本地实现和验收，PostgreSQL员工凭证管理、生产备份调度、告警和回滚演练仍未实现。
+- 当时生产 Compose、Tailscale 入口与配置预检尚未实现；截至本记录末尾的新增验收章节，生产配置与PostgreSQL员工凭证CLI已完成本地实现和验收，生产备份调度、告警和回滚演练仍未实现。
 - `oci` CLI 3.96.0、Codex/Claude 的 Oracle MCP 注册存在，但本机无`~/.oci/config`；最近浏览器登录落在风控/注册页面并已停止，没有写凭据。Oracle租户、主区域和免费配额均未确认。
 
 ### 上线前实施顺序
@@ -396,4 +396,22 @@ Claude按拆分任务实际生成`docker-compose.production.yml`、`deploy/dtc.p
 - `DTC_ENV_FILE=deploy/dtc.production.env.example docker compose --env-file /dev/null -f docker-compose.production.yml config --quiet`成功；Compose与CI YAML解析成功。
 - 首次本地`docker build`因Docker Hub匿名token网络超时失败，失败保留。改用相同官方版本的ECR基础镜像后构建成功，image ID `sha256:59e497cd5291366684cbeb0a51bd54cb00929c32809b402724fb8b820a66374e`，`USER=appuser`，revision标签`production-config-candidate`，默认production与本地模型加载关闭。镜像未启动、未推送registry、未部署。
 
-边界：这不是Oracle/Netlify/Neon联调，不含真实secret、员工凭证CLI、备份调度、告警、恢复演练或生产发布。`docker-compose.production.yml`尚不能被现有一键流程直接上线，因为P1/P3/P6/P7闸门未关闭；CI只在推送后实际回读结果。下一步继续员工凭证、备份与告警实现，并保留Oracle风控阻塞。
+边界：这不是Oracle/Netlify/Neon联调，本批当时不含真实secret、员工凭证CLI、备份调度、告警、恢复演练或生产发布。`docker-compose.production.yml`尚不能被现有一键流程直接上线；员工凭证在后续小节单独验收，P1/P6/P7仍开放。CI只在推送后实际回读结果。
+
+## 生产员工凭证与revision 8（2026-11-07，本地与合成PG范围通过）
+
+新增`scripts/manage_after_sales_staff.py`和`StaffRepository.rotate_token/disable`。CLI只接受显式`postgresql+asyncpg://`，不读取`.env`、不自动迁移；`create/rotate/disable`均要求数据库目标，为避免密码进入shell历史和进程参数，支持只含一行URL的`0400/0600 --database-url-file`。create/rotate用`O_CREAT|O_EXCL`写新建0600 token文件，终端不打印token；数据库只存既有SHA-256摘要。rotate替换摘要，disable设`enabled=false`，下一次认证请求生效。
+
+Codex Review后补了URL文件入口，防止生产密码出现在命令行。全部专项测试覆盖显式URL与URL文件、缺失/双目标/不安全权限/多行文件、拒覆盖、角色市场、create/rotate/disable、旧token失效和输出不泄漏。
+
+真实驱动验收使用明确命名的临时PostgreSQL16容器和新数据库：
+
+- Alembic空库升级到`0005`成功。
+- create后记录为`staff_support_au|approver,support|au,sg|true|64`，token文件为`0600`。
+- rotate后摘要变化且员工仍启用，新token文件为`0600`。
+- disable后`enabled=false`。
+- 验收后容器、唯一所属匿名卷和两个token文件均按精确名称删除，回读不存在；未接生产库或真实员工。
+
+员工凭证修改了受203文件来源冻结覆盖的`app/repositories/staff_repository.py`。首次全量测试出现**19 failed / 785 passed**，全部是`frozen source changed: app/repositories/staff_repository.py`，不是认证业务回归。按证据规则推进revision8：v1～v4 manifest只更新该文件摘要并新增`staff_provisioning_refreeze`，逐字节保留revision7父清单可重建；问题、expectation、rubric、knowledge、prompt与模型设置不变，模型状态为`not_run_for_revision_8`。
+
+最终独立门禁：**826 passed、5 skipped、1 warning**；全仓Ruff格式235文件/静态、mypy150源文件、文档结构及`git diff --check`通过。旧19项冻结失败保留为发现记录，不用最终通过覆盖。revision8只证明来源完整性，不证明真实模型行为，也不把revision7的v4报告改称revision8成绩。

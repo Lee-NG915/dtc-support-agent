@@ -24,6 +24,8 @@
 
 员工演示配置只在development/testing显式启用：独立seed脚本生成support/approver/auditor/operator和受限市场员工，随机token只写新建0600忽略文件，不打印；禁止覆盖已有凭据文件、禁止生产seed或隐式操作已有数据库。测试使用临时SQLite/专用PG和Settings(_env_file=None)，不读真实.env。上线前真实身份集成与凭据运维仍需独立验收。
 
+生产凭证运维使用独立[员工管理CLI](../../../../scripts/manage_after_sales_staff.py)，只对已经迁移的PostgreSQL执行create/rotate/disable，不读取应用.env、不create_all、不自动迁移。数据库URL既可显式传入，也可从权限0400/0600且仅含一行的文件读取；生产优先使用后者，避免密码进入shell历史和进程参数。create/rotate生成高熵token，数据库只保存既有SHA-256摘要，明文只写新建0600文件并拒绝覆盖；rotate替换摘要，disable设置enabled=false，均在下一请求生效。它仍是有限内部试点凭证，不宣称SSO、MFA或完整员工离职审计。
+
 为降低隔离演示的登录成本，development/testing可显式启用固定演示密码。用户先选择数据库中的合成员工身份，再由`POST /after-sales/demo-login`把共享密码换取短时HMAC签名会话；固定密码本身不能作为Bearer直接访问业务接口。会话只绑定staff_id和到期时间，每次请求仍从数据库重读enabled、到期、角色和市场，因此撤权立即生效。`GET /after-sales/login-options`只返回登录模式及公开身份选项，不返回密码、token摘要或签名密钥。生产环境启用该模式会拒绝Settings加载；现有高熵Bearer凭证继续保留，固定密码不是企业SSO或生产认证替代品。
 
 ## Connector契约与配置

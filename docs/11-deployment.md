@@ -58,7 +58,8 @@ flowchart LR
 - DTC 已有锁定依赖的镜像、独立售后 Compose、显式 Alembic 迁移、持续 Worker、`/api/v1/health`、`/api/v1/ready` 和内部 `/metrics`；这些只在本地/隔离合成环境验证过。
 - DTC 的 `docker-compose.after-sales.yml` 是 development + Fake + loopback 演示入口，不能直接当生产配置。
 - 生产 Compose、Tailscale 入口说明、生产配置预检和 CI 容器构建门禁已实现并通过本地范围验收；尚未部署，也没有远端生产运行证据。
-- PostgreSQL 员工凭证 CLI、备份调度、告警和回滚演练尚未实现。
+- PostgreSQL 员工凭证 CLI 已实现，并通过 SQLite 生命周期测试与一次性合成 PostgreSQL create/rotate/disable 验证；生产员工尚未创建。
+- 备份调度、告警和回滚演练尚未实现。
 - Oracle CLI 与 MCP 注册已安装，但本机没有 `~/.oci/config`；最近一次登录停在风控/注册页面。该事实只表示认证未完成，不能推断租户、主区域、免费配额或 VM 可用。
 
 ### 已实现的生产配置基线
@@ -69,6 +70,7 @@ flowchart LR
 - [`deploy/dtc.production.env.example`](../deploy/dtc.production.env.example)：生产配置模板。模板本身故意包含占位值，原样复制不能通过预检。
 - [`scripts/check_production_settings.py`](../scripts/check_production_settings.py)：只读取显式 env 文件，检查权限、production/E-pig/HTTPS/PostgreSQL/SKU/市场/演示登录/密钥和 BM25-only 显式确认，不输出 secret。
 - [`deploy/tailscale-serve.md`](../deploy/tailscale-serve.md)：只开放 `/staff`、`/api`、`/assets` 和 `/favicon.svg` 的私网入口，不开放根路径或 `/metrics`。
+- [`scripts/manage_after_sales_staff.py`](../scripts/manage_after_sales_staff.py)：对已迁移 PostgreSQL 执行员工 `create`、`rotate`、`disable`，只保存 token 摘要，明文 token 只写新建 `0600` 文件。
 - [CI](../.github/workflows/ci.yml) 的 `container-build` job：构建当前 Dockerfile、检查 revision 标签和非 root 用户，不登录 registry、不推送、不部署。
 
 上线前不能只执行 `docker compose up`。仍需先完成员工凭证、E-pig production 入口、secret、备份、告警和恢复闸门；实际步骤见“上线前准备清单”。
@@ -82,7 +84,7 @@ flowchart LR
 | P0 | 确认 Oracle 账户、租户、主区域、MFA 和 Always Free 配额；解决登录风控 | 控制台与 OCI CLI 使用同一租户；记录区域、compartment、可用配额；不在本机留下不属于该租户的配置 | 阻塞，认证未完成 |
 | P1 | 固定 E-pig 可发布提交，补齐 Netlify production 环境变量并应用 Neon 迁移 | Deploy Preview 和 production candidate 均能返回 `200`；缺失/错误 token 返回 `401`；生产域名不再命中 404 | 未通过 |
 | P2 | 实现并审查 DTC 生产 Compose、Tailscale 入口、配置预检和 CI 镜像构建 | 容器按 `uv.lock` 构建；非 root；迁移先成功；API/Worker 安全重启；配置负例全部拒绝 | 已实现，本地验收通过；未部署 |
-| P3 | 实现 PostgreSQL 员工凭证 create/rotate/disable | token 只写新建 `0600` 文件；rotate 后旧 token 下一次请求失效；disable 立即拒绝；demo login 在 production 拒绝启动 | 未实现 |
+| P3 | 实现 PostgreSQL 员工凭证 create/rotate/disable | token 只写新建 `0600` 文件；rotate 后旧 token 下一次请求失效；disable 立即拒绝；demo login 在 production 拒绝启动 | 已实现并通过本地与合成 PostgreSQL 验收；生产员工未创建 |
 | P4 | 定义机器权限、私网和端口边界 | OCI 安全列表不开放 API/DB 公网端口；Tailscale ACL 只允许指定员工；`/metrics` 不走员工入口；主机 SSH 仅受控来源 | 入口说明已实现；ACL 与主机防火墙未配置 |
 | P5 | 配置 secret 与配置模板 | 生产 env 为 `0600` 或更严格；数据库/E-pig/DeepSeek/Admin secret 不进入 Git、镜像、日志或命令输出；E-pig service token 可轮换 | 模板与预检已实现；真实 secret 未配置 |
 | P6 | 建立 DTC 备份、保留、恢复和 E-pig/Neon 备份责任 | DTC 每日 `pg_dump --format=custom` 到加密对象存储；保留 7 份日备份 + 4 份周备份；恢复演练可在新库核对审批、草稿、游标、幂等键和回执 | 仅完成一次隔离恢复验证，未配置生产调度 |
@@ -105,7 +107,7 @@ flowchart LR
 ### 未来部署顺序（本次不执行）
 
 1. 解决 Oracle 账户风控并核实免费资源；在此之前不改代码依赖云控制台行为。
-2. P2 已完成本地实现、Review 和验收；继续完成 P3、P6、P7。外部付费、真实数据和生产部署仍需实际授权。
+2. P2、P3 已完成本地实现、Review 和验收；继续完成 P6、P7。外部付费、真实数据和生产部署仍需实际授权。
 3. 合并 E-pig 已验收提交到可发布分支，配置 Netlify production 环境和 Neon 迁移，先关闭 P1。
 4. 创建专用 VM、加密块存储和对象存储桶；安装最小系统、Docker/Compose、Tailscale；禁止公网 API/DB 入站。
 5. 写入生产 secret 和员工 token，配置 E-pig service token，执行配置预检。
@@ -119,6 +121,29 @@ flowchart LR
 - 数据损坏或迁移不兼容时，恢复到新的 PostgreSQL 实例，以恢复前的 operation key/payload 查询 E-pig 回执；禁止换新键重复提交。
 - 员工凭证泄露时立即 rotate；需要停止某员工时 disable；需要全局止血时暂停 Worker、阻断 Tailscale 入口并轮换 E-pig service token。
 - 恢复或回滚不会撤销 E-pig 已经提交的工单。外部结果未知时仍进入人工对账。
+
+### 员工凭证开通、轮换与停用
+
+生产 CLI 只对已经迁移的 PostgreSQL 工作，不读取应用 `.env`，不自动迁移。为避免数据库密码出现在 shell 历史和进程参数里，正常操作应从独立 `0600` 文件读取一个 `postgresql+asyncpg://` URL：
+
+```bash
+install -m 600 /dev/null /run/secrets/dtc-staff-database-url
+# 由受控 secret 管理流程写入一行 URL，再执行：
+uv run python scripts/manage_after_sales_staff.py create \
+  --database-url-file /run/secrets/dtc-staff-database-url \
+  --staff-id staff_example \
+  --display-name 'Synthetic Support' \
+  --roles support,approver \
+  --markets au,sg \
+  --expires-at 2027-12-31T00:00:00+00:00 \
+  --output /run/secrets/dtc-staff-example.json
+```
+
+预期：数据库出现员工记录，token 文件权限为 `0600`，终端不打印 token 或数据库 URL。不得把生成文件内容贴在聊天、Issue 或日志；员工需要先通过安全渠道领取，随后删除交接副本。
+
+- 轮换：`rotate --database-url-file ... --staff-id ... --output <新文件>`。旧 token 在下一次请求失效；命令拒绝覆盖已有输出文件。
+- 停用：`disable --database-url-file ... --staff-id ...`。它只改数据库；若员工仍有 Tailscale 访问，还必须同步移除 ACL 或设备访问，两个动作都完成才算完全停用。
+- production 必须保持 `AFTER_SALES_DEMO_LOGIN_ENABLED=false`；CLI 不能替代正式员工身份管理、操作审计和离职流程。
 
 ## 本地
 

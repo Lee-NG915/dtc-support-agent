@@ -104,7 +104,7 @@
     "app/repositories/models.py": "805d6bec8889f003aae7702ba30efa81bbe59c4ef18074e0faaf5b40eec72c54",
     "app/repositories/order_repository.py": "5834e0ce4b7bf7da71e7caf2e70ce4b3fd41e059570492fb12f9165b1f5c65a2",
     "app/repositories/session_repository.py": "c82df88557a334c11e0c6efc669a354d89e3231fac37c613ce2bd1f1e7846a72",
-    "app/repositories/staff_repository.py": "7b312d77e2409f5a6a2dc46ee53e719e82b77561377026b5156234b9bf36afcf",
+    "app/repositories/staff_repository.py": "56490d6613ebd4ce18e9dd9a03b319ef03e6787ec7ea3f2c9345a81f2d944046",
     "app/retrieval/__init__.py": "9a0b7daff8c8cc6a3258fdae442e6c0426cd2ecca3c064e23b12c7edb919c4a4",
     "app/retrieval/adaptive.py": "32781329d8735d823443ec9dac10ce4bb7c570cbf70ff9946dabe38e4ac3835b",
     "app/retrieval/bm25.py": "412b08d1fe9db910655cc97f417dae0e9e8acac7ebef38e865d79598bbcab7ad",
@@ -222,7 +222,7 @@
     "No execution implied by preparation; provider/model/budget and runtime fixture adapter still required.",
     "Actual HTTP/browser/OSrestart evidence must be separate; synthetic_only."
   ],
-  "freeze_revision": 7,
+  "freeze_revision": 8,
   "protocol_refreeze": {
     "reason": "Before first holdout execution: official DeepSeek model alias/thinking toggle compatibility only; no business prompt or knowledge changes and no holdout feedback used.",
     "files": {
@@ -369,5 +369,18 @@
       }
     },
     "model_evaluation_status": "not_run_for_revision_7"
+  },
+  "staff_provisioning_refreeze": {
+    "parent_revision": 7,
+    "parent_source_commit": "c22982db917d0c5af655b22906a4935463a727d8",
+    "parent_manifest_sha256": "4bb36e29f2d078dd82c5d65c581fbd18d23916faa02a0b38f8351c5642114d08",
+    "reason": "Atomic production staff credential provisioning adding only narrow rotate_token/disable repository methods; this does not alter authentication or model behavior. Dataset questions, expectations, rubrics, knowledge and prompts are unchanged; no model evaluation was run for revision 8 and no holdout feedback was used.",
+    "files": {
+      "app/repositories/staff_repository.py": {
+        "old_sha256": "7b312d77e2409f5a6a2dc46ee53e719e82b77561377026b5156234b9bf36afcf",
+        "new_sha256": "56490d6613ebd4ce18e9dd9a03b319ef03e6787ec7ea3f2c9345a81f2d944046"
+      }
+    },
+    "model_evaluation_status": "not_run_for_revision_8"
   }
 }

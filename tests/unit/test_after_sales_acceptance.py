@@ -13,6 +13,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -46,6 +47,42 @@ REVIEW_GUIDANCE_FILES = {
 }
 
 REVIEW_TERM_NORMALIZATION_FILES = {"app/retrieval/policy.py"}
+
+STAFF_PROVISIONING_FILES = {"app/repositories/staff_repository.py"}
+
+STAFF_REPOSITORY_OLD_SHA256 = "7b312d77e2409f5a6a2dc46ee53e719e82b77561377026b5156234b9bf36afcf"
+STAFF_REPOSITORY_NEW_SHA256 = "56490d6613ebd4ce18e9dd9a03b319ef03e6787ec7ea3f2c9345a81f2d944046"
+
+
+def _restored_manifest_sha256(
+    manifest: dict[str, Any],
+    *,
+    revision: int,
+    removed_refreezes: tuple[str, ...],
+    restored_freeze_hashes: dict[str, str],
+) -> str:
+    """Reverse later re-freezes and return the reconstructed manifest SHA-256.
+
+    Every re-freeze only appends a history entry, moves the revision marker and
+    rewrites its own files, so undoing those edits must reproduce that parent
+    manifest byte-for-byte.
+    """
+    restored = json.loads(json.dumps(manifest))
+    restored["freeze_revision"] = revision
+    for key in removed_refreezes:
+        del restored[key]
+    restored["freeze_hashes"].update(restored_freeze_hashes)
+    restored_raw = json.dumps(restored, indent=2, ensure_ascii=False) + "\n"
+    return hashlib.sha256(restored_raw.encode("utf-8")).hexdigest()
+
+
+def _unchanged_freeze_digest(manifest: dict[str, Any], excluded: set[str]) -> str:
+    unchanged = sorted(
+        (path, digest) for path, digest in manifest["freeze_hashes"].items() if path not in excluded
+    )
+    return hashlib.sha256(
+        json.dumps(unchanged, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
 
 
 def _verify_frozen_paths(
@@ -145,7 +182,7 @@ class _ValidSuggestionProvider:
 def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
     artifacts = acceptance.verify_frozen()
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 7
+    assert artifacts.freeze_revision == 8
     assert len(artifacts.rows) == 12
 
     dataset_copy = tmp_path / "after_sales_holdout_v1.jsonl"
@@ -265,8 +302,8 @@ def test_v2_selection_verifies_current_protected_manifest() -> None:
     assert len(artifacts.rows) == 12
     assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 7
-    assert artifacts.manifest["freeze_revision"] == 7
+    assert artifacts.freeze_revision == 8
+    assert artifacts.manifest["freeze_revision"] == 8
     assert len(artifacts.manifest["freeze_hashes"]) == 203
     assert artifacts.data_meta()["source"] == "after_sales_holdout_v2.jsonl"
     assert artifacts.data_meta()["holdout_version"] == "v2"
@@ -288,8 +325,8 @@ def test_v3_selection_verifies_current_protected_manifest() -> None:
     assert len(artifacts.rows) == 12
     assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 7
-    assert artifacts.manifest["freeze_revision"] == 7
+    assert artifacts.freeze_revision == 8
+    assert artifacts.manifest["freeze_revision"] == 8
     assert len(artifacts.manifest["freeze_hashes"]) == 203
     assert artifacts.data_meta()["source"] == "after_sales_holdout_v3.jsonl"
     assert artifacts.data_meta()["holdout_version"] == "v3"
@@ -297,7 +334,7 @@ def test_v3_selection_verifies_current_protected_manifest() -> None:
     provenance = artifacts.provenance()["source_candidate"]
     assert provenance["holdout_version"] == "v3"
     assert provenance["dataset"] == "after_sales_holdout_v3.jsonl"
-    assert provenance["freeze_revision"] == 7
+    assert provenance["freeze_revision"] == 8
 
 
 def test_v4_selection_verifies_current_protected_manifest() -> None:
@@ -313,8 +350,8 @@ def test_v4_selection_verifies_current_protected_manifest() -> None:
     assert len(artifacts.rows) == 12
     assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 7
-    assert artifacts.manifest["freeze_revision"] == 7
+    assert artifacts.freeze_revision == 8
+    assert artifacts.manifest["freeze_revision"] == 8
     assert len(artifacts.manifest["freeze_hashes"]) == 203
     assert artifacts.data_meta()["source"] == "after_sales_holdout_v4.jsonl"
     assert artifacts.data_meta()["holdout_version"] == "v4"
@@ -322,7 +359,7 @@ def test_v4_selection_verifies_current_protected_manifest() -> None:
     provenance = artifacts.provenance()["source_candidate"]
     assert provenance["holdout_version"] == "v4"
     assert provenance["dataset"] == "after_sales_holdout_v4.jsonl"
-    assert provenance["freeze_revision"] == 7
+    assert provenance["freeze_revision"] == 8
     assert artifacts.rows[0]["holdout_role"] == "regression_from_v3_h04"
 
 
@@ -421,7 +458,7 @@ def test_cli_summary_reports_holdout_version(
             "status": "verified",
             "holdout_version": "v2",
             "freeze_count": 203,
-            "freeze_revision": 7,
+            "freeze_revision": 8,
             "dataset_sha256": "a" * 64,
         },
         "cleanup": {},
@@ -438,8 +475,8 @@ def test_revision_3_engineering_refreeze_metadata_is_exact(tmp_path: Path) -> No
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 7
-    assert manifest["freeze_revision"] == 7
+    assert artifacts.freeze_revision == 8
+    assert manifest["freeze_revision"] == 8
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -479,14 +516,10 @@ def test_revision_3_engineering_refreeze_metadata_is_exact(tmp_path: Path) -> No
     # Every frozen entry outside the later re-freezes stays byte-identical to
     # revision 2. This keeps each later re-freeze from widening the revision-3
     # change set.
-    touched = set(expected) | DEMO_LOGIN_FILES | QUALITY_REFREEZE_FILES
-    unchanged = sorted(
-        (path, digest) for path, digest in manifest["freeze_hashes"].items() if path not in touched
+    touched = set(expected) | DEMO_LOGIN_FILES | QUALITY_REFREEZE_FILES | STAFF_PROVISIONING_FILES
+    assert _unchanged_freeze_digest(manifest, touched) == (
+        "fd7f1991584e2722d703015f2895c1fcbd4dd69ee1f6bd472bf22c38491235b8"
     )
-    unchanged_digest = hashlib.sha256(
-        json.dumps(unchanged, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
-    assert unchanged_digest == ("fd7f1991584e2722d703015f2895c1fcbd4dd69ee1f6bd472bf22c38491235b8")
 
     # Prior re-freeze history remains available rather than being rewritten.
     assert manifest["protocol_refreeze"]["files"]
@@ -511,8 +544,8 @@ def test_revision_4_demo_login_refreeze_metadata_is_exact(tmp_path: Path) -> Non
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 7
-    assert manifest["freeze_revision"] == 7
+    assert artifacts.freeze_revision == 8
+    assert manifest["freeze_revision"] == 8
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -561,18 +594,15 @@ def test_revision_4_demo_login_refreeze_metadata_is_exact(tmp_path: Path) -> Non
             "old_sha256": old_sha256,
             "new_sha256": new_sha256,
         }
-        assert manifest["freeze_hashes"][relative] == new_sha256
+        # Revision 8 supersedes the live staff hash while preserving the
+        # revision-4 history for the demo-login change.
+        if relative not in STAFF_PROVISIONING_FILES:
+            assert manifest["freeze_hashes"][relative] == new_sha256
 
     # Every other entry stays byte-identical to revision 3.
-    unchanged = sorted(
-        (path, digest)
-        for path, digest in manifest["freeze_hashes"].items()
-        if path not in DEMO_LOGIN_FILES | QUALITY_REFREEZE_FILES
-    )
-    unchanged_digest = hashlib.sha256(
-        json.dumps(unchanged, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
-    assert unchanged_digest == "dd6f8c903334144c09fffb330cb6e0d2ada1584f63bccd1cf3b2e125a3dc668c"
+    assert _unchanged_freeze_digest(
+        manifest, DEMO_LOGIN_FILES | QUALITY_REFREEZE_FILES | STAFF_PROVISIONING_FILES
+    ) == ("dd6f8c903334144c09fffb330cb6e0d2ada1584f63bccd1cf3b2e125a3dc668c")
 
     # Earlier refreeze history remains available rather than being rewritten.
     assert manifest["engineering_refreeze"]["files"]
@@ -598,8 +628,8 @@ def test_revision_5_h05_h08_quality_refreeze_metadata_is_exact(tmp_path: Path) -
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 7
-    assert manifest["freeze_revision"] == 7
+    assert artifacts.freeze_revision == 8
+    assert manifest["freeze_revision"] == 8
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -653,16 +683,10 @@ def test_revision_5_h05_h08_quality_refreeze_metadata_is_exact(tmp_path: Path) -
         if relative not in REVIEW_GUIDANCE_FILES:
             assert manifest["freeze_hashes"][relative] == new_sha256
 
-    # Every other entry stays byte-identical to revision 4.
-    unchanged = sorted(
-        (path, digest)
-        for path, digest in manifest["freeze_hashes"].items()
-        if path not in QUALITY_REFREEZE_FILES
-    )
-    unchanged_digest = hashlib.sha256(
-        json.dumps(unchanged, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
-    assert unchanged_digest == "135c08360e183a07936a99adaeb746d62ee28134fa3c79aca864f9bc3faa83ec"
+    # Every entry outside the later re-freezes stays byte-identical to revision 4.
+    assert _unchanged_freeze_digest(
+        manifest, QUALITY_REFREEZE_FILES | STAFF_PROVISIONING_FILES
+    ) == ("fa2b9042fff54ae640b117975c0c2c2f252b7d209ebeb565248dd04af3683ec1")
 
     # Prior protocol, fixture, engineering and demo-login history is preserved.
     assert manifest["protocol_refreeze"]["files"]
@@ -711,8 +735,8 @@ def test_revision_6_review_guidance_refreeze_metadata_is_exact(tmp_path: Path) -
         artifacts = acceptance.verify_frozen(version)
         manifest = artifacts.manifest
 
-        assert artifacts.freeze_revision == 7
-        assert manifest["freeze_revision"] == 7
+        assert artifacts.freeze_revision == 8
+        assert manifest["freeze_revision"] == 8
         assert manifest["state"] == "frozen_prepared_not_run"
         assert artifacts.freeze_count == 203
         assert len(manifest["freeze_hashes"]) == 203
@@ -737,16 +761,25 @@ def test_revision_6_review_guidance_refreeze_metadata_is_exact(tmp_path: Path) -
             if relative not in REVIEW_TERM_NORMALIZATION_FILES:
                 assert manifest["freeze_hashes"][relative] == new_sha256
 
-        # Removing both later re-freezes, restoring the revision marker and
+        # Removing all later re-freezes, restoring the revision marker and
         # their prior hashes must reproduce the revision 5 parent byte-for-byte.
-        restored = json.loads(json.dumps(manifest))
-        restored["freeze_revision"] = 5
-        del restored["review_guidance_refreeze"]
-        del restored["review_term_normalization_refreeze"]
-        for relative, (old_sha256, _) in expected_files.items():
-            restored["freeze_hashes"][relative] = old_sha256
-        restored_raw = json.dumps(restored, indent=2, ensure_ascii=False) + "\n"
-        assert hashlib.sha256(restored_raw.encode("utf-8")).hexdigest() == parent_manifest_sha256
+        restored_hashes = {
+            relative: old_sha256 for relative, (old_sha256, _) in expected_files.items()
+        }
+        restored_hashes["app/repositories/staff_repository.py"] = STAFF_REPOSITORY_OLD_SHA256
+        assert (
+            _restored_manifest_sha256(
+                manifest,
+                revision=5,
+                removed_refreezes=(
+                    "review_guidance_refreeze",
+                    "review_term_normalization_refreeze",
+                    "staff_provisioning_refreeze",
+                ),
+                restored_freeze_hashes=restored_hashes,
+            )
+            == parent_manifest_sha256
+        )
 
         # Revision 5 is now rejected as stale.
         stale = json.loads(json.dumps(manifest))
@@ -784,8 +817,8 @@ def test_revision_7_review_term_normalization_refreeze_metadata_is_exact(
         artifacts = acceptance.verify_frozen(version)
         manifest = artifacts.manifest
 
-        assert artifacts.freeze_revision == 7
-        assert manifest["freeze_revision"] == 7
+        assert artifacts.freeze_revision == 8
+        assert manifest["freeze_revision"] == 8
         assert manifest["state"] == "frozen_prepared_not_run"
         assert artifacts.freeze_count == 203
         assert len(manifest["freeze_hashes"]) == 203
@@ -805,18 +838,117 @@ def test_revision_7_review_term_normalization_refreeze_metadata_is_exact(
         }
         assert manifest["freeze_hashes"]["app/retrieval/policy.py"] == new_sha256
 
-        # Restoring only the revision marker, the prior policy hash and removing
-        # this history entry must reproduce the revision 6 parent byte-for-byte.
-        restored = json.loads(json.dumps(manifest))
-        restored["freeze_revision"] = 6
-        del restored["review_term_normalization_refreeze"]
-        restored["freeze_hashes"]["app/retrieval/policy.py"] = old_sha256
-        restored_raw = json.dumps(restored, indent=2, ensure_ascii=False) + "\n"
-        assert hashlib.sha256(restored_raw.encode("utf-8")).hexdigest() == parent_manifest_sha256
+        # Removing this and the later re-freeze, restoring the revision marker
+        # and their prior hashes must reproduce the revision 6 parent byte-for-byte.
+        assert (
+            _restored_manifest_sha256(
+                manifest,
+                revision=6,
+                removed_refreezes=(
+                    "review_term_normalization_refreeze",
+                    "staff_provisioning_refreeze",
+                ),
+                restored_freeze_hashes={
+                    "app/retrieval/policy.py": old_sha256,
+                    "app/repositories/staff_repository.py": STAFF_REPOSITORY_OLD_SHA256,
+                },
+            )
+            == parent_manifest_sha256
+        )
 
         stale = json.loads(json.dumps(manifest))
         stale["freeze_revision"] = 6
         stale_manifest = tmp_path / f"stale_revision_6_{version}_manifest.json"
+        stale_manifest.write_text(json.dumps(stale), encoding="utf-8")
+        with pytest.raises(acceptance.FreezeVerificationError, match="freeze revision"):
+            _verify_frozen_paths(
+                holdout_version=version,
+                manifest_path=stale_manifest,
+            )
+
+
+def test_revision_8_staff_provisioning_refreeze_metadata_is_exact(tmp_path: Path) -> None:
+    parent_manifests = {
+        "v1": (
+            "4bb36e29f2d078dd82c5d65c581fbd18d23916faa02a0b38f8351c5642114d08",
+            "ae13159484b31dde3bc6c63db9060169b2b6971b002d8b03e569c62707c256da",
+        ),
+        "v2": (
+            "63f2bb5a1bfb1ddffb5cb83e862c7048f616c1d03dc9a1961c8c31f778d87ede",
+            "d89a7ed8548602108f6bc5b5b41eebf0123789bbe5fa1ca9b29a94e4d894418e",
+        ),
+        "v3": (
+            "68d7088aa3989ba6802b2947872e72eb35bb3e2e40d64fe9c54241f97068ce89",
+            "4025006dcfcd481be52423fd1c727154b245d87232358933ddf2f5c1bede12cd",
+        ),
+        "v4": (
+            "12c4045d837508fa27c0378a5af88ebe6631428a5a601af68c7a6ffc19e3e8c7",
+            "59301e92282513d6ed48c48f4a0dadedd74a05611f881aa0d9c1313cdab92a0c",
+        ),
+    }
+
+    for version, (parent_manifest_sha256, dataset_sha256) in parent_manifests.items():
+        artifacts = acceptance.verify_frozen(version)
+        manifest = artifacts.manifest
+
+        assert acceptance.FREEZE_REVISION == 8
+        assert artifacts.freeze_revision == 8
+        assert manifest["freeze_revision"] == 8
+        assert manifest["state"] == "frozen_prepared_not_run"
+        assert artifacts.freeze_count == 203
+        assert len(manifest["freeze_hashes"]) == 203
+        assert manifest["dataset_sha256"] == dataset_sha256
+        assert artifacts.dataset_sha256 == dataset_sha256
+
+        refreeze = manifest["staff_provisioning_refreeze"]
+        assert refreeze["parent_revision"] == 7
+        assert refreeze["parent_source_commit"] == ("c22982db917d0c5af655b22906a4935463a727d8")
+        assert refreeze["parent_manifest_sha256"] == parent_manifest_sha256
+        assert "Atomic production staff credential provisioning" in refreeze["reason"]
+        assert "rotate_token/disable" in refreeze["reason"]
+        assert "does not alter authentication or model behavior" in refreeze["reason"]
+        assert refreeze["model_evaluation_status"] == "not_run_for_revision_8"
+        assert set(refreeze["files"]) == STAFF_PROVISIONING_FILES
+        assert refreeze["files"]["app/repositories/staff_repository.py"] == {
+            "old_sha256": STAFF_REPOSITORY_OLD_SHA256,
+            "new_sha256": STAFF_REPOSITORY_NEW_SHA256,
+        }
+        assert (
+            manifest["freeze_hashes"]["app/repositories/staff_repository.py"]
+            == STAFF_REPOSITORY_NEW_SHA256
+        )
+
+        # Removing the revision-8 entry, restoring the marker and the prior
+        # staff hash must reproduce the revision 7 parent byte-for-byte.
+        assert (
+            _restored_manifest_sha256(
+                manifest,
+                revision=7,
+                removed_refreezes=("staff_provisioning_refreeze",),
+                restored_freeze_hashes={
+                    "app/repositories/staff_repository.py": STAFF_REPOSITORY_OLD_SHA256,
+                },
+            )
+            == parent_manifest_sha256
+        )
+
+        # Earlier re-freeze history is preserved rather than rewritten.
+        for key in (
+            "protocol_refreeze",
+            "fixture_protocol_refreeze",
+            "engineering_refreeze",
+            "demo_login_refreeze",
+            "quality_refreeze",
+            "review_guidance_refreeze",
+            "review_term_normalization_refreeze",
+        ):
+            if key in manifest:
+                assert manifest[key]
+
+        # Revision 7 is now rejected as stale.
+        stale = json.loads(json.dumps(manifest))
+        stale["freeze_revision"] = 7
+        stale_manifest = tmp_path / f"stale_revision_7_{version}_manifest.json"
         stale_manifest.write_text(json.dumps(stale), encoding="utf-8")
         with pytest.raises(acceptance.FreezeVerificationError, match="freeze revision"):
             _verify_frozen_paths(
