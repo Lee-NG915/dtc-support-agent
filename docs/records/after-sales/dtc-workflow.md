@@ -353,3 +353,33 @@ Codex按冻结断言及预定0/1/2锚点人工复核，独立审查再次核对�
 最终全Ruff静态/格式229文件、mypy150源文件及浏览器helper独立mypy通过，Node语法通过；前端23项及根构建通过。页面有效run后工具仅格式/类型注解与未知路由错误必须显式记录的两处保守收口，后者Node语法/人工Review通过；没有修改应用行为或伪造新页面结果。旧UI选择器、延迟路由unhandled、端口守卫安全失败和无报告运行均保留为失败，不覆盖。新增依赖只有固定Playwright开发库，不引入测试平台/业务框架。
 
 隔离工程演示范围通过；真实模型质量缺口、远端CI无run、两仓Compose仅空feed、真实试用/生产/容量SLA仍分别报告。本节保存验收候选证据；提交/远端回读及最终源锁交接回执在两仓Issue #2的最新交接评论与E-pig source-lock追踪，避免为记录自身提交反复推进源版本。不能称生产认证。
+
+## 生产试点方案与上线前闸门（2026-11-07，方案已确认，未部署）
+
+用户确认先暂停部署尝试，优先固定方案并完成上线前准备。当前正本更新为[部署与运维](../../11-deployment.md#生产试点方案)、[项目方案](../../project-plan.md#6-数据连接器与部署边界)和[项目档案](../../../.dtc/target-profile.md#生产试点与工具状态2026-11-07)；本节记录决定依据、阻塞和后续顺序，不重复完整操作清单。
+
+### 拓扑决定
+
+- E-pig 继续使用 Netlify 页面/Route Handlers 和 Neon PostgreSQL；消费者入口不迁移到 Oracle。
+- DTC 使用 Oracle Always Free 单机，Compose 启动 API、持续 Worker、本机 PostgreSQL 与显式迁移 gate。数据库不发布主机端口，API只绑定本机入口；员工通过 Tailscale 私网访问。
+- DTC 每日 `pg_dump --format=custom` 计划写入 Oracle Object Storage；E-pig/Neon 的备份责任单独确认。
+- 不采用全 Netlify：当前 Python ASGI 与常驻 Worker 需要重写，属于后端迁移而非部署配置。
+- Cloudflare Tunnel 暂不作为首选；需要自有域名或多组织 Zero Trust 时再重新比较 Tailscale。
+
+### 已核对事实
+
+- 起始提交与 upstream 均为 `fcd3d90c2c48b7ee3cd5e560ff1eab995c359e0a`，工作区只有未跟踪 `.work/`。push CI `42233742189` 与 PR CI `42233751742` 已实际成功。
+- Netlify 站点 `https://e-pig-au-sandbox.netlify.app/` 的生产售后接口仍为404；Deploy Preview 已有路由，但带正确契约头且缺少 service token 时曾返回`500 INTERNAL_ERROR`，预期为`401 UNAUTHORIZED`。因此当前不能通过 E-pig 发布闸门。
+- DTC 本地已有锁定依赖镜像、独立售后 Compose、显式迁移、持续 Worker、健康/就绪/指标入口和一次特定丢响应备份恢复证据；这些不等于生产环境验收。
+- 生产 Compose、Tailscale 入口、生产配置预检、PostgreSQL员工凭证管理、生产备份调度、告警和回滚演练尚未实现。
+- `oci` CLI 3.96.0、Codex/Claude 的 Oracle MCP 注册存在，但本机无`~/.oci/config`；最近浏览器登录落在风控/注册页面并已停止，没有写凭据。Oracle租户、主区域和免费配额均未确认。
+
+### 上线前实施顺序
+
+1. Oracle账户/租户/主区域/配额解除风控阻塞。
+2. Claude按已拆分任务实现生产Compose、Tailscale入口、配置预检、容器构建CI和员工凭证CLI；Codex独立Review、验收后提交。
+3. E-pig固定可发布提交，配置Netlify production secrets、Neon迁移并关闭有效token `200`/缺失token `401`闸门。
+4. 创建VM、加密块存储、对象存储、Tailscale ACL和最小主机；不开放API/DB公网端口。
+5. 先完成配置预检、迁移和恢复演练，再启动API/Worker；执行合成跨系统冒烟、监控、日志、备份年龄和紧急停用验收。
+
+任何一步失败都不发布。当前没有云资源创建、主分支合并、生产secret、真实客户数据、实际部署或真实试用。下一步是实现生产配置基线；Claude Code流空闲阻塞恢复前不由Codex静默接管实现。

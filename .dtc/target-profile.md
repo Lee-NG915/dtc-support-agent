@@ -1,6 +1,6 @@
 # 项目档案
 
-核对日期：2026-11-06。范围：开发助手接入、文档维护与隔离开发环境。后续发生源码或命令变化时更新本文件。
+核对日期：2026-11-07。范围：开发助手接入、文档维护、隔离开发环境与部署工具。后续发生源码或命令变化时更新本文件。
 
 ## 项目定位与代码事实
 
@@ -36,7 +36,7 @@
 | 前端依赖 | `npm ci --prefix frontend` |
 | 前端测试与构建 | `npm --prefix frontend run test`、`npm --prefix frontend run build` |
 | 应用启动与依赖配置 | 按 [现有快速开始](../docs/02-getting-started.md)；不要编造尚不存在的 Worker 命令 |
-| 部署 | 读 [现有部署文档](../docs/11-deployment.md) 与当前 Compose；变更前核对目标环境和授权 |
+| 部署 | 读 [部署与运维](../docs/11-deployment.md)；2026-11-07 已确认 E-pig Netlify + Neon、DTC Oracle 单机 + Tailscale 的试点方案，但尚未部署 |
 
 CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前工作流定义已包含文档、契约、政策检查和Python3.11/3.12测试。2026-11-06已补当前codex/2-epig-after-sales分支push触发，保留main/PR/dispatch及只读权限，不含部署。此前dispatch因默认分支未登记返回404，草稿PR#4也未产生run；本次push是否实际执行与结果必须回读，不能仅凭配置写CI通过。
 
@@ -50,6 +50,15 @@ CI 的触发条件和门槛见 [工作流](../.github/workflows/ci.yml)。当前
 - [Issue #1](https://github.com/Lee-NG915/dtc-support-agent/issues/1)：规划上下文；已有关联分支 `codex/1-project-plan`，操作前仍需核对实际 Git 状态。
 
 仓库远端为 `Lee-NG915/dtc-support-agent`。这是项目身份信息，不是合并、部署、访问真实店铺或发送消费者消息的授权。
+
+## 生产试点与工具状态（2026-11-07）
+
+- 部署正本：[部署与运维](../docs/11-deployment.md#生产试点方案)与[项目方案](../docs/project-plan.md#6-数据连接器与部署边界)。
+- E-pig 当前站点为 `https://e-pig-au-sandbox.netlify.app/`。生产分支仍缺少售后 API 路由；现有 Deploy Preview 的缺少 service token 响应仍不符合预期 `401`，发布闸门未关闭。
+- DTC 计划运行在 Oracle Always Free 单机，Compose 管理 API、持续 Worker、本机 PostgreSQL 和显式迁移；员工入口只通过 Tailscale 私网访问，数据库不发布主机端口。
+- 每日 `pg_dump --format=custom` 计划写入 Oracle Object Storage，并在上线前完成新库恢复演练；当前只有一次隔离环境恢复证据，没有生产备份调度。
+- `oci` CLI 为 3.96.0；Codex 注册了 `oracle-oci` MCP，Claude 用户范围也注册了同名 MCP。本机没有 `~/.oci/config`，Claude MCP 健康检查失败；最近 Oracle 浏览器登录进入风控/注册页面，未取得凭据。这是当前外部阻塞，不重试认证。
+- Netlify MCP 与 OCI Cloud MCP 的安装不授予云资源、域名、secret、部署或生产数据权限。外部付费、资源创建、生产发布仍按用户实际授权执行。
 
 ## 本机环境恢复证据（2026-11-06）
 
