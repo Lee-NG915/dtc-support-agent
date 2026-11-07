@@ -25,6 +25,7 @@ flowchart LR
         Tailnet --> DTCAPI[DTC FastAPI /staff]
         DTCAPI --> DTCDB[(DTC PostgreSQL)]
         DTCWorker[DTC 持续 Worker] --> DTCDB
+        HostOps[备份 / 恢复 / 运维检查] -->|127.0.0.1:5432| DTCDB
         Backup[每日 pg_dump] --> ObjectStorage[(Oracle Object Storage)]
         DTCDB --> Backup
     end
@@ -32,7 +33,7 @@ flowchart LR
     DTCAPI -->|HTTPS| DeepSeek[DeepSeek API]
 ```
 
-文字说明：消费者继续访问 E-pig；E-pig 的页面、Route Handlers 与业务数据仍由 Netlify 和 Neon 承载。内部员工通过 Tailscale 访问同机运行的 DTC 页面与 API。Worker 通过 HTTPS 查询 E-pig feed 并提交已人工批准的操作。DTC API 和 PostgreSQL 不开放公网端口，备份写入 Oracle Object Storage。
+文字说明：消费者继续访问 E-pig；E-pig 的页面、Route Handlers 与业务数据仍由 Netlify 和 Neon 承载。内部员工通过 Tailscale 访问同机运行的 DTC 页面与 API。Worker 通过 HTTPS 查询 E-pig feed 并提交已人工批准的操作。DTC API 只绑定主机回环；PostgreSQL 另外只为同机备份、恢复和运维脚本开放 `127.0.0.1:5432`，不得从公网或 Tailnet 访问。备份写入 Oracle Object Storage。
 
 选择该方案的原因：
 
@@ -59,18 +60,19 @@ flowchart LR
 - DTC 的 `docker-compose.after-sales.yml` 是 development + Fake + loopback 演示入口，不能直接当生产配置。
 - 生产 Compose、Tailscale 入口说明、生产配置预检和 CI 容器构建门禁已实现并通过本地范围验收；尚未部署，也没有远端生产运行证据。
 - PostgreSQL 员工凭证 CLI 已实现，并通过 SQLite 生命周期测试与一次性合成 PostgreSQL create/rotate/disable 验证；生产员工尚未创建。
-- 备份调度、告警和回滚演练尚未实现。
+- 备份、空库恢复和只读运维检查脚本已实现，并在一次性合成 PostgreSQL 上完成真实 `pg_dump`/`pg_restore` 端到端验收；生产备份调度、对象存储上传、告警和回滚演练尚未配置。
 - Oracle CLI 与 MCP 注册已安装，但本机没有 `~/.oci/config`；最近一次登录停在风控/注册页面。该事实只表示认证未完成，不能推断租户、主区域、免费配额或 VM 可用。
 
 ### 已实现的生产配置基线
 
-以下文件是计划部署到 Oracle 单机前使用的配置基线。它们只完成本地结构、负例、测试与镜像构建验收；没有连接 Netlify、Neon、Oracle 或真实 PostgreSQL：
+以下文件是计划部署到 Oracle 单机前使用的配置基线。它们未连接 Netlify、Neon、Oracle 或任何真实业务数据库；备份、恢复和运维脚本只在一次性合成 PostgreSQL 上做了真实驱动验收：
 
-- [`docker-compose.production.yml`](../docker-compose.production.yml)：本机 PostgreSQL、一次性迁移、API loopback、持续 Worker、重启策略、只读容器、日志轮转和健康检查。
+- [`docker-compose.production.yml`](../docker-compose.production.yml)：本机 PostgreSQL 只发布 `127.0.0.1:5432`、一次性迁移、API loopback、持续 Worker、重启策略、只读容器、日志轮转和健康检查。
 - [`deploy/dtc.production.env.example`](../deploy/dtc.production.env.example)：生产配置模板。模板本身故意包含占位值，原样复制不能通过预检。
 - [`scripts/check_production_settings.py`](../scripts/check_production_settings.py)：只读取显式 env 文件，检查权限、production/E-pig/HTTPS/PostgreSQL/SKU/市场/演示登录/密钥和 BM25-only 显式确认，不输出 secret。
 - [`deploy/tailscale-serve.md`](../deploy/tailscale-serve.md)：只开放 `/staff`、`/api`、`/assets` 和 `/favicon.svg` 的私网入口，不开放根路径或 `/metrics`。
 - [`scripts/manage_after_sales_staff.py`](../scripts/manage_after_sales_staff.py)：对已迁移 PostgreSQL 执行员工 `create`、`rotate`、`disable`，只保存 token 摘要，明文 token 只写新建 `0600` 文件。
+- [`scripts/backup_after_sales_pg.py`](../scripts/backup_after_sales_pg.py)、[`scripts/restore_after_sales_pg.py`](../scripts/restore_after_sales_pg.py) 和 [`scripts/check_after_sales_operations.py`](../scripts/check_after_sales_operations.py)：分别生成 custom dump、恢复到已预建空库、检查迁移/Worker 游标/API/备份/磁盘；不自动启动业务进程。
 - [CI](../.github/workflows/ci.yml) 的 `container-build` job：构建当前 Dockerfile、检查 revision 标签和非 root 用户，不登录 registry、不推送、不部署。
 
 上线前不能只执行 `docker compose up`。仍需先完成员工凭证、E-pig production 入口、secret、备份、告警和恢复闸门；实际步骤见“上线前准备清单”。
@@ -85,10 +87,10 @@ flowchart LR
 | P1 | 固定 E-pig 可发布提交，补齐 Netlify production 环境变量并应用 Neon 迁移 | Deploy Preview 和 production candidate 均能返回 `200`；缺失/错误 token 返回 `401`；生产域名不再命中 404 | 未通过 |
 | P2 | 实现并审查 DTC 生产 Compose、Tailscale 入口、配置预检和 CI 镜像构建 | 容器按 `uv.lock` 构建；非 root；迁移先成功；API/Worker 安全重启；配置负例全部拒绝 | 已实现，本地验收通过；未部署 |
 | P3 | 实现 PostgreSQL 员工凭证 create/rotate/disable | token 只写新建 `0600` 文件；rotate 后旧 token 下一次请求失效；disable 立即拒绝；demo login 在 production 拒绝启动 | 已实现并通过本地与合成 PostgreSQL 验收；生产员工未创建 |
-| P4 | 定义机器权限、私网和端口边界 | OCI 安全列表不开放 API/DB 公网端口；Tailscale ACL 只允许指定员工；`/metrics` 不走员工入口；主机 SSH 仅受控来源 | 入口说明已实现；ACL 与主机防火墙未配置 |
+| P4 | 定义机器权限、私网和端口边界 | OCI 安全列表不开放 API/DB 公网端口；Tailscale ACL 只允许指定员工且不含5432；`/metrics` 不走员工入口；主机 SSH 仅受控来源 | 端口映射与入口说明已实现；ACL 与主机防火墙未配置 |
 | P5 | 配置 secret 与配置模板 | 生产 env 为 `0600` 或更严格；数据库/E-pig/DeepSeek/Admin secret 不进入 Git、镜像、日志或命令输出；E-pig service token 可轮换 | 模板与预检已实现；真实 secret 未配置 |
-| P6 | 建立 DTC 备份、保留、恢复和 E-pig/Neon 备份责任 | DTC 每日 `pg_dump --format=custom` 到加密对象存储；保留 7 份日备份 + 4 份周备份；恢复演练可在新库核对审批、草稿、游标、幂等键和回执 | 仅完成一次隔离恢复验证，未配置生产调度 |
-| P7 | 确定监控与告警接收人 | `/ready`、Worker 心跳/最近周期、数据库连接、磁盘、备份年龄有检查；告警能在不暴露客户资料和 token 的渠道送达 | 未配置 |
+| P6 | 建立 DTC 备份、保留、恢复和 E-pig/Neon 备份责任 | DTC 每日 `pg_dump --format=custom` 到加密对象存储；保留 7 份日备份 + 4 份周备份；恢复演练可在新库核对审批、草稿、游标、幂等键和回执 | 备份/恢复脚本已通过合成PG端到端验收；生产调度、对象存储与保留未配置 |
+| P7 | 确定监控与告警接收人 | `/ready`、Worker 游标最近周期、数据库连接、磁盘、备份年龄有检查；告警能在不暴露客户资料和 token 的渠道送达 | 只读检查脚本已通过合成环境；生产定时执行、告警渠道和接收人未配置 |
 | P8 | 固定发布、升级、回滚和紧急停用顺序 | 先暂停 Worker 和写入，再评估数据库/镜像回滚；数据库不盲目 downgrade；保留命令和演练记录 | 方案已定义，未演练 |
 
 ### 上线闸门
@@ -99,7 +101,7 @@ flowchart LR
 2. **E-pig 契约入口**：有效 service token + 正确契约版本返回成功；错误/缺失 token 必须稳定返回 `401`；错误契约版本返回 `400`；不存在的资源返回契约约定的 `404`。
 3. **DTC 工程门禁**：完整测试、静态检查、真实 PostgreSQL 测试、锁文件检查、容器构建和敏感信息扫描通过；生产配置预检的每个负例都拒绝启动。
 4. **数据库闸门**：在全新 PostgreSQL 执行迁移到 head；再在旧版本副本执行升级；API/Worker 只有在 migrate 成功后才启动。
-5. **网络闸门**：从公网无法连接 DTC API/PostgreSQL；未授权 Tailscale 设备无法访问；员工入口和 API 可用；`/metrics` 只允许受控来源。
+5. **网络闸门**：从公网和 Tailnet 无法访问 DTC API/PostgreSQL；API 与 PostgreSQL 只绑定主机回环；未授权 Tailscale 设备无法访问员工入口；`/metrics` 只允许受控来源。
 6. **恢复闸门**：停止 Worker，备份，恢复到全新数据库，核对迁移版本、案例、草稿、审批、游标、operation key/payload 和外部回执；恢复后不重复创建工单。
 7. **端到端闸门**：使用专用 service token 和合成订单完成消费者提交、员工同步、草稿、人工审批、唯一工单、唯一回复；不需要人工修复脚本。
 8. **运维闸门**：Worker 连续运行并能在重启后继续；日志轮转、磁盘空间、备份年龄和告警有效；紧急停用能在一轮内停止领取新操作。
@@ -107,7 +109,7 @@ flowchart LR
 ### 未来部署顺序（本次不执行）
 
 1. 解决 Oracle 账户风控并核实免费资源；在此之前不改代码依赖云控制台行为。
-2. P2、P3 已完成本地实现、Review 和验收；继续完成 P6、P7。外部付费、真实数据和生产部署仍需实际授权。
+2. P2、P3 及P6/P7脚本已完成本地实现、Review 和验收；继续完成生产备份调度、对象存储、告警和回滚演练。外部付费、真实数据和生产部署仍需实际授权。
 3. 合并 E-pig 已验收提交到可发布分支，配置 Netlify production 环境和 Neon 迁移，先关闭 P1。
 4. 创建专用 VM、加密块存储和对象存储桶；安装最小系统、Docker/Compose、Tailscale；禁止公网 API/DB 入站。
 5. 写入生产 secret 和员工 token，配置 E-pig service token，执行配置预检。
@@ -144,6 +146,42 @@ uv run python scripts/manage_after_sales_staff.py create \
 - 轮换：`rotate --database-url-file ... --staff-id ... --output <新文件>`。旧 token 在下一次请求失效；命令拒绝覆盖已有输出文件。
 - 停用：`disable --database-url-file ... --staff-id ...`。它只改数据库；若员工仍有 Tailscale 访问，还必须同步移除 ACL 或设备访问，两个动作都完成才算完全停用。
 - production 必须保持 `AFTER_SALES_DEMO_LOGIN_ENABLED=false`；CLI 不能替代正式员工身份管理、操作审计和离职流程。
+
+### 备份、恢复与运维检查
+
+生产主机必须安装与 PostgreSQL 主版本一致的 `pg_dump`、`pg_restore` 和 `psql`。数据库为16时固定使用PostgreSQL16客户端；本次使用18客户端时，dump包含`SET transaction_timeout`，恢复被16拒绝。不能在未验证版本时安装“最新版”代替。
+
+每日备份示例（输出目录必须预先存在，脚本创建新文件名并强制`0600`）：
+
+```bash
+uv run python scripts/backup_after_sales_pg.py \
+  --database-url-file /run/secrets/dtc-database-url \
+  --output-dir /var/backups/dtc \
+  --timeout 900
+```
+
+恢复只作用于预先创建的空库，且要求明确确认Worker/API已停止；脚本使用单事务`pg_restore`，完成后核对`alembic_version=0005`与全部售后表：
+
+```bash
+uv run python scripts/restore_after_sales_pg.py \
+  --database-url-file /run/secrets/dtc-restore-database-url \
+  --backup-file /var/backups/dtc/after_sales_YYYYMMDDTHHMMSSZ.dump \
+  --confirm-worker-stopped \
+  --timeout 3600
+```
+
+运维检查读取数据库迁移、每个Worker市场的`after_sales_sync_cursor.last_success_at`、API `/ready`、最新备份年龄和磁盘空间；它显式绕过环境HTTP代理，输出不包含URL、密码或响应正文：
+
+```bash
+uv run python scripts/check_after_sales_operations.py \
+  --database-url-file /run/secrets/dtc-database-url \
+  --api-ready-url http://127.0.0.1:8000/api/v1/ready \
+  --backup-dir /var/backups/dtc --max-backup-age-hours 26 \
+  --disk-path /var/backups/dtc --min-free-disk-gb 10 \
+  --worker-markets au,sg,us --max-worker-age-seconds 300
+```
+
+这些脚本已验证，但生产还没有安装cron/systemd定时、上传Oracle Object Storage、7日+4周保留清理、告警投递或正式恢复演练。恢复后不要自动启动Worker；先核对原operation key/payload与E-pig回执，再按恢复手册继续。
 
 ## 本地
 
@@ -314,7 +352,7 @@ uv run python scripts/prepare_after_sales_demo.py cleanup --manifest <输出的m
 3. 保持Worker停止，连接恢复库启动API。对未完成操作等待租约自然到期，由授权操作员使用现有回执查询/对账入口核对原票据；回执关联不符或查不到时保留人工处理，不能伪造完成或换新键重发。
 4. 确认原批准与草稿按核验结果消费、外部票据仍唯一，再恢复Worker；核对无重复外部POST。备份、恢复目标和原始日志按保留策略管理。
 
-上述顺序在专用合成环境实际验证过，不提供生产RPO/RTO保证。现有临时验收工具没有作为通用备份平台交付；生产备份调度、异地存储、加密和恢复演练需要部署环境另行确定。
+上述顺序在专用合成环境实际验证过，不提供生产RPO/RTO保证。`backup_after_sales_pg.py`与`restore_after_sales_pg.py`是受控运维脚本，不是通用备份平台；生产调度、异地存储、加密、保留清理和正式恢复演练仍需部署环境配置。
 
 ## 独立浏览器演示与验收
 

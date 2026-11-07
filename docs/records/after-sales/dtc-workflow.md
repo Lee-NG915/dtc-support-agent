@@ -1,6 +1,6 @@
 # DTC 内部业务流程实施与验证记录
 
-更新日期：2026-11-07。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录、摘要优先UI、表单控件统一及H05/H08修复均已推送。生产部署前已完成方案、生产Compose/预检/Tailscale入口/容器构建CI和员工凭证CLI本地验收；来源冻结推进到revision8但不重跑模型。review规则revision7能容忍“又/已经/被”等有界中文插入词；独立holdout v4真实运行中H01-H08模型分区均满足冻结断言、H09-H12工程守卫4/4。v4的H01明确是v3 H04回归，H02-H12为运行前新写，不能把整个v4称为完全未见数据。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
+更新日期：2026-11-07。当前恢复点：两仓持久数据/审批/Worker、合成HTTP八场景与特定丢响应备份恢复、独立Chromium页面四组已有范围验收；员工固定密码演示登录、摘要优先UI、表单控件统一及H05/H08修复均已推送。生产部署前已完成方案、生产Compose/预检/Tailscale入口/容器构建CI、员工凭证以及备份/恢复/运维检查脚本本地验收；真实合成PostgreSQL完成custom dump、空库恢复和六项运维检查。来源冻结推进到revision8但不重跑模型。review规则revision7能容忍“又/已经/被”等有界中文插入词；独立holdout v4真实运行中H01-H08模型分区均满足冻结断言、H09-H12工程守卫4/4。v4的H01明确是v3 H04回归，H02-H12为运行前新写，不能把整个v4称为完全未见数据。分工以[协作正本](../../guides/ai-collaboration.md)为准，方案见[业务流程设计](../../architecture/modules/after-sales/dtc-workflow.md)。原始临时日志不承诺长期保留，本文保存可重新执行命令与精简证据。
 
 ## 员工工作台演示密码登录（2026-11-06，Codex本地验收）
 
@@ -361,7 +361,7 @@ Codex按冻结断言及预定0/1/2锚点人工复核，独立审查再次核对�
 ### 拓扑决定
 
 - E-pig 继续使用 Netlify 页面/Route Handlers 和 Neon PostgreSQL；消费者入口不迁移到 Oracle。
-- DTC 使用 Oracle Always Free 单机，Compose 启动 API、持续 Worker、本机 PostgreSQL 与显式迁移 gate。数据库不发布主机端口，API只绑定本机入口；员工通过 Tailscale 私网访问。
+- DTC 使用 Oracle Always Free 单机，Compose 启动 API、持续 Worker、本机 PostgreSQL 与显式迁移 gate。API只绑定主机回环；PostgreSQL只为同机备份/恢复/运维发布`127.0.0.1:5432`，不得从Tailnet或公网访问；员工通过Tailscale私网访问。
 - DTC 每日 `pg_dump --format=custom` 计划写入 Oracle Object Storage；E-pig/Neon 的备份责任单独确认。
 - 不采用全 Netlify：当前 Python ASGI 与常驻 Worker 需要重写，属于后端迁移而非部署配置。
 - Cloudflare Tunnel 暂不作为首选；需要自有域名或多组织 Zero Trust 时再重新比较 Tailscale。
@@ -415,3 +415,24 @@ Codex Review后补了URL文件入口，防止生产密码出现在命令行。�
 员工凭证修改了受203文件来源冻结覆盖的`app/repositories/staff_repository.py`。首次全量测试出现**19 failed / 785 passed**，全部是`frozen source changed: app/repositories/staff_repository.py`，不是认证业务回归。按证据规则推进revision8：v1～v4 manifest只更新该文件摘要并新增`staff_provisioning_refreeze`，逐字节保留revision7父清单可重建；问题、expectation、rubric、knowledge、prompt与模型设置不变，模型状态为`not_run_for_revision_8`。
 
 最终独立门禁：**826 passed、5 skipped、1 warning**；全仓Ruff格式235文件/静态、mypy150源文件、文档结构及`git diff --check`通过。旧19项冻结失败保留为发现记录，不用最终通过覆盖。revision8只证明来源完整性，不证明真实模型行为，也不把revision7的v4报告改称revision8成绩。
+
+## 生产备份、恢复与运维检查（2026-11-07，真实合成PG通过）
+
+新增`scripts/backup_after_sales_pg.py`、`restore_after_sales_pg.py`和`check_after_sales_operations.py`。三者只使用显式PostgreSQL URL或0400/0600单行文件，不读取.env；密码只进子进程`PGPASSWORD`，不进入argv/日志。backup创建新0600 custom dump，拒绝覆盖，失败/超时/空文件删除部分输出；restore只接受预建空库、0600有效custom dump和显式`--confirm-worker-stopped`，以`pg_restore --single-transaction`恢复并核对`0005`与全部售后表；ops check读取迁移、每个Worker市场游标时间、API `/ready`、最新备份年龄和磁盘，并显式禁用环境HTTP代理。
+
+Review与真实集成暴露并修复：
+
+- libpq URL query最初只禁止password/passfile，后来改为安全允许列表，禁止host/port/user/dbname/service/options等覆盖目标。
+- 首次运维检查被环境HTTP代理干扰，修复为`ProxyHandler({})`并补回归，loopback readiness不再经过代理。
+- 首次真实恢复使用PostgreSQL18客户端对16数据库失败：dump含`SET transaction_timeout`，16拒绝；失败单事务在目标库留下0表。切换到同主版本libpq16后端到端通过。此失败保留为部署前必须锁定客户端主版本的证据。
+- Compose原方案PostgreSQL无主机端口，但主机运维脚本因此无法连接。改为只发布`127.0.0.1:5432`；公网/Tailnet仍不可达，Tailscale文档和配置测试同步限制为loopback-only。
+
+真实合成验收使用明确命名的PostgreSQL16容器：
+
+- 源库迁移至0005，创建1条合成员工、3个市场近期游标。
+- 16版`pg_dump`生成42410字节0600 custom dump，`pg_restore --list`确认Format CUSTOM。
+- 恢复到预先创建的空`dtc_restore`后，源/目标均为`1|3|0005`（员工/游标/迁移）。
+- 本地合成`/ready`服务下，运维检查六项全部PASS。
+- 容器、所属匿名卷、临时URL/token/dump目录删除并回读不存在，端口也不可达。
+
+最终独立门禁：**978 passed、5 skipped、1 warning**；全仓Ruff格式239文件/静态、mypy150源文件、文档结构与diff检查通过。备份/恢复/运维逻辑已实现，但生产cron/systemd、Oracle Object Storage上传、7日+4周保留、告警接收人与正式恢复演练仍未配置，不能称生产备份完成。

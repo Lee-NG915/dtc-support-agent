@@ -18,8 +18,11 @@
 #
 # Tailscale Serve is the only ingress. The API publishes on host loopback only;
 # Tailscale Serve terminates private HTTPS and proxies to 127.0.0.1:8000.
-# PostgreSQL publishes no host port and is reachable only on the Compose
-# network. There is no public edge proxy in this topology.
+# PostgreSQL publishes on host loopback only (127.0.0.1:5432) so host-local
+# backup/restore/operations scripts can connect. It is never bound to 0.0.0.0,
+# a Tailscale interface or a public address, is not reachable from the tailnet,
+# and must not be added to the Tailscale ACL. There is no public edge proxy in
+# this topology.
 #
 # The app image already sets APP_ENV=production and runs as the non-root
 # `appuser` (UID 1000). The overrides below add container-level hardening.
@@ -72,8 +75,11 @@ services:
     # from the protected file. No database password is written in this file.
     env_file:
       - ${DTC_ENV_FILE:?DTC_ENV_FILE is required}
-    # Intentionally no `ports`: PostgreSQL is reachable only on the Compose
-    # network and never on a host or public interface.
+    # Loopback-only host publication for host-local backup/restore/operations
+    # scripts. Never change this to 0.0.0.0, a Tailscale interface or a public
+    # address; the tailnet and public must not reach PostgreSQL.
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - dtc-postgres-data:/var/lib/postgresql/data
     healthcheck:

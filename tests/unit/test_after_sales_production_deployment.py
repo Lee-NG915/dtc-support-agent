@@ -88,10 +88,10 @@ def test_compose_has_only_the_expected_services() -> None:
     assert set(_compose()["services"]) == {"postgres", "migrate", "api", "worker"}
 
 
-def test_postgres_is_private_and_persistent() -> None:
+def test_postgres_is_persistent_and_loopback_only() -> None:
     postgres = _compose()["services"]["postgres"]
     assert re.fullmatch(r"postgres:16(?:-alpine)?", postgres["image"])
-    assert not postgres.get("ports")
+    assert postgres["ports"] == ["127.0.0.1:5432:5432"]
     assert postgres["volumes"] == ["dtc-postgres-data:/var/lib/postgresql/data"]
     assert postgres["healthcheck"]["test"][0] == "CMD-SHELL"
     assert "pg_isready" in postgres["healthcheck"]["test"][1]
@@ -107,14 +107,60 @@ def test_env_file_is_required_and_no_repository_dotenv_is_loaded() -> None:
     assert not re.search(r"^\s*-\s*['\"]?\.env['\"]?\s*$", text, re.MULTILINE)
 
 
-def test_api_is_loopback_only_and_no_other_service_publishes_ports() -> None:
+def _published_host_addresses(service: dict[str, Any]) -> list[str]:
+    addresses: list[str] = []
+    for mapping in service.get("ports") or []:
+        if isinstance(mapping, dict):
+            addresses.append(str(mapping.get("host_ip") or ""))
+            continue
+        parts = str(mapping).split(":")
+        # An omitted host address (for example "5432:5432") means 0.0.0.0,
+        # which is never acceptable for this pilot.
+        addresses.append(parts[0] if len(parts) == 3 else "")
+    return addresses
+
+
+def _assert_loopback_only_publication(name: str, service: dict[str, Any]) -> None:
+    for mapping, host in zip(
+        service.get("ports") or [],
+        _published_host_addresses(service),
+        strict=True,
+    ):
+        assert (
+            host == "127.0.0.1"
+        ), f"{name} publishes {mapping!r} outside host loopback (host {host!r})"
+
+
+def test_api_and_postgres_publish_on_host_loopback_only() -> None:
     services = _compose()["services"]
     published = {name for name, service in services.items() if service.get("ports")}
-    assert published == {"api"}
+    assert published == {"api", "postgres"}
     assert services["api"]["ports"] == ["127.0.0.1:8000:8000"]
+    assert services["postgres"]["ports"] == ["127.0.0.1:5432:5432"]
+    for name in ("api", "postgres"):
+        _assert_loopback_only_publication(name, services[name])
     text = COMPOSE.read_text(encoding="utf-8")
     assert "0.0.0.0:8000" not in text
+    assert "0.0.0.0:5432" not in text
     assert "network_mode: host" not in text
+
+
+@pytest.mark.parametrize(
+    "mapping",
+    [
+        "5432:5432",
+        "0.0.0.0:5432:5432",
+        "100.64.0.1:5432:5432",
+        "localhost:5432:5432",
+        "[::]:5432:5432",
+        "127.0.0.1:5432",
+        {"host_ip": "0.0.0.0", "published": 5432, "target": 5432},
+        {"published": 5432, "target": 5432},
+    ],
+)
+def test_non_loopback_postgres_bindings_are_rejected(mapping: Any) -> None:
+    with pytest.raises(AssertionError):
+        _assert_loopback_only_publication("postgres", {"ports": [mapping]})
 
 
 def test_migration_gates_api_and_worker() -> None:
@@ -212,6 +258,14 @@ def test_tailscale_doc_excludes_metrics_and_requires_private_boundaries() -> Non
     assert "ss -ltnp" in text
     assert "tailscale serve reset" in text
     assert "tailscale down" in text
+
+
+def test_tailscale_doc_keeps_postgres_loopback_only() -> None:
+    text = TAILSCALE_DOC.read_text(encoding="utf-8")
+    assert "127.0.0.1:5432:5432" in text
+    assert "不得将 `5432` 加入 Tailscale ACL" in text
+    assert "PostgreSQL 不发布主机端口" not in text
+    assert 'nc -vz -w 3 "<host>.<tailnet>.ts.net" 5432' in text
 
 
 def test_tailscale_doc_has_no_real_tokens_or_identities() -> None:

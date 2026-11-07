@@ -2,7 +2,8 @@
 
 本文描述生产受控试点的员工入口方案，不是已部署记录。DTC API 只发布在主机回环
 `127.0.0.1:8000`，Tailscale Serve 在 tailnet 内终止 HTTPS 并代理到该地址。PostgreSQL
-不发布主机端口，也不允许从 tailnet 或公网直接访问。
+仅为主机本机的备份、恢复和运维脚本发布回环端口 `127.0.0.1:5432`；不得从 tailnet
+或公网访问，且不得加入 Tailscale ACL。
 
 ## 拓扑与前置条件
 
@@ -20,6 +21,9 @@
   `group:dtc-staff`）。不要用个人管理员设备代替员工组。
 - `docker-compose.production.yml` 的 API 端口映射必须是
   `127.0.0.1:8000:8000`；不得改成 `0.0.0.0:8000` 或使用 `network_mode: host`。
+- PostgreSQL 端口映射必须是 `127.0.0.1:5432:5432`，仅供主机本机的备份、恢复和
+  运维脚本使用；不得发布到 `0.0.0.0`、Tailscale 接口（`tailscale0`、`100.64.0.0/10`
+  或主机 tailnet 地址）或任何公网地址。
 - 生产 env 文件必须通过 `DTC_ENV_FILE` 显式提供，且权限为 `0400` 或 `0600`。
 
 以下命令中的 `<host>.<tailnet>.ts.net` 是占位 MagicDNS 名称。若使用受控自有域名，
@@ -52,6 +56,8 @@ tailnet 名称、token 或员工身份。
 要求：
 
 - 只允许员工组访问 `tag:dtc-host:443`；不要放行 `22`、`8000`、`5432` 或任意端口。
+- 不得将 `5432` 加入 Tailscale ACL。PostgreSQL 只监听主机回环，供本机运维脚本使用；
+  tailnet 内不需要、也不允许直连数据库。
 - Tailscale ACL 默认拒绝未匹配流量；不要添加 `*:*` 兜底规则。
 - 不启用 Tailscale SSH，除非另有独立审计的主机管理方案。
 - 移除员工时同时从组和 DTC 员工凭证中停用；两者缺一都不能视为已停用。
@@ -112,8 +118,11 @@ curl -sS -o /dev/null -w '%{http_code}\n' "https://<host>.<tailnet>.ts.net/"
 
 ```bash
 ss -ltnp | grep -E ':(8000|5432)\b'
-# 8000 只应出现在 127.0.0.1；5432 不应出现在主机监听列表。
+# 8000 和 5432 都只应出现在 127.0.0.1。
+# 若 5432 出现在 0.0.0.0、::、tailscale0 或主机 tailnet 地址上，立即停止并修正端口映射。
 docker compose --env-file /dev/null -f docker-compose.production.yml ps
+docker compose --env-file /dev/null -f docker-compose.production.yml port postgres 5432
+# 必须输出 127.0.0.1:5432。
 ```
 
 从公网或未授权设备验证不可达：
@@ -123,9 +132,16 @@ curl --connect-timeout 5 -fsS "http://<public-ip>:8000/api/v1/health" && echo UN
 nc -vz -w 3 "<public-ip>" 5432
 ```
 
-两条命令都必须失败。云安全列表/防火墙不应对公网开放 `8000` 或 `5432`；主机防火墙
-也应默认拒绝入站。Tailscale ACL 的拒绝测试应使用不在 `group:dtc-staff` 的账号完成，
-不能只验证允许路径。
+另外，在另一台 tailnet 设备（不要使用 DTC 主机本机）上确认数据库不可达：
+
+```bash
+nc -vz -w 3 "<host>.<tailnet>.ts.net" 5432
+```
+
+以上三条命令都必须失败。云安全列表/防火墙不应对公网开放 `8000` 或 `5432`；主机防火墙
+也应默认拒绝入站。`5432` 的 tailnet 不可达由两层共同保证：端口只绑定 `127.0.0.1`，
+且 ACL 不包含 `5432`；不要用放宽 ACL 的方式“验证”可达性。Tailscale ACL 的拒绝测试
+应使用不在 `group:dtc-staff` 的账号完成，不能只验证允许路径。
 
 ## 临时阻断入口
 

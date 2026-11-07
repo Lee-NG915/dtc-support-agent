@@ -10,7 +10,7 @@
 
 本文是本 fork 的权威规划入口，持续在同一文件维护。截至 2026-11-06，E-pig AU/US/SG 的18篇内部 demo 政策、持久审批/Worker、员工与消费者页面均已实现，真实 HTTP 八场景、特定丢响应备份恢复和独立合成浏览器四组已有范围验收。revision5回归、独立v2/v3及review规则revision7后的v4均已执行真实模型；v4 H01-H08满足冻结语义断言，H09-H12工程守卫4/4。v4 H01明确是v3 H04回归，H02-H12为运行前新写，不能把整个v4称为完全未见数据；v3残余失败保留为历史。计划80个业务任务/40个工程场景全集及独立Faithfulness固定集尚未建成，真实试用与生产未验收。Kimi全分支审查后的工程修复仍在有条件验收范围，不是项目无条件完成；最新证据和逐项裁决见[流程记录](records/after-sales/dtc-workflow.md)。较早的政策节点测试与上游数字保留在[政策记录](records/after-sales/epig-policy-v1.md)，不作为当前全项目成绩。
 
-2026-11-07 已确认生产受控试点拓扑：E-pig 继续使用 Netlify + Neon；DTC 使用 Oracle Always Free 单机上的 API、持续 Worker 和 PostgreSQL，员工入口通过 Tailscale 私网访问，DTC 数据库每日备份到 Oracle Object Storage。生产 Compose、配置预检、Tailscale 入口说明、无推送容器构建 CI 和 PostgreSQL 员工凭证 CLI 已实现并通过本地/合成环境验收；这不代表资源或业务已部署。Oracle 登录风控、E-pig 生产售后路由、备份与告警仍需完成。详见[部署与运维](11-deployment.md#生产试点方案)。
+2026-11-07 已确认生产受控试点拓扑：E-pig 继续使用 Netlify + Neon；DTC 使用 Oracle Always Free 单机上的 API、持续 Worker 和 PostgreSQL，员工入口通过 Tailscale 私网访问，DTC 数据库每日备份到 Oracle Object Storage。生产 Compose、配置预检、Tailscale 入口说明、无推送容器构建 CI、PostgreSQL 员工凭证 CLI 以及备份/恢复/运维检查脚本已实现；备份恢复到空合成库的真实端到端验收通过。这不代表资源或业务已部署。Oracle 登录风控、E-pig 生产售后路由、生产备份调度/对象存储、告警和正式回滚仍需完成。
 
 员工工作台另已增加 development/testing 专用的固定密码演示登录：密码只换取短时签名会话，角色和市场仍由服务端逐请求判定，生产环境禁止启用。页面本地候选已改为摘要优先：首屏显示下一步、客户原话和订单/金额/附件/证据关键事实，政策原文、技术标识、执行与事件按需展开；客服草稿和审批人待办按角色决定默认可见。员工端原生select/date/datetime-local也由统一的自定义可访问控件替代，checkbox和已有form controls共享设计token。工程与合成浏览器已验收，真实客服试用和效率改善仍未验证。
 
@@ -159,13 +159,13 @@ flowchart LR
 生产受控试点采用两套独立运行边界：
 
 - E-pig 的消费者页面和 Route Handlers 继续运行在 Netlify，业务数据继续使用 Neon PostgreSQL。DTC 通过 HTTPS 和 service token 调用 E-pig，不共享数据库。
-- DTC 在 Oracle Always Free 单机用 Docker Compose 启动 API、持续 Worker、本机 PostgreSQL 与迁移 gate；块存储和每日 `pg_dump` 备份分别负责运行数据与恢复。员工入口通过 Tailscale 访问，API/数据库不开放公网端口。
+- DTC 在 Oracle Always Free 单机用 Docker Compose 启动 API、持续 Worker、本机 PostgreSQL 与迁移 gate；块存储和每日 `pg_dump` 备份分别负责运行数据与恢复。员工入口通过 Tailscale 访问，API只绑定主机回环；PostgreSQL只额外发布 `127.0.0.1:5432` 供同机运维，公网与Tailnet均不可访问。
 
 不把 E-pig 迁到 Oracle，也不把当前 Python ASGI/Worker 直接改写成 Netlify Functions。前者的迁移没有业务收益，后者是后端重写而非部署工作。若未来要求高可用、固定 SLA、跨区容灾或更大容量，需重新比较托管 PostgreSQL、Cloudflare Zero Trust 或独立云资源，不能由当前免费单机方案自动满足。
 
-迁移必须在 API/Worker 启动前显式执行。生产文档必须覆盖环境模板、E-pig 入口验收、员工凭证开通/轮换/停用、健康检查、依赖故障定位、备份恢复、升级、回滚和紧急停用。密钥不入库；日志不保存认证令牌和完整客户资料，通过 `trace_id/task_id/operation_id` 关联排障。固定密码演示登录、Fake Connector、HTTP E-pig 地址和空 SKU 映射不得进入生产。
+迁移必须在 API/Worker 启动前显式执行。生产文档必须覆盖环境模板、E-pig 入口验收、员工凭证开通/轮换/停用、健康检查、依赖故障定位、备份恢复、升级、回滚和紧急停用。备份/恢复/运维脚本必须使用与PostgreSQL同主版本的客户端；本次PostgreSQL16在客户端18下因`transaction_timeout`恢复失败，切换到16后通过。密钥不入库；日志不保存认证令牌和完整客户资料，通过 `trace_id/task_id/operation_id` 关联排障。固定密码演示登录、Fake Connector、HTTP E-pig 地址和空 SKU 映射不得进入生产。
 
-当前可运行方式仍以 [现有快速开始](02-getting-started.md) 为准；隔离演示入口见[部署与运维](11-deployment.md)。生产 Compose、Tailscale 入口、备份调度和员工凭证 CLI 是计划或待实现项，不能把现有 Compose 描述为已经部署。
+当前可运行方式仍以 [现有快速开始](02-getting-started.md) 为准；隔离演示入口见[部署与运维](11-deployment.md)。生产配置、Tailscale入口、员工凭证及备份/恢复/运维检查脚本已本地验收；生产调度、对象存储、告警和实际部署仍是未完成项，不能把现有Compose描述为已经部署。
 
 ## 7. 评测与验收设计
 
@@ -223,7 +223,7 @@ flowchart LR
 | M3 完整业务流程 | 查询、证据、规则、草稿、持久审批、工单 UI | 在测试连接器中走通人工审批后的工单创建 | 草稿/证据/持久审批已本地范围验收；Worker核心与真实HTTP提交后崩溃恢复已范围验收；员工证据/建议后端已验收，员工UI与消费者页面已通过独立合成浏览器人工审批闭环、权限/冲突/窄屏验收，非真实客户试用 |
 | M4 可靠执行 | Worker、恢复、幂等、回执对账、事件重放 | A3～A11 的相关故障与并发场景通过 | Worker/有界轮询/恢复及专用PG入口已通过本地范围验收；真实HTTP提交后崩溃恢复已范围验收；六故事及两项驳回扩展已通过真实HTTP/DB独立验证，故障UI另验 |
 | M5 评测与优化 | 固定数据集、保留集、人工评分、版本对比 | 可复算报告及一次有依据的优化，列明剩余失败 | 34条离线政策开发集、revision5回归、v2/v3及revision7后的v4均执行并人工裁决；v4模型H01-H08满足冻结断言、工程4/4，其中H01是v3失败回归、H02-H12新写；80/40全集、独立Faithfulness与生产准确率未测 |
-| M6 试用与交付 | 干净部署、操作手册、小范围试用、反馈迭代 | 部署/恢复记录、实际试用反馈、完整演示 | 已确认 Netlify + Neon / Oracle 单机 + Tailscale 生产试点方案和上线闸门；生产 Compose、配置预检、Tailscale 说明、容器构建 CI 与员工凭证 CLI 已本地验收。Oracle 认证受风控阻塞，E-pig 生产入口、备份告警与发布闸门未完成，未执行真实试用/生产部署 |
+| M6 试用与交付 | 干净部署、操作手册、小范围试用、反馈迭代 | 部署/恢复记录、实际试用反馈、完整演示 | 已确认 Netlify + Neon / Oracle 单机 + Tailscale 生产试点方案和上线闸门；生产 Compose、配置预检、Tailscale 说明、容器构建 CI、员工凭证及备份/恢复/运维检查脚本已本地验收。Oracle 认证受风控阻塞，E-pig 生产入口、生产备份调度/对象存储、告警与发布闸门未完成，未执行真实试用/生产部署 |
 
 M1 即建立评测样例；M2～M4 随实现补测试，不等到 M5 才验证。M3 的可运行版本可开始收集试用反馈；M6 的真实试用取决于用户资源，无试用时如实记录为演示验收。
 
@@ -238,7 +238,7 @@ M1 即建立评测样例；M2～M4 随实现补测试，不等到 M5 才验证�
 | 3 最小可用页面 | M3 | 消费者申请/附件/进度，客服队列/详情和审批入口；可通过页面完成闭环，权限/加载/失败/冲突均有可见行为 | E-pig消费者页面已推送72f1621并有工程验证；DTC员工工作台工程候选已推送，真实Chromium合成角色旅程已独立通过，桌面插件通道未验证 |
 | 4 异常与恢复 | M4 | 补齐 Worker/租约、重启恢复、审批失效、未知结果对账、游标及事件恢复；六个核心故事均有实际证据 | 八场景真实HTTP/DB与特定备份恢复已独立验证；页面未知结果/409/角色等组已独立通过；实际容量/生产仍未测 |
 | 5 完整 AI 与业务评测 | M1、M5 | 固定开发/保留集，完整图与工具选择/引用/转人工、人工评分、失败分类及可复算对比；同时验证 UI 可访问性和容量预算 | revision7后v4真实执行，模型H01-H08均满足冻结断言、工程4/4；H01为v3残余回归，H02-H12运行前新写。页面已独立验收；80/40全集、独立Faithfulness、容量压测与生产SLA未测 |
-| 6 部署、试用与学习交付 | M6 | 干净安装升级、备份恢复、基础日志/监控、操作手册、演示脚本和关键源码讲解；无真实试用时只称演示验收 | 生产试点拓扑和[上线前闸门](11-deployment.md#上线闸门)已确认；生产 Compose/预检/Tailscale说明/容器构建CI/员工凭证CLI已本地验收；DTC部署基础、两仓空feed及丢响应备份恢复已独立验证，独立合成页面演示已验收。Oracle风控、E-pig生产售后入口、备份告警与实际部署未完成，真实试用、生产和容量SLA未测 |
+| 6 部署、试用与学习交付 | M6 | 干净安装升级、备份恢复、基础日志/监控、操作手册、演示脚本和关键源码讲解；无真实试用时只称演示验收 | 生产试点拓扑和[上线前闸门](11-deployment.md#上线闸门)已确认；生产 Compose/预检/Tailscale说明/容器构建CI/员工凭证及备份恢复运维脚本已本地验收，真实合成PG备份恢复到空库通过；DTC两仓空feed及丢响应恢复、独立合成页面演示已验收。Oracle风控、E-pig生产售后入口、生产调度/对象存储/告警与实际部署未完成，真实试用、生产和容量SLA未测 |
 
 六个核心故事及既有验收映射只在[产品蓝图](architecture/modules/after-sales/product-blueprint.md#131-六个核心验收故事)维护；它们覆盖正常、缺证据、越权、陈旧批准、丢回执和重启。不可仅凭 E-pig 子系统通过就勾选完整跨仓故事。E-pig 本仓细分任务与实际证据见[原实施计划](https://github.com/Lee-NG915/E-pig/blob/after-sales/agent-integration/docs/engineering/after-sales-agent-integration.md)，DTC#2 跟踪整体。
 
