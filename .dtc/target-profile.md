@@ -99,3 +99,5 @@ H05/H08质量与CI增量（2026-11-06，本地验收并推送`e7cd20e`）：`app
 Review handoff、revision7与v4增量（2026-11-06，已验收并推送功能/冻结提交`1323c19`、`31bdda7`）：review术语按字符保序，允许有界显式中文虚词/标点插入，覆盖“原卡又/已经/被注销”，保留`all_of`、scope和模型无关分支。v3 H04失败保留；v4 H01标明该失败回归，H02-H12运行前新写。真实v4报告`eval/reports/after_sales_acceptance_20261106T102547Z.json`，dataset SHA`59301e92…`、37/64 calls、24527 tokens、模型H01-H08均2/2/2、工程4/4。
 
 当前验收进度（2026-11-06）：六故事服务层与跨系统丢响应备份恢复已独立验证；两仓Compose空feed独立通过。真实模型revision5、独立v2/v3和revision7 v4均已执行；v4模型H01-H08满足冻结断言、工程4/4，其中H01为回归、H02-H12为新题。80/40全集、独立Faithfulness固定集、容量和真实试用仍未验收。独立Chromium页面四组与精确清理已独立验收，默认单测不需Node/engine；操作入口见部署指南。最新有效计数与失败保留在[流程记录](../docs/records/after-sales/dtc-workflow.md)，不以本档案历史计数代替当前成绩。
+
+本地演示实测（2026-11-24）：本机`.venv`Python3.12、SQLite演示库、DeepSeek已配置条件下，按[快速开始](../docs/02-getting-started.md)路径实际启动API并逐项验证：ORD10001订单/物流工具查询、定制马克杯退款政策检索、ORD10003取消的`pending_action`→`confirm_action_id`全流程均通过，取消真实落库。观察到已配置模型时部分回答被替换为离线文案，原因定位为忠实度检查`checker_unavailable`的fail-closed兜底（非配置错误），说明已补入快速开始。本次仅验证chat/HITL演示路径，不含售后工作流、Worker、员工页面或生产；演示订单ORD10003已被本次测试取消，重新演示前需重置`data/local/app.db`并重新seed。

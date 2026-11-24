@@ -108,6 +108,15 @@ curl -s localhost:8002/api/v1/chat \
 
 机制见 [05 · HITL](05-agents-and-tools.md#hitl-与幂等)。
 
+### 已配置模型仍显示「当前未配置生成模型」？
+
+这段离线文案有两个来源，不都意味着配置错误：
+
+1. 未配置 `DEEPSEEK_API_KEY`：运行时使用 `OfflineLLMProvider`（`app/services/container.py`），回答由确定性模板生成。
+2. 已配置模型：生成节点产出答案后，忠实度检查器调用失败或输出无法解析时返回 `checker_unavailable`，忠实度节点按 fail-closed 原则用确定性模板替换答案（`app/agents/nodes/faithfulness.py`、`app/agents/nodes/generate.py` 的 `_offline_answer`、`app/guardrails/hallucination.py`）。宁可展示检索原文，也不展示未通过核验的生成内容。
+
+第二种情况下工具调用、业务规则与 HITL 确认主路径不受影响；若频繁出现，应检查模型 JSON 输出与 `FaithfulnessResult` 解析的兼容性，而不是反复修改密钥。
+
 ## 测试
 
 ```bash
