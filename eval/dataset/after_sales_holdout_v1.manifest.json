@@ -43,7 +43,7 @@
     "app/cli/render.py": "99074271cd4bf7c00397925bad9f6609a91ca780ea18907e3df89ad9acc1ece6",
     "app/config/__init__.py": "f5171bd43c2329de013241071b80ff7b58d8b038a907942fb886da4f4e7c951b",
     "app/config/policy_profiles.py": "09d2888cbffd0f613666be06a9312c89f902f9de5ca8f81743c8dcdc84ec8116",
-    "app/config/settings.py": "e9d3cef323fd6b967d4059303d6217f403326e72aeca7b90bc6d419d55a492cf",
+    "app/config/settings.py": "2d0173c4f704ed07f83dd5164c21ac9a9a9ffb14f07aff80ea510044ecb2c08c",
     "app/connectors/__init__.py": "b49bf78848611f4dc6c43ccf50efcf4a05b27d1d1ff72c311878f4e4dd6326d9",
     "app/connectors/base.py": "34d89ed3a1753de7f61d886d366d0db5b55b3d23364173518d26181c6745b885",
     "app/connectors/epig.py": "6d33d802618f0dcf33a5540968704495b9c1b17ae19cd865a8d13e18a99ae3ce",
@@ -222,7 +222,7 @@
     "No execution implied by preparation; provider/model/budget and runtime fixture adapter still required.",
     "Actual HTTP/browser/OSrestart evidence must be separate; synthetic_only."
   ],
-  "freeze_revision": 9,
+  "freeze_revision": 10,
   "protocol_refreeze": {
     "reason": "Before first holdout execution: official DeepSeek model alias/thinking toggle compatibility only; no business prompt or knowledge changes and no holdout feedback used.",
     "files": {
@@ -391,7 +391,7 @@
     "files": {
       "app/config/settings.py": {
         "old_sha256": "3ff56181248ec599e7cd631aa384ac4c3d8ee358fa91c850e664403c62d630d7",
-        "new_sha256": "e9d3cef323fd6b967d4059303d6217f403326e72aeca7b90bc6d419d55a492cf"
+        "new_sha256": "2d0173c4f704ed07f83dd5164c21ac9a9a9ffb14f07aff80ea510044ecb2c08c"
       },
       "app/core/security.py": {
         "old_sha256": "24860c4375ca7507485ebdf0926e3f6913985358d1fd3520874267c3557aeb9d",
@@ -409,6 +409,10 @@
         "old_sha256": "c58aa4d4101d0b545824c027cc86137f67f3d8f83feeb1a1d654c9c29828417f",
         "new_sha256": "a0b32902fa19460dc21d2f529fb045431e17b7d34051c6277808046412b9a800"
       }
+    },
+    "revision_10": {
+      "reason": "Consumer data source fake/epig switch and EpigConsumerConnector; after-sales models, prompts, knowledge and scoring rules unchanged. New connector file is outside the 203-file freeze set.",
+      "model_evaluation_status": "not_run_for_revision_10"
     }
   }
 }

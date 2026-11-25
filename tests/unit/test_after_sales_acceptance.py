@@ -53,6 +53,7 @@ STAFF_PROVISIONING_FILES = {"app/repositories/staff_repository.py"}
 CONSUMER_PLATFORM_FILES = {
     "app/api/dependencies.py",
     "app/api/routes/chat.py",
+    "app/api/routes/consumer.py",
     "app/config/settings.py",
     "app/core/security.py",
     "app/main.py",
@@ -199,7 +200,7 @@ class _ValidSuggestionProvider:
 def test_verify_frozen_current_and_tamper_detection(tmp_path: Path) -> None:
     artifacts = acceptance.verify_frozen()
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 9
+    assert artifacts.freeze_revision == 10
     assert len(artifacts.rows) == 12
 
     dataset_copy = tmp_path / "after_sales_holdout_v1.jsonl"
@@ -319,8 +320,8 @@ def test_v2_selection_verifies_current_protected_manifest() -> None:
     assert len(artifacts.rows) == 12
     assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 9
-    assert artifacts.manifest["freeze_revision"] == 9
+    assert artifacts.freeze_revision == 10
+    assert artifacts.manifest["freeze_revision"] == 10
     assert len(artifacts.manifest["freeze_hashes"]) == 203
     assert artifacts.data_meta()["source"] == "after_sales_holdout_v2.jsonl"
     assert artifacts.data_meta()["holdout_version"] == "v2"
@@ -342,8 +343,8 @@ def test_v3_selection_verifies_current_protected_manifest() -> None:
     assert len(artifacts.rows) == 12
     assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 9
-    assert artifacts.manifest["freeze_revision"] == 9
+    assert artifacts.freeze_revision == 10
+    assert artifacts.manifest["freeze_revision"] == 10
     assert len(artifacts.manifest["freeze_hashes"]) == 203
     assert artifacts.data_meta()["source"] == "after_sales_holdout_v3.jsonl"
     assert artifacts.data_meta()["holdout_version"] == "v3"
@@ -351,7 +352,7 @@ def test_v3_selection_verifies_current_protected_manifest() -> None:
     provenance = artifacts.provenance()["source_candidate"]
     assert provenance["holdout_version"] == "v3"
     assert provenance["dataset"] == "after_sales_holdout_v3.jsonl"
-    assert provenance["freeze_revision"] == 9
+    assert provenance["freeze_revision"] == 10
 
 
 def test_v4_selection_verifies_current_protected_manifest() -> None:
@@ -367,8 +368,8 @@ def test_v4_selection_verifies_current_protected_manifest() -> None:
     assert len(artifacts.rows) == 12
     assert [row["id"] for row in artifacts.rows] == acceptance.EXPECTED_CASE_IDS
     assert artifacts.freeze_count == 203
-    assert artifacts.freeze_revision == 9
-    assert artifacts.manifest["freeze_revision"] == 9
+    assert artifacts.freeze_revision == 10
+    assert artifacts.manifest["freeze_revision"] == 10
     assert len(artifacts.manifest["freeze_hashes"]) == 203
     assert artifacts.data_meta()["source"] == "after_sales_holdout_v4.jsonl"
     assert artifacts.data_meta()["holdout_version"] == "v4"
@@ -376,7 +377,7 @@ def test_v4_selection_verifies_current_protected_manifest() -> None:
     provenance = artifacts.provenance()["source_candidate"]
     assert provenance["holdout_version"] == "v4"
     assert provenance["dataset"] == "after_sales_holdout_v4.jsonl"
-    assert provenance["freeze_revision"] == 9
+    assert provenance["freeze_revision"] == 10
     assert artifacts.rows[0]["holdout_role"] == "regression_from_v3_h04"
 
 
@@ -492,8 +493,8 @@ def test_revision_3_engineering_refreeze_metadata_is_exact(tmp_path: Path) -> No
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 9
-    assert manifest["freeze_revision"] == 9
+    assert artifacts.freeze_revision == 10
+    assert manifest["freeze_revision"] == 10
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -561,8 +562,8 @@ def test_revision_4_demo_login_refreeze_metadata_is_exact(tmp_path: Path) -> Non
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 9
-    assert manifest["freeze_revision"] == 9
+    assert artifacts.freeze_revision == 10
+    assert manifest["freeze_revision"] == 10
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -645,8 +646,8 @@ def test_revision_5_h05_h08_quality_refreeze_metadata_is_exact(tmp_path: Path) -
     artifacts = acceptance.verify_frozen()
     manifest = artifacts.manifest
 
-    assert artifacts.freeze_revision == 9
-    assert manifest["freeze_revision"] == 9
+    assert artifacts.freeze_revision == 10
+    assert manifest["freeze_revision"] == 10
     assert manifest["state"] == "frozen_prepared_not_run"
     assert artifacts.freeze_count == 203
     assert len(manifest["freeze_hashes"]) == 203
@@ -752,8 +753,8 @@ def test_revision_6_review_guidance_refreeze_metadata_is_exact(tmp_path: Path) -
         artifacts = acceptance.verify_frozen(version)
         manifest = artifacts.manifest
 
-        assert artifacts.freeze_revision == 9
-        assert manifest["freeze_revision"] == 9
+        assert artifacts.freeze_revision == 10
+        assert manifest["freeze_revision"] == 10
         assert manifest["state"] == "frozen_prepared_not_run"
         assert artifacts.freeze_count == 203
         assert len(manifest["freeze_hashes"]) == 203
@@ -836,8 +837,8 @@ def test_revision_7_review_term_normalization_refreeze_metadata_is_exact(
         artifacts = acceptance.verify_frozen(version)
         manifest = artifacts.manifest
 
-        assert artifacts.freeze_revision == 9
-        assert manifest["freeze_revision"] == 9
+        assert artifacts.freeze_revision == 10
+        assert manifest["freeze_revision"] == 10
         assert manifest["state"] == "frozen_prepared_not_run"
         assert artifacts.freeze_count == 203
         assert len(manifest["freeze_hashes"]) == 203
@@ -912,9 +913,9 @@ def test_revision_8_staff_provisioning_refreeze_metadata_is_exact(tmp_path: Path
         artifacts = acceptance.verify_frozen(version)
         manifest = artifacts.manifest
 
-        assert acceptance.FREEZE_REVISION == 9
-        assert artifacts.freeze_revision == 9
-        assert manifest["freeze_revision"] == 9
+        assert acceptance.FREEZE_REVISION == 10
+        assert artifacts.freeze_revision == 10
+        assert manifest["freeze_revision"] == 10
         assert manifest["state"] == "frozen_prepared_not_run"
         assert artifacts.freeze_count == 203
         assert len(manifest["freeze_hashes"]) == 203
