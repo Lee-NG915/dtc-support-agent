@@ -35,6 +35,15 @@ async def list_orders(
     actor: ConsumerActor = Depends(get_required_consumer),
     container: AppContainer = Depends(get_container),
 ) -> dict[str, object]:
+    if container.settings.consumer_data_source == "epig":
+        from app.connectors.consumer_epig import EpigConsumerConnector
+
+        connector = EpigConsumerConnector(
+            container.settings.epig_base_url,
+            container.settings.epig_service_token.get_secret_value(),
+        )
+        epig_orders = await connector.list_orders(actor.github_id)
+        return {"items": epig_orders, "total": len(epig_orders)}
     if actor.demo_user_id is None:
         return {"items": [], "total": 0}
     async with request_session(container.session_factory) as session:
@@ -56,6 +65,17 @@ async def get_order(
     actor: ConsumerActor = Depends(get_required_consumer),
     container: AppContainer = Depends(get_container),
 ) -> dict[str, object]:
+    if container.settings.consumer_data_source == "epig":
+        from app.connectors.consumer_epig import EpigConsumerConnector
+
+        connector = EpigConsumerConnector(
+            container.settings.epig_base_url,
+            container.settings.epig_service_token.get_secret_value(),
+        )
+        epig_order = await connector.get_order(actor.github_id, order_id)
+        if epig_order is None:
+            raise InvalidRequestError("order not found")
+        return epig_order
     order = await _visible_order(actor, container, order_id)
     return _order_view(order)
 
@@ -66,6 +86,17 @@ async def get_shipment(
     actor: ConsumerActor = Depends(get_required_consumer),
     container: AppContainer = Depends(get_container),
 ) -> dict[str, object]:
+    if container.settings.consumer_data_source == "epig":
+        from app.connectors.consumer_epig import EpigConsumerConnector
+
+        connector = EpigConsumerConnector(
+            container.settings.epig_base_url,
+            container.settings.epig_service_token.get_secret_value(),
+        )
+        shipment = await connector.get_shipment(actor.github_id, order_id)
+        if shipment is None:
+            raise InvalidRequestError("order not found")
+        return shipment
     order = await _visible_order(actor, container, order_id)
     return {
         "order_id": order.order_id,
@@ -80,6 +111,14 @@ async def list_after_sales(
     actor: ConsumerActor = Depends(get_required_consumer),
     container: AppContainer = Depends(get_container),
 ) -> dict[str, object]:
+    if container.settings.consumer_data_source == "epig":
+        # Subject-scoped after-sales feed is a stage-2 E-pig contract addition.
+        return {
+            "items": [],
+            "total": 0,
+            "source": "epig",
+            "detail": "after-sales feed pending E-pig contract",
+        }
     if actor.demo_user_id is None:
         return {"items": [], "total": 0}
     async with request_session(container.session_factory) as session:

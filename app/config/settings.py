@@ -109,6 +109,7 @@ class Settings(BaseSettings):
     # Consumer platform (public "/" site) with GitHub OAuth. Disabled by
     # default: the legacy demo chat keeps working without any session.
     consumer_auth_enabled: bool = False
+    consumer_data_source: Literal["fake", "epig"] = "fake"
     github_client_id: str = ""
     github_client_secret: SecretStr = SecretStr("")
     github_oauth_redirect_url: str = ""
