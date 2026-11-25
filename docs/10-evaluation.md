@@ -139,3 +139,9 @@ v4 dataset SHA-256为`59301e92282513d6ed48c48f4a0dadedd74a05611f881aa0d9c1313cda
 生产员工凭证 CLI 需要复用 `StaffRepository` 的既有 token 摘要实现，因此新增了窄的 `rotate_token`/`disable` 方法。该源码变化没有改认证流程、模型、prompt、知识或任何 v1～v4 问题与评分规则，但会改变 203 个 app/knowledge 文件的来源摘要；直接忽略会让“源码未漂移”门禁失效。
 
 四份 manifest 已推进到 revision 8，只更新 `app/repositories/staff_repository.py` 的摘要并新增 `staff_provisioning_refreeze` 历史。父 revision 7 清单仍可按原序列化逐字节重建；revision 8 的模型状态是 `not_run_for_revision_8`。此前 revision 7 的 v4 真实报告仍然有效于当时源码，不能直接标成 revision 8 已运行模型。
+
+## revision 9：消费者平台来源冻结
+
+消费者平台新增 GitHub OAuth 与消费者自助查询，修改 `app/config/settings.py`、`app/core/security.py`、`app/api/dependencies.py`、`app/api/routes/chat.py`、`app/main.py` 五个既有文件，并新增三个消费者路由/Connector 文件。售后模型、prompt、知识与 v1～v4 问题及评分规则均未变化，但会改变来源摘要，直接忽略会让门禁失效。
+
+四份 manifest 已推进到 revision 9，只更新上述五个文件的摘要并新增 `consumer_platform_refreeze` 历史（含各文件新旧 SHA-256）；三个新增文件不纳入 203 文件冻结集，避免破坏历史逐字节重建。digest 断言的排除集合相应扩大，重建测试同步删除本次历史条目。revision 9 的模型状态是 `not_run_for_revision_9`；此前 revision 7 的 v4 真实报告仍只代表当时源码。全量本地结果为 821 passed、1 skipped。

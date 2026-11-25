@@ -28,12 +28,12 @@
     "app/agents/nodes/router.py": "e8f16ae981255cca6f0d8e696adf03e0aa4055d95597601f66de0dc5e2de6376",
     "app/agents/state.py": "177a41bac23c2e9462a7b2e56a702b7ac4edf221b2ba17b7788590f484ff72d1",
     "app/api/__init__.py": "f59293e84f38aa7188dbfd84a14081774c50887c80888b4639edab479a950e43",
-    "app/api/dependencies.py": "deefba49a3f41d7d40917cd63f231daecf8287d0a8ffc5cad56f20929352f144",
+    "app/api/dependencies.py": "6a83885f64fab65ca5c05a3a788cd536c6cfd6b747fd3e8686ce5a26f3708893",
     "app/api/routes/__init__.py": "c6de03311fc8c1b93c98f52aad0782cc0f15b2782a25b5fbe5f57a35e5debf92",
     "app/api/routes/admin.py": "c05d0c9a7175ef7e7e64eba282f5967d8b621317f889f9f4939d39a3c430f314",
     "app/api/routes/after_sales.py": "82473b996db436f4d02539cb91286c2adfc3188f1fd987fdfd01dfe9e7f5db40",
     "app/api/routes/after_sales_workflow.py": "07b80b897daecd694aa1212e1218e1ce9d9afee6ba2c40daa96382e687854953",
-    "app/api/routes/chat.py": "75edd7ab05e42d6834e2362ac4790d858de525723e088cdfe26ebd8f330f835a",
+    "app/api/routes/chat.py": "669c48754d3a36312ea4dbadb641c44527ad7db0cc5be8625b30a133c3a5ef2b",
     "app/api/routes/health.py": "f1e4f77e4eea6d9f62a4aad5dc812f6e57e09a408295ff48bfd82cf00995d0ca",
     "app/asgi.py": "cdbc3fb8910d1f8f1984019ee8c7623bdb424db0859ef6b349e5541841a1cb73",
     "app/cli/__init__.py": "00a0a78cf5875717188ab7f5f4d26f784a63653d749666c7d2d065d22c74520d",
@@ -43,7 +43,7 @@
     "app/cli/render.py": "99074271cd4bf7c00397925bad9f6609a91ca780ea18907e3df89ad9acc1ece6",
     "app/config/__init__.py": "f5171bd43c2329de013241071b80ff7b58d8b038a907942fb886da4f4e7c951b",
     "app/config/policy_profiles.py": "09d2888cbffd0f613666be06a9312c89f902f9de5ca8f81743c8dcdc84ec8116",
-    "app/config/settings.py": "3ff56181248ec599e7cd631aa384ac4c3d8ee358fa91c850e664403c62d630d7",
+    "app/config/settings.py": "e9d3cef323fd6b967d4059303d6217f403326e72aeca7b90bc6d419d55a492cf",
     "app/connectors/__init__.py": "b49bf78848611f4dc6c43ccf50efcf4a05b27d1d1ff72c311878f4e4dd6326d9",
     "app/connectors/base.py": "34d89ed3a1753de7f61d886d366d0db5b55b3d23364173518d26181c6745b885",
     "app/connectors/epig.py": "6d33d802618f0dcf33a5540968704495b9c1b17ae19cd865a8d13e18a99ae3ce",
@@ -59,7 +59,7 @@
     "app/core/ids.py": "e66bf46d21c53829cdd1a8d415b9415d29784a4b54609e8013f90ca8dc2e3eba",
     "app/core/request_scope.py": "03f9e3ea4b79ae521ecd993a40d9dc34417cdb3a5042489df3922ee46a31af95",
     "app/core/retry.py": "708aeb63a3b0defbb0265f2dcc5d72a30ddb58a405f2e789dc4633731ae01b34",
-    "app/core/security.py": "24860c4375ca7507485ebdf0926e3f6913985358d1fd3520874267c3557aeb9d",
+    "app/core/security.py": "e19ee6258ad65b5b923bc291c4fe496bcfff6a3c52b0a695575ba91a6d619ec6",
     "app/core/time.py": "320b4d930d15030822e866ac8491d116ffe093861f188444f13df2857eca517a",
     "app/guardrails/__init__.py": "b4a28b96aabdb64d138eff792a7d0b65564c6646e6127571911819ae3465df84",
     "app/guardrails/boundary.py": "c2dca8a547aa2b3f9039e2761631c34ba03b3d99ac00b4f79365af4bc5c8f2a1",
@@ -68,7 +68,7 @@
     "app/infra/__init__.py": "8539f9d8403c35b942f683d0967f35bca56df74b3636438dce1cfaad896436d3",
     "app/infra/rate_limit.py": "e7fcc08eb402de4122f01841a5dcb650af2f1c33d6448d99a704a85b46a7dd9b",
     "app/infra/redis_client.py": "ec1443af9b6401dcb2c9de740e3a7ac81f4d530261a3853813458070fddf8b20",
-    "app/main.py": "c58aa4d4101d0b545824c027cc86137f67f3d8f83feeb1a1d654c9c29828417f",
+    "app/main.py": "a0b32902fa19460dc21d2f529fb045431e17b7d34051c6277808046412b9a800",
     "app/mcp/__init__.py": "bcabcf7025b54eb6b10f096f7fc4b9a38a92b40a95452ca3784be804d10483cb",
     "app/mcp/adapter.py": "8a1da0a8f084414437920bf57ce5f23c9aeab86c853b4cfe2d0885ba19a890e7",
     "app/mcp/runtime.py": "91339c18cae6d4842c7390d724baf714bd47f5d1fa314a48bd4554bedb9a6478",
@@ -222,7 +222,7 @@
     "No execution implied by preparation; provider/model/budget and runtime fixture adapter still required.",
     "Actual HTTP/browser/OSrestart evidence must be separate; synthetic_only."
   ],
-  "freeze_revision": 8,
+  "freeze_revision": 9,
   "protocol_refreeze": {
     "reason": "Before first holdout execution: official DeepSeek model alias/thinking toggle compatibility only; no business prompt or knowledge changes and no holdout feedback used.",
     "files": {
@@ -382,5 +382,33 @@
       }
     },
     "model_evaluation_status": "not_run_for_revision_8"
+  },
+  "consumer_platform_refreeze": {
+    "parent_revision": 8,
+    "parent_manifest_sha256": "2a6a611a60ecd3b01b180b358436afdaaeed3b00ca9d17987829abce1328b854",
+    "reason": "Consumer platform: GitHub OAuth and self-service consumer APIs, chat identity binding. Only five existing files change; the three new consumer files are outside the freeze set. After-sales models, prompts, knowledge and v1-v4 scoring rules are unchanged; no model evaluation was run for revision 9. New files app/api/routes/auth_github.py, app/api/routes/consumer.py and app/connectors/consumer.py are intentionally outside the 203-file freeze set.",
+    "model_evaluation_status": "not_run_for_revision_9",
+    "files": {
+      "app/config/settings.py": {
+        "old_sha256": "3ff56181248ec599e7cd631aa384ac4c3d8ee358fa91c850e664403c62d630d7",
+        "new_sha256": "e9d3cef323fd6b967d4059303d6217f403326e72aeca7b90bc6d419d55a492cf"
+      },
+      "app/core/security.py": {
+        "old_sha256": "24860c4375ca7507485ebdf0926e3f6913985358d1fd3520874267c3557aeb9d",
+        "new_sha256": "e19ee6258ad65b5b923bc291c4fe496bcfff6a3c52b0a695575ba91a6d619ec6"
+      },
+      "app/api/dependencies.py": {
+        "old_sha256": "deefba49a3f41d7d40917cd63f231daecf8287d0a8ffc5cad56f20929352f144",
+        "new_sha256": "6a83885f64fab65ca5c05a3a788cd536c6cfd6b747fd3e8686ce5a26f3708893"
+      },
+      "app/api/routes/chat.py": {
+        "old_sha256": "75edd7ab05e42d6834e2362ac4790d858de525723e088cdfe26ebd8f330f835a",
+        "new_sha256": "669c48754d3a36312ea4dbadb641c44527ad7db0cc5be8625b30a133c3a5ef2b"
+      },
+      "app/main.py": {
+        "old_sha256": "c58aa4d4101d0b545824c027cc86137f67f3d8f83feeb1a1d654c9c29828417f",
+        "new_sha256": "a0b32902fa19460dc21d2f529fb045431e17b7d34051c6277808046412b9a800"
+      }
+    }
   }
 }
