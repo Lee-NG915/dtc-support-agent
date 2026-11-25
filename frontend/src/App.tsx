@@ -12,8 +12,8 @@ import type { ActionProposal } from "./types";
 const SUGGESTIONS = [
   { icon: "↗", title: "退货政策", prompt: "定制商品过了七天，但有质量问题还能退吗？" },
   { icon: "◎", title: "物流进度", prompt: "帮我查一下 ORD10001 的物流进度" },
-  { icon: "◇", title: "支付与发票", prompt: "电子发票一般多久可以开具？" },
-  { icon: "✳", title: "售后处理", prompt: "退货申请需要提供哪些信息？" },
+  { icon: "◇", title: "订单查询", prompt: "查一下订单 ORD10001 的状态和金额" },
+  { icon: "✳", title: "人工确认", prompt: "取消订单 ORD10003" },
 ];
 
 function App() {
@@ -71,7 +71,7 @@ function App() {
       </header>
       {healthy === false && <div className="service-banner" role="status"><strong>暂时无法连接服务</strong><span>请确认后端已启动后重试。</span></div>}
       {chat.active ? <div className="chat-content"><MessageView conversation={chat.active} busy={chat.busy} onConfirm={confirm} onCancel={(messageId) => chat.dismissAction(chat.active!.id, messageId)} /></div>
-        : <div className="welcome"><div className="welcome-inner"><Logo /><h1>有什么可以帮忙的？</h1><p>让知识、订单与售后服务在一次对话中自然协作。</p><div className="suggestions">{SUGGESTIONS.map((item) => <button key={item.title} onClick={() => suggest(item.prompt)}><span className="suggestion-icon">{item.icon}</span><span><strong>{item.title}</strong><small>{item.prompt}</small></span><ArrowDown size={15} /></button>)}</div></div></div>}
+        : <div className="welcome"><div className="welcome-inner"><Logo /><h1>有什么可以帮忙的？</h1><p>演示订单 ORD10001–10003：查订单、查物流、问退换政策；取消订单需人工确认后执行。</p><div className="suggestions">{SUGGESTIONS.map((item) => <button key={item.title} onClick={() => suggest(item.prompt)}><span className="suggestion-icon">{item.icon}</span><span><strong>{item.title}</strong><small>{item.prompt}</small></span><ArrowDown size={15} /></button>)}</div></div></div>}
       <Composer busy={chat.busy} onSend={(message) => void chat.send(message)} onStop={chat.stop} draft={draft} onDraft={setDraft} inputRef={inputRef} />
     </main>
     {searchOpen && <SearchDialog conversations={chat.conversations} onClose={() => setSearchOpen(false)} onSelect={selectChat} />}
