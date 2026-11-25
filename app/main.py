@@ -13,7 +13,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import FileResponse, Response
 from starlette.staticfiles import StaticFiles
 
-from app.api.routes import admin, after_sales, after_sales_workflow, chat, health
+from app.api.routes import (
+    admin,
+    after_sales,
+    after_sales_workflow,
+    auth_github,
+    chat,
+    consumer,
+    health,
+)
 from app.config.settings import Settings, get_settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
@@ -76,6 +84,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin.router, prefix=prefix)
     app.include_router(after_sales.router, prefix=prefix)
     app.include_router(after_sales_workflow.router, prefix=prefix)
+    app.include_router(auth_github.router, prefix=prefix)
+    app.include_router(consumer.router, prefix=prefix)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):

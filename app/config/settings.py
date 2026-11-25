@@ -106,6 +106,32 @@ class Settings(BaseSettings):
     epig_timeout_seconds: float = Field(default=5.0, ge=0.5, le=30.0)
     epig_max_connections: int = Field(default=10, ge=1, le=20)
 
+    # Consumer platform (public "/" site) with GitHub OAuth. Disabled by
+    # default: the legacy demo chat keeps working without any session.
+    consumer_auth_enabled: bool = False
+    github_client_id: str = ""
+    github_client_secret: SecretStr = SecretStr("")
+    github_oauth_redirect_url: str = ""
+    consumer_session_secret: SecretStr = SecretStr("")
+    consumer_session_ttl_seconds: int = Field(default=28800, ge=60, le=86400)
+    # Demo mapping for the Fake consumer connector: comma-separated GitHub
+    # numeric ids that see the synthetic u_demo orders. Unmapped ids see none.
+    consumer_demo_github_ids: str = ""
+
+    @model_validator(mode="after")
+    def validate_consumer_auth(self) -> "Settings":
+        if not self.consumer_auth_enabled:
+            return self
+        if len(self.consumer_session_secret.get_secret_value().strip()) < 32:
+            raise ValueError("consumer session secret must be at least 32 characters")
+        return self
+
+    @property
+    def consumer_demo_ids(self) -> frozenset[str]:
+        return frozenset(
+            item.strip() for item in self.consumer_demo_github_ids.split(",") if item.strip()
+        )
+
     # Server-trusted SKU -> policy product category map. This is the only
     # source of category scope for after-sales evidence; request fields are
     # never trusted. Empty means no mapping (production stays needs_info).

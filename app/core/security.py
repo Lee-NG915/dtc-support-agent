@@ -210,3 +210,104 @@ def mask_pii(text: str) -> str:
     text = _BANK_CARD.sub(rf"\1{PII_MASK}\2", text)
     text = _ORDER_ID.sub(rf"\1{PII_MASK}\3", text)
     return text
+
+
+CONSUMER_SESSION_PREFIX = "dtc_consumer."
+CONSUMER_SESSION_VERSION = 1
+MAX_CONSUMER_SESSION_LENGTH = 512
+_CONSUMER_PAYLOAD_KEYS = frozenset({"github_id", "login", "expires_at", "version"})
+
+
+def _consumer_signature(secret: str, encoded_payload: str) -> bytes:
+    message = f"{CONSUMER_SESSION_PREFIX}{encoded_payload}".encode()
+    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).digest()
+
+
+def create_consumer_session_token(
+    *,
+    github_id: str,
+    login: str,
+    secret: str,
+    ttl_seconds: int,
+    now: datetime | None = None,
+) -> str:
+    """Issue a signed consumer session binding one GitHub identity to an expiry."""
+    if not github_id.isdigit() or len(github_id) > 32:
+        raise ValueError("invalid github id")
+    if len(secret.strip()) < 32:
+        raise ValueError("consumer session secret must be at least 32 characters")
+    issued_at = now or datetime.now(UTC)
+    if issued_at.tzinfo is None:
+        issued_at = issued_at.replace(tzinfo=UTC)
+    payload = {
+        "github_id": github_id,
+        "login": login[:64],
+        "expires_at": int(issued_at.timestamp()) + ttl_seconds,
+        "version": CONSUMER_SESSION_VERSION,
+    }
+    encoded_payload = _base64url_encode(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    signature = _consumer_signature(secret, encoded_payload)
+    return f"{CONSUMER_SESSION_PREFIX}{encoded_payload}.{_base64url_encode(signature)}"
+
+
+def verify_consumer_session_token(
+    token: str,
+    *,
+    secret: str,
+    now: datetime | None = None,
+) -> tuple[str, str] | None:
+    """Return (github_id, login) only for an intact, current consumer session."""
+    if not token or len(token) > MAX_CONSUMER_SESSION_LENGTH:
+        return None
+    if not token.startswith(CONSUMER_SESSION_PREFIX):
+        return None
+    if len(secret.strip()) < 32:
+        return None
+    parts = token[len(CONSUMER_SESSION_PREFIX) :].split(".")
+    if len(parts) != 2:
+        return None
+    encoded_payload, encoded_signature = parts
+    if not encoded_payload or not encoded_signature:
+        return None
+    try:
+        signature = _base64url_decode(encoded_signature)
+    except (binascii.Error, ValueError):
+        return None
+    if _base64url_encode(signature) != encoded_signature:
+        return None
+    expected = _consumer_signature(secret, encoded_payload)
+    if not hmac.compare_digest(signature, expected):
+        return None
+    try:
+        payload_bytes = _base64url_decode(encoded_payload)
+    except (binascii.Error, ValueError):
+        return None
+    if _base64url_encode(payload_bytes) != encoded_payload:
+        return None
+    try:
+        payload = json.loads(payload_bytes)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict) or set(payload) != _CONSUMER_PAYLOAD_KEYS:
+        return None
+    github_id = payload.get("github_id")
+    login = payload.get("login")
+    expires_at = payload.get("expires_at")
+    version = payload.get("version")
+    if (
+        not isinstance(github_id, str)
+        or not github_id.isdigit()
+        or not isinstance(login, str)
+        or not isinstance(expires_at, int)
+        or isinstance(expires_at, bool)
+        or version != CONSUMER_SESSION_VERSION
+    ):
+        return None
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    if expires_at <= int(current.timestamp()):
+        return None
+    return github_id, login

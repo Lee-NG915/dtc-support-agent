@@ -1,11 +1,13 @@
 """FastAPI dependency providers."""
 
 from fastapi import Depends, Request
+from fastapi.responses import Response
 
 from app.core.exceptions import AfterSalesDisabledError, UnauthorizedError
 from app.core.security import (
     DEMO_SESSION_PREFIX,
     parse_bearer_token,
+    verify_consumer_session_token,
     verify_demo_session_token,
 )
 from app.core.time import utcnow
@@ -13,9 +15,76 @@ from app.repositories.staff_repository import StaffRepository
 from app.schemas.after_sales import StaffActor
 from app.services.container import AppContainer
 
+CONSUMER_SESSION_COOKIE = "dtc_consumer_session"
+
 
 def get_container(request: Request) -> AppContainer:
     return request.app.state.container
+
+
+class ConsumerActor:
+    def __init__(self, github_id: str, login: str, demo_user_id: str | None) -> None:
+        self.github_id = github_id
+        self.login = login
+        self.demo_user_id = demo_user_id
+
+    @property
+    def effective_user_id(self) -> str:
+        return self.demo_user_id or f"gh_{self.github_id}"
+
+
+def get_optional_consumer(
+    request: Request,
+    container: AppContainer = Depends(get_container),
+) -> ConsumerActor | None:
+    """Resolve the GitHub session cookie into a consumer actor when enabled."""
+    if not container.settings.consumer_auth_enabled:
+        return None
+    token = request.cookies.get(CONSUMER_SESSION_COOKIE)
+    if not token:
+        return None
+    verified = verify_consumer_session_token(
+        token,
+        secret=container.settings.consumer_session_secret.get_secret_value(),
+        now=utcnow(),
+    )
+    if verified is None:
+        return None
+    github_id, login = verified
+    from app.connectors.consumer import demo_user_for
+
+    return ConsumerActor(
+        github_id,
+        login,
+        demo_user_for(github_id, container.settings.consumer_demo_ids),
+    )
+
+
+def get_required_consumer(
+    request: Request,
+    container: AppContainer = Depends(get_container),
+) -> ConsumerActor:
+    if not container.settings.consumer_auth_enabled:
+        raise AfterSalesDisabledError()
+    actor = get_optional_consumer(request, container)
+    if actor is None:
+        raise UnauthorizedError("sign in with GitHub to view your data")
+    return actor
+
+
+def set_consumer_cookie(response: Response, token: str, max_age: int) -> None:
+    response.set_cookie(
+        CONSUMER_SESSION_COOKIE,
+        token,
+        max_age=max_age,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+
+
+def clear_consumer_cookie(response: Response) -> None:
+    response.delete_cookie(CONSUMER_SESSION_COOKIE, path="/")
 
 
 async def _authenticate_staff(request: Request, container: AppContainer) -> StaffActor | None:
