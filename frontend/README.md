@@ -1,4 +1,4 @@
-# Adaptive RAG Web 前端
+# DTC Support Agent Web 前端
 
 基于 React、TypeScript 和 Vite 的聊天工作台。界面采用 ChatGPT 式布局，支持流式回答、来源引用、本地会话搜索与人工确认卡片。
 

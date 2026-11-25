@@ -29,6 +29,6 @@ export function Composer({ busy, onSend, onStop, draft, onDraft, inputRef }: Com
           : <button type="button" className="send-button" aria-label="发送消息" title="发送消息" disabled={!draft.trim()} onClick={() => submit()}><ArrowUp size={19} strokeWidth={2.5} /></button>}
       </div>
     </form>
-    <p className="composer-disclaimer">Adaptive RAG 也可能出错。请核对重要信息。</p>
+    <p className="composer-disclaimer">DTC Support Agent 也可能出错。请核对重要信息。</p>
   </div>;
 }
