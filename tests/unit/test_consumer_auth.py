@@ -84,7 +84,7 @@ def test_consumer_auth_requires_session_secret() -> None:
 
 def test_auth_me_reports_signed_out_and_signed_in() -> None:
     with TestClient(create_app(_settings())) as client:
-        assert client.get("/api/v1/auth/me").json() == {"signed_in": False}
+        assert client.get("/api/v1/auth/me").json() == {"auth_enabled": True, "signed_in": False}
         client.cookies.set("dtc_consumer_session", _cookie())
         body = client.get("/api/v1/auth/me").json()
         assert body["signed_in"] is True

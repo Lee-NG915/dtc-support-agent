@@ -138,10 +138,16 @@ async def logout(container: AppContainer = Depends(get_container)) -> Response:
 
 
 @router.get("/me")
-async def me(actor=Depends(get_optional_consumer)) -> dict[str, object]:
+async def me(
+    container: AppContainer = Depends(get_container),
+    actor=Depends(get_optional_consumer),
+) -> dict[str, object]:
+    if not container.settings.consumer_auth_enabled:
+        return {"auth_enabled": False, "signed_in": False}
     if actor is None:
-        return {"signed_in": False}
+        return {"auth_enabled": True, "signed_in": False}
     return {
+        "auth_enabled": True,
         "signed_in": True,
         "github_id": actor.github_id,
         "login": actor.login,

@@ -223,3 +223,31 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .fatal-error h1 { margin: 0; font-size: 22px; }
 .fatal-error p { margin: 0; color: var(--muted); font-size: 14px; }
 .fatal-error button { margin-top: 12px; padding: 9px 16px; border: 0; border-radius: 8px; background: var(--primary); color: var(--primary-text); }
+
+.auth-link { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--text); font-size: 13px; text-decoration: none; cursor: pointer; }
+.auth-link:hover { background: var(--surface-hover); }
+.account-panel { width: min(760px, 100%); }
+.account-header { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.account-header .account-login { color: var(--muted); font-size: 13px; }
+.account-header .icon-button { margin-left: auto; }
+.account-tabs { display: flex; gap: 6px; padding: 10px 16px 0; }
+.account-tabs button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; font-size: 13px; }
+.account-tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.account-body { padding: 12px 16px 16px; overflow-y: auto; }
+.account-hint { color: var(--muted); font-size: 13px; }
+.account-hint.error { color: #c0392b; }
+.order-block { border-bottom: 1px solid var(--soft-border); }
+.order-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; width: 100%; padding: 10px 4px; background: none; border: none; color: var(--text); text-align: left; cursor: pointer; font-size: 13px; }
+.order-row.static { cursor: default; }
+.order-row.expanded { background: var(--surface-hover); border-radius: 8px; }
+.order-id { font-family: ui-monospace, monospace; font-weight: 600; }
+.order-status { color: var(--accent); }
+.order-amount { margin-left: auto; font-weight: 600; }
+.order-date { color: var(--muted); font-size: 12px; }
+.order-detail { padding: 4px 8px 12px; font-size: 13px; }
+.order-item-line { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.order-meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); margin: 8px 0; font-size: 12px; }
+.shipment-events { margin-top: 8px; }
+.shipment-event { display: flex; gap: 12px; padding: 2px 0; color: var(--muted); }
+.event-status { color: var(--text); }
+.refund-reason { width: 100%; color: var(--muted); font-size: 12px; }
