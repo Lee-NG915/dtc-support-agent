@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSessionEndingError } from "./api";
+import { newId } from "../lib/id";
 import { useStaff } from "./context";
 import { errorMessage } from "./format";
 import type { StaffChatAnswer } from "./types";
@@ -38,12 +39,12 @@ export function useStaffChat() {
     busyRef.current = true;
     setBusy(true);
     const userMessage: StaffChatMessage = {
-      id: crypto.randomUUID(),
+      id: newId(),
       role: "user",
       content: text,
       state: "complete",
     };
-    const assistantId = crypto.randomUUID();
+    const assistantId = newId();
     unansweredRef.current = true;
     setMessages((previous) => [
       ...previous,

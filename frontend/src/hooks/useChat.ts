@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ChatResponse, Conversation, Message } from "../types";
 import { streamChat } from "../lib/api";
+import { newId } from "../lib/id";
 import { loadConversations, saveConversations } from "../lib/storage";
 
 interface State {
@@ -127,13 +128,13 @@ export function useChat() {
     const current = stateRef.current;
     const existing = current.conversations.find((item) => item.id === current.activeId);
     const conversation: Conversation = existing ?? {
-      id: crypto.randomUUID(),
+      id: newId(),
       title: text.length > 32 ? `${text.slice(0, 32)}…` : text,
       updatedAt: Date.now(),
       messages: [],
     };
-    const user: Message = { id: crypto.randomUUID(), role: "user", content: text, state: "complete" };
-    const assistant: Message = { id: crypto.randomUUID(), role: "assistant", content: "", state: "streaming" };
+    const user: Message = { id: newId(), role: "user", content: text, state: "complete" };
+    const assistant: Message = { id: newId(), role: "assistant", content: "", state: "streaming" };
     const controller = new AbortController();
     requestRef.current = controller;
     busyRef.current = true;
